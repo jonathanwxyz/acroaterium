@@ -104,7 +104,7 @@ def book_json(book):
                **({"glosses": {i: " ".join(w) for i, w in glosses[line].items()}} if line in glosses else {}),
                **({"groups": groups[line]} if line in groups else {})}
               for line, text, paraphrase in rows]
-    return {"book": book, "audio": f"/audio/{rec[0]}" if rec else None, "verses": verses,
+    return {"book": book, "audio": f"/audio/{urllib.parse.quote(rec[0])}" if rec else None, "verses": verses,
             "translation": translation, "text": "iliad", "title": "Ἰλιάς", "author": "Ὅμηρος",
             "eyebrow": "Ὁμήρου Ἰλιάς", "form": "verse", "cite": "line", "features": ILIAD_FEATURES,
             "books": [{"n": b, "label": f"Ῥαψῳδία {GREEK_NUMERALS[b]}"} for b in range(1, 25)],

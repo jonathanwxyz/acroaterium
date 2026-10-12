@@ -7,7 +7,7 @@ A correctly placed verse start falls where speech resumes after a pause, so for 
 book this reports the share of verse starts at a pause (Book 1: ~96%; the rest are
 run-on lines read without one), the spoken title's length, and verses squeezed to
 under a second (the sign of an aligner that lost its place). Pauses are detected with
-ffmpeg's silencedetect and cached in recordings/cache/<file>.silences.txt.
+ffmpeg's silencedetect and cached in cache/<file>.silences.txt next to the recording.
 """
 import re
 import sqlite3
@@ -24,10 +24,11 @@ MODEL = "mms"
 
 def pauses(recording):
     """[(start, end)] of silences of 0.15 s or more in the recording."""
-    cache = RECORDINGS / "cache" / f"{recording}.silences.txt"
+    path = RECORDINGS / recording  # e.g. Iliad/iliad01.m4a
+    cache = path.parent / "cache" / f"{path.name}.silences.txt"
     if not cache.exists():
         out = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-nostats", "-i", str(RECORDINGS / recording),
+            ["ffmpeg", "-hide_banner", "-nostats", "-i", str(path),
              "-af", "silencedetect=noise=-35dB:d=0.15", "-f", "null", "-"],
             capture_output=True, text=True).stderr
         cache.parent.mkdir(exist_ok=True)

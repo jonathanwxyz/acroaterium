@@ -33,11 +33,11 @@ Run in this order; each script replaces only its own tables. Pages are cached in
    `scripts/import_translation_lines.py` → `translation_lines` (split per line, from
    `translation_lines/murray_book01.txt`), and `scripts/import_polylas.py` →
    `translation_lines` (Polylas's modern Greek, from Wikisource)
-7. `.venv/bin/python scripts/align_audio.py --book N --audio recordings/iliadNN.m4a`
+7. `.venv/bin/python scripts/align_audio.py --book N --audio recordings/Iliad/iliadNN.m4a`
    → `verse_timings` (setup in `requirements-audio.txt`), or `scripts/align_all.sh` for
    all 24 books (~4–5 h on CPU). `scripts/check_timings.py` checks the result against
    the pauses in each recording. The slow part (the model's output, cached in
-   `recordings/cache/`) depends only on the audio and uses a GPU when there is one: to
+   `recordings/Iliad/cache/`) depends only on the audio and uses a GPU when there is one: to
    make it on another machine, run `scripts/make_emissions.py recordings/` there (any
    number of recordings or folders; no database or text needed) and copy the `.npy`
    files back. Then `align_audio.py --book N --emissions <file>.mms.npy` aligns in
@@ -45,9 +45,9 @@ Run in this order; each script replaces only its own tables. Pages are cached in
 
 The recordings (Project Eustathios, modern pronunciation, Homer only) stay local, see
 `.gitignore`. Fetch them as AAC with
-`yt-dlp -f "bestaudio[ext=m4a]" -o "recordings/yt/%(id)s.%(ext)s" <playlist>` and name
-them `recordings/iliadNN.m4a` by the book number in each title (the playlist has
-Books 16–20 out of order).
+`yt-dlp -f "bestaudio[ext=m4a]" -o "recordings/Iliad/%(id)s.%(ext)s" <playlist>` and name
+them `recordings/Iliad/iliadNN.m4a` by the book number in each title (the playlist has
+Books 16–20 out of order; `recordings/Iliad/playlist.txt` lists it).
 
 8. `scripts/import_scholia.py` → `scholia`, from First1KGreek (`-v` counts per book and
    manuscript)

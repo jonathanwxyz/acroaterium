@@ -2,7 +2,7 @@
 """Align a recording of one Iliad book to its verses (CTC forced alignment) and
 store per-verse start/end times in data/iliad.sqlite (`verse_timings`).
 
-    .venv/bin/python scripts/align_audio.py --book 1 --audio recordings/iliad01.opus --model greek
+    .venv/bin/python scripts/align_audio.py --book 1 --audio recordings/Iliad/iliad01.m4a --model greek
 
 Models (both wav2vec2, 300M parameters):
   mms    MahmoudAshraf/mms-300m-1130-forced-aligner   Meta MMS, romanized (uroman) text (default)
@@ -11,12 +11,12 @@ Models (both wav2vec2, 300M parameters):
 
 The spoken book title (`books.title`) is aligned as line 0, before line 1.
 Frame-level model output (the emissions) is cached next to the recording
-(recordings/cache/). That is nearly all the work, and it depends only on the audio,
+(recordings/Iliad/cache/). That is nearly all the work, and it depends only on the audio,
 so it can be made on a faster machine and copied over:
 
-    .venv/bin/python scripts/align_audio.py --audio recordings/iliad01.m4a --emissions-only
+    .venv/bin/python scripts/align_audio.py --audio recordings/Iliad/iliad01.m4a --emissions-only
 
-needs neither the database nor --book. Copy recordings/cache/<file>.<model>.npy back
+needs neither the database nor --book. Copy recordings/Iliad/cache/<file>.<model>.npy back
 and run the full command here: it finds the cache and aligns in seconds. For many
 recordings at once, use make_emissions.py. The audio itself isn't needed here once
 its emissions exist:
@@ -40,6 +40,7 @@ from transformers import AutoProcessor, Wav2Vec2ForCTC
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / "data" / "iliad.sqlite"
+RECORDINGS = ROOT / "recordings"
 MODELS = {
     "greek": "jonatasgrosman/wav2vec2-large-xlsr-53-greek",
     "mms": "MahmoudAshraf/mms-300m-1130-forced-aligner",
@@ -206,7 +207,11 @@ def main():
             ap.error(f"--emissions must be an existing <recording>{suffix} file (and not with --emissions-only)")
         recording = args.emissions.name[:-len(suffix)]
     else:
-        recording = args.audio.name
+        # The reader's name for it: its path under recordings/ (e.g. Iliad/iliad01.m4a).
+        try:
+            recording = args.audio.resolve().relative_to(RECORDINGS.resolve()).as_posix()
+        except ValueError:
+            recording = args.audio.name
 
     name = MODELS[args.model]
     processor = AutoProcessor.from_pretrained(name)

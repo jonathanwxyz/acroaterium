@@ -45,7 +45,7 @@ Needs Python 3 (standard library only) and, for the audio, ffmpeg.
 
 1. Build the database, `data/iliad.sqlite`. The scripts download their sources (cached
    in `data/raw/`); run them in the order given in [data/README.md](data/README.md#rebuilding).
-2. Recordings: the reader expects one per book, `recordings/iliadNN.m4a`. The readings
+2. Recordings: the reader expects one per book, `recordings/Iliad/iliadNN.m4a`. The readings
    used are Project Eustathios's on YouTube; data/README.md gives the `yt-dlp` command.
    They stay local, out of git.
 3. Align the recordings with the text (`scripts/align_audio.py`, or

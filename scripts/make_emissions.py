@@ -22,7 +22,12 @@ which is what the text alignment follows when it joins the parts of a work:
                   "<NNN> - <file>", numbered by the line's place among that name's lines
 What has been downloaded is listed in each folder's downloaded.txt and skipped next
 time, so the same file can be run again as playlists grow. The audio is kept as it is
-served; ffmpeg reads any of it.
+served (never re-encoded); ffmpeg reads any of it.
+
+From YouTube it takes the AAC stream (M4A, format 140) where there is one, since every
+browser plays it, iPhones included; the Opus stream (WebM) only where there is no AAC.
+A folder downloaded before this took Opus: its downloaded.txt still lists those videos,
+so to fetch them again as AAC, use a new folder (or delete downloaded.txt first).
 
 Folders are searched recursively for audio files. Each recording gives
 <file name>.<model>.npy (e.g. iliad01.m4a.mms.npy): frame-level log-probabilities,
@@ -143,7 +148,9 @@ def download(links, root):
                         print(url, file=f)
             else:
                 r = subprocess.run(ytdlp + [
-                    "-f", "bestaudio/best", "--no-overwrites", "--ignore-errors", "--no-progress",
+                    # AAC (M4A) first: it plays everywhere; then any audio, then audio+video.
+                    "-f", "bestaudio[ext=m4a]/bestaudio/best",
+                    "--no-overwrites", "--ignore-errors", "--no-progress",
                     "--download-archive", str(archive),
                     "-o", str(folder / "%(playlist_index&{:03d} - |)s%(title)s [%(id)s].%(ext)s"),
                     url])
