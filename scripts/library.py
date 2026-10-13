@@ -151,9 +151,10 @@ def wikisource(src, verbose):
 # Robinson's text of the Patriarchal edition (Antoniades 1904/1912) has no accents or
 # capitals; his Byzantine text (with Pierpont), which it mostly agrees with, has both.
 # So each verse's words take the accents and capitals of the same words in the same verse
-# of the Byzantine text, and a word the Byzantine text doesn't have there, those of the
-# commonest form of that word elsewhere in it; a word in neither stays as it is. Both are
-# public domain (github.com/byztxt).
+# of the Byzantine text; a word the Byzantine text doesn't have there, those of the same
+# word in eBible's accented Patriarchal text (below); failing that, of the commonest form
+# of the word in the Byzantine text; a word in none stays as it is. All public domain
+# (github.com/byztxt, ebible.org).
 BYZTXT = "https://raw.githubusercontent.com/byztxt/{}/master/{}"
 NT_BOOKS = "MT MR LU JOH AC RO 1CO 2CO GA EPH PHP COL 1TH 2TH 1TI 2TI TIT PHM HEB JAS 1PE 2PE 1JO 2JO 3JO JUDE RE".split()
 BYZ_NAME = {"MT": "MAT", "MR": "MAR", "LU": "LUK", "AC": "ACT", "RO": "ROM", "GA": "GAL", "JAS": "JAM",
@@ -174,15 +175,23 @@ def split_word(word):
 
 
 def byz_verses(book):
-    """{(chapter, verse): text} of the Byzantine text (the pericope of the adulteress,
-    kept apart there, goes back into John)."""
+    """{(chapter, verse): [text, ...]} of the Byzantine text. John 7:53-8:11 has two: the
+    pericope of the adulteress as in John's file, and as in its own (PA), which is the form
+    closer to the Patriarchal edition's."""
     out = {}
     for name in [BYZ_NAME.get(book, book)] + (["PA"] if book == "JOH" else []):
         text = get(BYZTXT.format("byzantine-majority-text", f"csv-unicode/ccat/no-variants/{name}.csv"),
                    f"byztxt/byz-{name}.csv")
         for r in csv.DictReader(io.StringIO(text)):
-            out.setdefault((int(r["chapter"]), int(r["verse"])), r["text"].replace("¶", " ").strip())
+            out.setdefault((int(r["chapter"]), int(r["verse"])), []).append(r["text"].replace("¶", " ").strip())
     return out
+
+
+def closest(words, versions):
+    """The version (a list of words) sharing most words with words, in order."""
+    keys = [letters_key(w) for w in words]
+    return max((v.split() for v in versions), default=[], key=lambda v: difflib.SequenceMatcher(
+        None, keys, [letters_key(w) for w in v], autojunk=False).ratio())
 
 
 def byz_forms():
@@ -191,17 +200,38 @@ def byz_forms():
     if _byz_forms is None:
         counts = {}
         for book in NT_BOOKS:
-            for text in byz_verses(book).values():
-                for w in text.split():
+            for versions in byz_verses(book).values():
+                for w in " ".join(versions).split():
                     core = split_word(w)[1]
                     counts.setdefault(letters_key(core), Counter())[core] += 1
         _byz_forms = {k: c.most_common(1)[0][0] for k, c in counts.items()}
     return _byz_forms
 
 
-def accented(words, guide):
-    """words (unaccented) with the accents and capitals of the guide's words where they
-    are the same word, else of the word's commonest form; returns (text, words not found)."""
+def movable(key):
+    """A word's letters without a final movable ν or ς (ἐστιν/ἐστι, οὕτως/οὕτω), to match
+    editions that write them differently."""
+    return re.sub(r"[νσ]$", "", key)
+
+
+def as_spelt(form, key):
+    """form (accented, from another edition) spelt with this edition's letters key, where the
+    two differ only in a final movable ν or ς."""
+    have = letters_key(form)
+    if have == key:
+        return form
+    if key.startswith(have):  # ἐστι -> ἐστιν, οὕτω -> οὕτως
+        return form + ("ς" if key.endswith("σ") else key[len(have):])
+    if have.startswith(key):  # ἐστιν -> ἐστι
+        return form[:len(form) - (len(have) - len(key))]
+    return form
+
+
+def accented(words, guide, edition=()):
+    """words (unaccented) with the accents and capitals of the guide's words where they are
+    the same word; else with the accents of the same word in another edition of the verse
+    (the Patriarchal text as eBible has it, allowing for a movable ν or ς); else of the
+    word's commonest form. Returns (text, words not found)."""
     keys, gkeys = [letters_key(w) for w in words], [letters_key(w) for w in guide]
     out, missing = list(words), 0
     matched = set()
@@ -210,7 +240,21 @@ def accented(words, guide):
             lead, _, trail = split_word(words[blk.a + k])
             out[blk.a + k] = lead + split_word(guide[blk.b + k])[1] + trail
             matched.add(blk.a + k)
-    forms = {**byz_forms(), **ONE_WORD}
+    rest = [i for i in range(len(words)) if i not in matched and keys[i]]
+    if rest and edition:
+        ekeys = [movable(letters_key(w)) for w in edition]
+        for blk in difflib.SequenceMatcher(None, [movable(k) for k in keys], ekeys, autojunk=False).get_matching_blocks():
+            for k in range(blk.size):
+                i = blk.a + k
+                if i in matched or not keys[i]:
+                    continue
+                lead, _, trail = split_word(words[i])
+                form = as_spelt(split_word(edition[blk.b + k])[1], keys[i])
+                if trail.strip():  # before a stop: acute, not grave
+                    form = acute(form)
+                out[i] = lead + form + trail
+                matched.add(i)
+    forms = {**byz_forms(), **{letters_key(k): v for k, v in ONE_WORD.items()}}  # (keys as looked up: ς as σ)
     for i, w in enumerate(words):
         if i in matched or not keys[i]:
             continue
@@ -225,10 +269,29 @@ def accented(words, guide):
     return " ".join(out), missing
 
 
-# Written as one word in the Patriarchal edition, as two in the Byzantine text.
+# Accented by hand: written as one word in the Patriarchal edition, as two in the
+# Byzantine text; and a few words of its own.
 ONE_WORD = {"διατι": "διατί", "ινατι": "ἱνατί", "αραγε": "ἄραγε", "υπερλιαν": "ὑπερλίαν",
             "υπερεκπερισσου": "ὑπερεκπερισσοῦ", "υπερεκπερισσως": "ὑπερεκπερισσῶς", "τουτεστι": "τουτέστι",
-            "τουτεστιν": "τουτέστιν", "καθοτι": "καθότι", "διοτι": "διότι"}
+            "τουτεστιν": "τουτέστιν", "καθοτι": "καθότι", "διοτι": "διότι",
+            # Readings of the pericope of the adulteress (John 8:4-7) in neither Byzantine form.
+            "κατειληπται": "κατείληπται", "αυτοφωρω": "αὐτοφώρῳ", "εκπειραζοντες": "ἐκπειράζοντες",
+            "σχωσιν": "σχῶσιν", "ανεκυψεν": "ἀνέκυψεν",
+            # Words in neither, and in eBible's text in a neighbouring verse or spelt otherwise.
+            "εκλειποντος": "ἐκλείποντος", "μεσσιαν": "Μεσσίαν", "βερενικη": "Βερενίκη",
+            "ειδωλολατριαις": "εἰδωλολατρίαις"}
+
+# Slips in Robinson's transcription, corrected after eBible's Patriarchal text before
+# the words are accented: (book, chapter, verse) -> {as written: as it should read}.
+CORRECTIONS = {
+    ("MT", 27, 9): {"τετιμημημενου": "τετιμημενου"},
+    ("MR", 3, 2): {"παρετητηρουν": "παρετηρουν"},
+    ("LU", 1, 59): {"ζαχαχαριαν": "ζαχαριαν"},
+    ("LU", 4, 17): {"επεδοδη": "επεδοθη"},
+    ("LU", 22, 31): {"συνιασαι": "σινιασαι"},
+    ("1CO", 14, 30): {"αποκακαλυφθη": "αποκαλυφθη"},
+    ("1TH", 2, 11): {"εαυτουπαρακαλουντες": "εαυτου παρακαλουντες"},
+}
 
 
 def acute(word):
@@ -248,7 +311,12 @@ def byztxt(src, verbose, words_out=None):
     parsed = robinson_parsed(book) if words_out is not None else {}
     segments, missing, seq = [], 0, {}
     for c, v, words in verses:
-        text, miss = accented(words.split(), guide.get((c, v), "").split())
+        words = words.replace("<<", "").replace(">>", "")  # (Robinson's marks round the pericope)
+        for wrong, right in CORRECTIONS.get((book, c, v), {}).items():
+            words = words.replace(wrong, right)
+        words = words.split()
+        edition = pt_verses().get((PT_CODE.get(book, book), c, v), "").split()
+        text, miss = accented(words, closest(words, guide.get((c, v), [])), edition)
         if words_out is not None:
             words_out += [(c, seq.get(c, 0) + 1, *row) for row in word_rows(text.split(), parsed.get((c, v), []))]
         missing += miss
@@ -309,6 +377,30 @@ def dodson():
             lemma = beta_to_unicode(r[2]).split(",")[0].strip()  # "Ἀαρών, ὁ" -> the word itself
             rows.append((int(r[0]), lemma, r[3].strip(), r[4].strip()))
     return rows
+
+
+# The Patriarchal text accented, as eBible.org has it ("1904 Patriarchal Greek New
+# Testament with 20 corrections from later editions", public domain): a second source of
+# accents for words the Byzantine text doesn't share.
+PT_ZIP = "https://ebible.org/Scriptures/grcbyz_vpl.zip"
+PT_CODE = {"MT": "MAT", "MR": "MAR", "LU": "LUK", "AC": "ACT", "RO": "ROM", "GA": "GAL", "PHP": "PHI",
+           "JAS": "JAM", "JUDE": "JUD", "RE": "REV"}
+_pt = None
+
+
+def pt_verses():
+    """{(book, chapter, verse): text} of eBible's Patriarchal text."""
+    global _pt
+    if _pt is None:
+        path = CACHE / "grcbyz" / "grcbyz_vpl.zip"
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with urllib.request.urlopen(urllib.request.Request(PT_ZIP, headers=UA)) as r:
+                path.write_bytes(r.read())
+        with zipfile.ZipFile(path) as z:
+            text = z.read("grcbyz_vpl.txt").decode("utf-8")
+        _pt = {(m[1], int(m[2]), int(m[3])): m[4].strip() for m in re.finditer(r"^(\w+) (\d+):(\d+) (.*)$", text, re.M)}
+    return _pt
 
 
 # ---------------------------------------------------------------- translations
