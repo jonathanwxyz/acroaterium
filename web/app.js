@@ -10,9 +10,14 @@ const PARAMS = new URLSearchParams(location.search);
 const TEXT = PARAMS.get("text") || "iliad";
 const BOOK = Number(PARAMS.get("book") || 1);
 const [V_FROM, V_TO] = (PARAMS.get("v") ?? "").split(/[-–]/).map((s) => s.trim());
+// &at=: carried on from the chapter before, playing (the chapters of a book of the Bible
+// share one recording): start there, and play.
+const CARRY_AT = Number(PARAMS.get("at")) || null;
 let RANGE = null;  // {from, to}: the refs of the first and last verse shown, when showing a range
 // Old links (?book=N, the Iliad) show the full address: ?text=iliad&book=N.
-if (!PARAMS.has("text")) history.replaceState(null, "", `?${new URLSearchParams({ text: TEXT, book: BOOK })}${location.hash}`);
+if (!PARAMS.has("text") || CARRY_AT) {
+  history.replaceState(null, "", `?${new URLSearchParams({ text: TEXT, book: BOOK, ...(V_FROM ? { v: PARAMS.get("v") } : {}) })}${location.hash}`);
+}
 const API = TEXT === "iliad" ? `/api/book/${BOOK}` : `/api/text/${encodeURIComponent(TEXT)}/${BOOK}`;
 let hasScholia = TEXT === "iliad";  // known for sure once the book has loaded
 const FEATURES = ["audio", "paraphrase", "modern", "translation", "scholia", "words"];
@@ -63,14 +68,15 @@ function render(data) {
   list.classList.remove("loading");
   if (V_TO) applyRange(data);
   rememberVisit(TEXT, BOOK, data.collection);
-  try { localStorage.setItem(`meta:${TEXT}`, JSON.stringify({ title: data.title, eyebrow: data.eyebrow, books: data.books })); } catch {}
+  try { localStorage.setItem(`meta:${TEXT}`, JSON.stringify({ title: data.title, eyebrow: data.eyebrow, short: data.short, books: data.books })); } catch {}
   const has = new Set(data.features ?? []);
   for (const f of FEATURES) document.body.classList.toggle(`no-${f}`, !has.has(f));
   // Focused mode shows whole rows: not for prose, where a sentence is what plays.
   document.body.classList.toggle("prose-text", data.form === "prose");
   if (!has.has("audio") || data.form === "prose") document.body.classList.remove("focused");
   list.classList.toggle("prose", data.form === "prose");
-  showTitle(data.eyebrow ?? data.title, data.title);
+  showTitle(data.eyebrow ?? data.title, data.short ?? data.title);
+  fillTitles(data.collectionTexts);
   const bookLabel = data.books.find((b) => b.n === data.book)?.label;
   document.title = `${data.title}${bookLabel ? ` · ${bookLabel}` : ""} — Reader`;
   fillBooks(data.books);
@@ -128,7 +134,9 @@ function renderVerse(data, has) {
     li.className = "verse" + (v.line === 0 ? " title" : "") + (v.start == null ? " untimed" : "");
     const ref = v.ref ?? String(v.line);
     const num = document.createElement("span");
-    num.className = "num" + (Number(ref) % 5 === 0 && Number(ref) > 0 ? "" : " hidden");
+    // Every verse of the Bible is numbered; lines of poetry, every fifth.
+    const shown = data.cite === "verse" || (Number(ref) % 5 === 0 && Number(ref) > 0);
+    num.className = "num" + (shown ? "" : " hidden");
     num.textContent = v.line > 0 ? ref : "";
     const text = document.createElement("span");
     text.className = "text";
@@ -429,6 +437,8 @@ function update() {
   if (i >= 0) holdIfHovered(verses[i], t);
   // A range plays to the end of its last verse and stops there.
   if (RANGE && !audio.paused && verses.length && t >= verses.at(-1).end) audio.pause();
+  // A chapter whose recording goes on into the next: go on there, playing.
+  if (!RANGE && DATA?.next && !audio.paused && verses.length && t >= verses.at(-1).end - 0.05) carryOn(t);
   skipSilence(i, t);
   document.body.classList.toggle("playing", isPlaying());
   showTimeline(audio.currentTime);
@@ -821,7 +831,7 @@ function renderCard(data) {
     cardBody.append(g);
   }
   if (!data.tokens.length) {
-    cardBody.append(el("p", "note", "Not in the Perseus treebank (its text leaves this line out)."));
+    cardBody.append(el("p", "note", data.note ?? "Not in the Perseus treebank (its text leaves this line out)."));
   }
   for (const t of data.tokens) {
     const box = el("div", "token");
@@ -834,11 +844,14 @@ function renderCard(data) {
       a.rel = "noopener";
       lemma.append(a);
     }
+    // The New Testament's words: Strong's number, and Robinson's code under the parsing.
+    if (t.strongs) lemma.append(el("code", "strongs", `G${t.strongs}`));
     box.append(lemma);
     if (t.definition) box.append(el("div", "definition", t.definition));
     if (t.morph.length) {
       const m = el("div", "morph");
       for (const f of t.morph) m.append(el("span", null, f));
+      if (t.code) m.append(el("code", null, t.code));
       box.append(m);
     }
     if (t.role) {
@@ -860,7 +873,9 @@ const wordLoaded = new Map();  // "line/index" -> response, once it has arrived
 function fetchWord(w) {
   const id = `${w.dataset.line}/${w.dataset.index}`;
   if (!wordCache.has(id)) {
-    wordCache.set(id, fetch(`/api/word/${BOOK}/${id}`)
+    // The Iliad's words come from its treebank; a library text's from its own parsing.
+    const url = TEXT === "iliad" ? `/api/word/${BOOK}/${id}` : `/api/lexword/${encodeURIComponent(TEXT)}/${BOOK}/${id}`;
+    wordCache.set(id, fetch(url)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data) => { wordLoaded.set(id, data); return data; })
       .catch((err) => { wordCache.delete(id); throw err; }));
@@ -1188,40 +1203,61 @@ function fillBooks(books) {
           here ? shortLabel(here.label, here.n) : "");
   bookPicker.hidden = books.length < 2;
 }
-function openBooks() {
-  bookMenu.hidden = false;
-  bookSelect.setAttribute("aria-expanded", "true");
-  // Keep it on screen: shift it left if it would run off the right edge.
-  bookMenu.style.left = "";
-  const over = bookMenu.getBoundingClientRect().right - (innerWidth - 16);
-  if (over > 0) bookMenu.style.left = `${-over}px`;
-  const here = bookMenu.querySelector('[aria-selected="true"]');
-  if (here) bookMenu.scrollTop = here.offsetTop - (bookMenu.clientHeight - here.offsetHeight) / 2;
-  (here ?? bookMenu.firstElementChild)?.querySelector("a").focus({ preventScroll: true });
+// A dropdown: the button opens its menu (kept on screen, at the current item); a tap
+// elsewhere, Escape or tabbing away closes it; the arrow keys move through it.
+function dropdown(picker, button, menu) {
+  const open = () => {
+    menu.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    menu.style.left = "";  // shift it left if it would run off the right edge
+    const over = menu.getBoundingClientRect().right - (innerWidth - 16);
+    if (over > 0) menu.style.left = `${-over}px`;
+    const here = menu.querySelector('[aria-selected="true"]');
+    if (here) menu.scrollTop = here.offsetTop - (menu.clientHeight - here.offsetHeight) / 2;
+    (here ?? menu.firstElementChild)?.querySelector("a").focus({ preventScroll: true });
+  };
+  const close = () => {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+  };
+  button.addEventListener("click", () => (menu.hidden ? open() : close()));
+  menu.addEventListener("click", (e) => { if (e.target.closest("a")) savePlace(); });
+  document.addEventListener("pointerdown", (e) => { if (!picker.contains(e.target)) close(); });
+  picker.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !menu.hidden) { e.preventDefault(); close(); button.focus(); }
+    else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !menu.hidden) {
+      e.preventDefault();
+      const links = [...menu.querySelectorAll("a")];
+      const i = links.indexOf(document.activeElement) + (e.key === "ArrowDown" ? 1 : -1);
+      links[Math.min(Math.max(i, 0), links.length - 1)]?.focus();
+    }
+  });
+  // (A click elsewhere is left to pointerdown: Safari doesn't focus a clicked button, so a
+  // click on the picker's own button would look like leaving.)
+  picker.addEventListener("focusout", (e) => {
+    if (e.relatedTarget && !picker.contains(e.relatedTarget)) close();
+  });
 }
-function closeBooks() {
-  if (bookMenu.hidden) return;
-  bookMenu.hidden = true;
-  bookSelect.setAttribute("aria-expanded", "false");
+dropdown(bookPicker, bookSelect, bookMenu);
+
+// The title, in a book of a collection (a Testament): a menu of the collection's books,
+// each opening at the chapter last read in it.
+const titleSelect = document.getElementById("title-select");
+const titleMenu = document.getElementById("title-menu");
+function fillTitles(texts) {
+  titleSelect.disabled = !texts?.length;
+  titleMenu.replaceChildren(...(texts ?? []).map((t) => {
+    const li = el("li");
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", String(t.slug === TEXT));
+    const a = el("a", null, t.title);
+    a.href = readerHref(t.slug, lastBook(t.slug) ?? 1);
+    li.append(a);
+    return li;
+  }));
 }
-bookSelect.addEventListener("click", () => (bookMenu.hidden ? openBooks() : closeBooks()));
-bookMenu.addEventListener("click", (e) => { if (e.target.closest("a")) savePlace(); });
-// Tapping anywhere else closes it.
-document.addEventListener("pointerdown", (e) => { if (!bookPicker.contains(e.target)) closeBooks(); });
-bookPicker.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !bookMenu.hidden) { e.preventDefault(); closeBooks(); bookSelect.focus(); }
-  else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !bookMenu.hidden) {
-    e.preventDefault();
-    const links = [...bookMenu.querySelectorAll("a")];
-    const i = links.indexOf(document.activeElement) + (e.key === "ArrowDown" ? 1 : -1);
-    links[Math.min(Math.max(i, 0), links.length - 1)]?.focus();
-  }
-});
-// Tabbing out closes it too. (A click elsewhere is left to pointerdown: Safari doesn't
-// focus a clicked button, so a click on the picker's own button would look like leaving.)
-bookPicker.addEventListener("focusout", (e) => {
-  if (e.relatedTarget && !bookPicker.contains(e.relatedTarget)) closeBooks();
-});
+dropdown(document.getElementById("title-picker"), titleSelect, titleMenu);
 
 document.addEventListener("keydown", (e) => {
   // Typing in the line box is left alone; on a slider the arrow keys move the slider.
@@ -1257,6 +1293,16 @@ function savePlace() {
   lastSaved = Date.now();
 }
 
+// The next chapter, at the same moment of the recording (this chapter's place is set back
+// to its start: it has been read through).
+let carrying = false;
+function carryOn(t) {
+  if (carrying) return;
+  carrying = true;
+  try { localStorage.setItem(PLACE_KEY, verses[0].start.toFixed(2)); } catch {}
+  location.href = `${readerHref(TEXT, DATA.next)}&at=${t.toFixed(2)}`;
+}
+
 function restorePlace() {
   if (V_FROM) return goToLinked();
   let saved = null;
@@ -1267,7 +1313,10 @@ function restorePlace() {
     restored = true;
     return;
   }
-  const t = parseFloat(saved);
+  let t = CARRY_AT ?? parseFloat(saved);
+  // Not opened before: at the first verse (past any introduction, or the chapters before
+  // it in a recording of the whole book).
+  if (!(t > 0) && verses.length && verses[0].start > 1) t = Math.max(0, verses[0].start - LEAD_IN);
   // Show the place at once; the recording is moved there once it can be.
   const at = t > 0 ? verseAt(t) : -1;
   if (at >= 0 && !focused.checked) centerRow(verses[at].el);
@@ -1275,6 +1324,7 @@ function restorePlace() {
     if (t > 0 && (!audio.duration || t < audio.duration)) audio.currentTime = t;
     restored = true;
     update();
+    if (CARRY_AT) audio.play().catch(() => {});  // the browser may want a tap first: then it waits, there
     if (current >= 0 && !focused.checked) centerRow(verses[current].el);
   };
   whenAudioReady(apply);
@@ -1487,7 +1537,7 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 try {
   const meta = JSON.parse(localStorage.getItem(`meta:${TEXT}`));
   if (meta?.title) {
-    showTitle(meta.eyebrow ?? meta.title, meta.title);
+    showTitle(meta.eyebrow ?? meta.title, meta.short ?? meta.title);
     fillBooks(meta.books ?? []);
   }
 } catch {}

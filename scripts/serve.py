@@ -22,6 +22,8 @@ Routes:
                        Murray's English per line where split, else as ~5-line passages;
                        the number of scholia and commentary notes per line)
   /api/word/<b>/<l>/<i>  JSON: treebank parse of word i (whitespace chunk) of verse b.l
+  /api/lexword/<slug>/<n>/<seq>/<i>  JSON: the same for a library text with parsed words
+                       (the New Testament: Robinson's parsing, Dodson's lexicon)
   /api/scholia/<b>/<l>   JSON: the ancient scholia on verse b.l, grouped by manuscript, and
                          the English commentaries (Leaf, Seymour, Benner)
   /audio/<path>        a file under recordings/ (subfolders too), with HTTP Range support for seeking
@@ -122,10 +124,10 @@ ILIAD_CREDITS = [
 ]
 
 
-def collection_of(con):
-    """SQL for texts.collection, or NULL in a library built before there were collections."""
+def collection_of(con, column="collection"):
+    """SQL for a column of texts (collection, short), or NULL in a library built before it existed."""
     cols = {row[1] for row in con.execute("PRAGMA table_info(texts)")}
-    return "collection" if "collection" in cols else "NULL"
+    return column if column in cols else "NULL"
 
 
 def library_json():
@@ -181,8 +183,8 @@ def text_json(slug, n):
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
-    t = con.execute(f"SELECT title, author, form, cite, credit, notes_credit, {collection_of(con)} FROM texts "
-                    "WHERE slug = ? AND reader = 'text'", (slug,)).fetchone()
+    t = con.execute(f"SELECT title, author, form, cite, credit, notes_credit, {collection_of(con)}, "
+                    f"{collection_of(con, 'short')} FROM texts WHERE slug = ? AND reader = 'text'", (slug,)).fetchone()
     rows = con.execute("SELECT seq, ref, content, speaker, para FROM segments WHERE text = ? AND div = ? "
                        "ORDER BY seq", (slug, n)).fetchall() if t else []
     books = [{"n": b, "label": label} for b, label in con.execute(
@@ -193,16 +195,33 @@ def text_json(slug, n):
         for seq in range(a, b + 1):
             notes[seq] = notes.get(seq, 0) + 1
     has_notes = con.execute("SELECT 1 FROM note_sources WHERE text = ? LIMIT 1", (slug,)).fetchone()
+    try:  # parsed words (a word card for each): the New Testament
+        has_words = con.execute("SELECT 1 FROM words WHERE text = ? LIMIT 1", (slug,)).fetchone()
+    except sqlite3.OperationalError:  # a library built before there were any
+        has_words = None
+    translated, translation_credits = {"en": {}, "el": {}}, {}
+    try:  # a translated verse under each verse: English, modern Greek
+        for seq, lang, content in con.execute("SELECT seq, lang, content FROM translations WHERE text = ? AND div = ?",
+                                              (slug, n)):
+            translated.setdefault(lang, {})[seq] = content
+        translation_credits = dict(con.execute("SELECT lang, credit FROM translation_credits WHERE text = ?", (slug,)))
+    except sqlite3.OperationalError:  # a library built before there were translations
+        pass
+    english, modern = translated["en"], translated["el"]
     con.close()
     if not rows:
         return None
-    title, author, form, cite, credit, notes_credit, collection = t
+    title, author, form, cite, credit, notes_credit, collection, short = t
     recording, timed = library_audio(slug, n)
     verses = []
     for seq, ref, content, speaker, para in rows:
         v = {"line": seq, "ref": ref, "text": content,
              **({"speaker": speaker} if speaker else {}), **({"para": True} if para else {}),
              **({"scholia": notes[seq]} if seq in notes else {})}
+        if seq in english:
+            v["english"] = english[seq]
+        if seq in modern:
+            v["modern"] = modern[seq]
         pieces = timed.get(seq)
         if pieces and form == "verse":
             v.update(pieces[0][1])
@@ -210,12 +229,34 @@ def text_json(slug, n):
             v["parts"] = [{"text": text, **times} for text, times in pieces]
         verses.append(v)
     credits = [{"text": credit}] if credit else []
+    # Shown while their translation is (as for the Iliad's).
+    if modern and translation_credits.get("el"):
+        credits.append({"text": translation_credits["el"], "id": "modern-credit"})
+    if english and translation_credits.get("en"):
+        credits.append({"text": translation_credits["en"], "id": "translation-credit"})
     if recording and recording[1]:
         credits.append({"text": recording[1]})
+    # The chapters of a book of the Bible share its recording: the reader goes on into the
+    # next as it plays.
+    # The other books of its collection (a Testament): the reader's title is a menu of them.
+    con = sqlite3.connect(LIBRARY)
+    members = [{"slug": s, "title": tt} for s, tt in con.execute(
+        "SELECT slug, title FROM texts WHERE collection = ? ORDER BY sort", (collection,))] if collection else []
+    con.close()
+    goes_on = False
+    if recording and timed:
+        following, after = library_audio(slug, n + 1)
+        if following and following[0] == recording[0] and after:
+            ends = max(t["end"] for pieces in timed.values() for _, t in pieces)
+            starts = min(t["start"] for pieces in after.values() for _, t in pieces)
+            goes_on = abs(starts - ends) < 2  # the recording reads it next (not, e.g., chapters in reverse)
     return {"book": n, "text": slug, "title": title, "author": author, "form": form, "cite": cite,
-            **({"collection": collection} if collection else {}),
-            "eyebrow": f"{author} · {title}" if author else title,
-            "features": (["scholia"] if has_notes else []) + (["audio"] if recording else []),
+            **({"collection": collection, "collectionTexts": members} if collection else {}),
+            **({"next": n + 1} if goes_on else {}),
+            "eyebrow": f"{author} · {title}" if author else title, **({"short": short} if short else {}),
+            "features": (["scholia"] if has_notes else []) + (["audio"] if recording else [])
+                        + (["words"] if has_words else []) + (["translation"] if english else [])
+                        + (["modern"] if modern else []),
             "notesCredit": notes_credit, "books": books if len(books) > 1 else [],
             "audio": f"/audio/{urllib.parse.quote(recording[0])}" if recording else None,
             "verses": verses, "translation": [], "credits": credits}
@@ -335,6 +376,93 @@ def word_json(book, line, index):
             "tokens": tokens}
 
 
+# Robinson's morphology codes (the New Testament's parsing): part of speech, then for
+# nominals case-number-gender (N-NSF), for verbs tense-voice-mood and person-number or
+# case-number-gender (V-AAI-3S, V-2AAP-NSM), for pronouns person where it has one (P-1GS).
+ROBINSON_POS = {
+    "N": "noun", "A": "adjective", "T": "article", "V": "verb", "P": "personal pronoun",
+    "R": "relative pronoun", "C": "reciprocal pronoun", "D": "demonstrative pronoun",
+    "K": "correlative pronoun", "I": "interrogative pronoun", "X": "indefinite pronoun",
+    "Q": "correlative or interrogative pronoun", "F": "reflexive pronoun", "S": "possessive pronoun",
+    "ADV": "adverb", "CONJ": "conjunction", "COND": "conditional", "PRT": "particle",
+    "PREP": "preposition", "INJ": "interjection", "ARAM": "Aramaic word", "HEB": "Hebrew word"}
+ROBINSON_CASE = {"N": "nominative", "G": "genitive", "D": "dative", "A": "accusative", "V": "vocative"}
+ROBINSON_NUMBER = {"S": "singular", "P": "plural"}
+ROBINSON_GENDER = {"M": "masculine", "F": "feminine", "N": "neuter"}
+ROBINSON_PERSON = {"1": "1st person", "2": "2nd person", "3": "3rd person"}
+ROBINSON_TENSE = {"P": "present", "I": "imperfect", "F": "future", "A": "aorist", "R": "perfect", "L": "pluperfect"}
+ROBINSON_VOICE = {"A": "active", "M": "middle", "P": "passive", "E": "middle or passive",
+                  "D": "middle deponent", "O": "passive deponent", "N": "middle or passive deponent",
+                  "Q": "impersonal active", "X": "no voice"}
+ROBINSON_MOOD = {"I": "indicative", "S": "subjunctive", "O": "optative", "M": "imperative",
+                 "N": "infinitive", "P": "participle", "R": "imperative participle"}
+ROBINSON_SUFFIX = {"C": "comparative", "S": "superlative", "N": "negative", "I": "interrogative",
+                   "K": "crasis", "ATT": "Attic form", "ABB": "abbreviated", "PRI": "proper name, indeclinable",
+                   "NUI": "numeral, indeclinable", "LI": "letter, indeclinable", "OI": "indeclinable"}
+
+
+def robinson_morph(code):
+    """["verb", "aorist", "active", "indicative", "3rd person", "singular"] for V-AAI-3S."""
+    head, *rest = code.split("-")
+    out = [ROBINSON_POS.get(head, head)]
+
+    def cng(part):  # case, number, gender
+        return [m[c] for m, c in zip((ROBINSON_CASE, ROBINSON_NUMBER, ROBINSON_GENDER), part) if c in m]
+
+    if head == "V" and rest:
+        tvm = rest[0]
+        second = tvm[0] == "2"
+        tvm = tvm[1:] if second else tvm
+        if len(tvm) >= 3:
+            out += [("second " if second else "") + ROBINSON_TENSE.get(tvm[0], tvm[0]),
+                    ROBINSON_VOICE.get(tvm[1], tvm[1]), ROBINSON_MOOD.get(tvm[2], tvm[2])]
+        for part in rest[1:]:
+            if part[:1] in ROBINSON_PERSON:
+                out += [ROBINSON_PERSON[part[0]], *(ROBINSON_NUMBER[c] for c in part[1:] if c in ROBINSON_NUMBER)]
+            elif part in ROBINSON_SUFFIX:
+                out.append(ROBINSON_SUFFIX[part])
+            else:
+                out += cng(part)
+        return out
+    for part in rest:
+        if part in ROBINSON_SUFFIX:
+            out.append(ROBINSON_SUFFIX[part])
+        elif head == "S" and part[:1] in ROBINSON_PERSON:  # S-1SNSM: person, the possessor's number, then CNG
+            out += [ROBINSON_PERSON[part[0]], f"{ROBINSON_NUMBER.get(part[1:2], '')} possessor".strip(), *cng(part[2:])]
+        elif part[:1] in ROBINSON_PERSON:  # P-1GS: person, then case and number
+            out += [ROBINSON_PERSON[part[0]], *cng(part[1:])]
+        else:
+            out += cng(part)
+    return out
+
+
+def lexword_json(slug, n, seq, index):
+    """A library text's word, as /api/word gives an Iliad word: its parsing (the New
+    Testament: Robinson's, with Dodson's lexicon) for the reader's card."""
+    if not LIBRARY.exists():
+        return None
+    con = sqlite3.connect(LIBRARY)
+    try:
+        seg = con.execute("SELECT content FROM segments WHERE text = ? AND div = ? AND seq = ?", (slug, n, seq)).fetchone()
+        if not seg or not 0 <= index < len(seg[0].split()):
+            return None
+        word = seg[0].split()[index]
+        row = con.execute("SELECT w.strongs, w.morph, l.lemma, l.gloss, l.definition FROM words w "
+                          "LEFT JOIN lexicon l ON l.strongs = w.strongs "
+                          "WHERE w.text = ? AND w.div = ? AND w.seq = ? AND w.word_index = ?",
+                          (slug, n, seq, index)).fetchone()
+    except sqlite3.OperationalError:  # a library built before texts had parsed words
+        return None
+    finally:
+        con.close()
+    if not row:
+        return {"word": word, "tokens": [], "note": "Not parsed (the parsing doesn't have this word here)."}
+    strongs, morph, lemma, gloss, definition = row
+    return {"word": word, "tokens": [{
+        "form": word, "lemma": lemma, "strongs": strongs, "gloss": gloss,
+        "definition": definition or gloss, "morph": robinson_morph(morph) if morph else [], "code": morph}]}
+
+
 def word_groups(sharer_sets):
     """Join Homeric words (line, word_index) that share any paraphrase word into
     groups (union-find). Returns {line: {word_index: group_id}} for groups of 2+."""
@@ -426,6 +554,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(notes_json(m[1], *map(int, m.groups()[1:])))
         elif m := re.fullmatch(r"/api/book/(\d+)", self.path):
             self.send_json(book_json(int(m[1])))
+        elif m := re.fullmatch(r"/api/lexword/([\w-]+)/(\d+)/(\d+)/(\d+)", self.path):
+            self.send_json(lexword_json(m[1], *map(int, m.groups()[1:])))
         elif m := re.fullmatch(r"/api/word/(\d+)/(\d+)/(\d+)", self.path):
             self.send_json(word_json(*map(int, m.groups())))
         elif m := re.fullmatch(r"/api/scholia/(\d+)/(\d+)", self.path):

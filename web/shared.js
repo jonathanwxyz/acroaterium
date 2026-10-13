@@ -2,10 +2,12 @@
 // last opened in each text, and bookmarks.
 
 // A book's short name: the numeral letter at the end of its label with its number
-// ("Ῥαψῳδία Α" -> "Α (1)"), else the label itself (or the number).
+// ("Ῥαψῳδία Α" -> "Α (1)"), a chapter's number ("Κεφάλαιον 5" -> "5"), else the label
+// itself (or the number).
 function shortLabel(label, n) {
   const m = label?.match(/\s(\p{Script=Greek}{1,2})$/u);
-  return m ? `${m[1]} (${n})` : label ?? String(n);
+  if (m) return `${m[1]} (${n})`;
+  return label?.match(/\s(\d+)$/)?.[1] ?? label ?? String(n);
 }
 
 // A book's full name, numbered where its label is a numeral letter ("Ῥαψῳδία Α (1)"):

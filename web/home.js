@@ -1,7 +1,6 @@
 // Library: bookmarks, then the texts by category (from /api/library), each linking to the
-// reader. A work in several books goes back to the book last opened, and lists them all
-// under a "Books" fold; a collection (a Testament) lists its books there, each with its
-// chapters.
+// reader. A work in several books, or a collection (a Testament), folds out its list
+// when its title is tapped; the place last opened in each is marked.
 const root = document.getElementById("library");
 const marksBox = document.getElementById("bookmarks");
 
@@ -30,16 +29,18 @@ function memberFor(c) {
   return c.texts.find((t) => slugOf(t) === slug) ?? c.texts[0];
 }
 
-// A fold-out under a work's title: a "Books" toggle that shows or hides its list in place.
+// A work in several books (or a collection, or a book of chapters within it): its whole
+// title row is a button that folds its list out under it, with a chevron that turns.
 // Open folds are remembered for the visit (sessionStorage), so coming back keeps them.
 function foldKey(id) { return `fold:${id}`; }
 function isOpen(id) {
   try { return sessionStorage.getItem(foldKey(id)) === "1"; } catch { return false; }
 }
-function fold(id, label, panel) {
-  const b = el("button", "fold");
-  b.append(el("span", null, label));
+function foldRow(id, cls, content, panel) {
+  const b = el("button", cls);
+  b.append(...content);
   b.insertAdjacentHTML("beforeend", CHEVRON);
+  b.lastElementChild.classList.add("fold-mark");
   const open = isOpen(id);
   b.setAttribute("aria-expanded", String(open));
   panel.hidden = !open;
@@ -70,55 +71,43 @@ function bookLinks(t, cls) {
 
 function workEntry(t) {
   const work = el("div", "work");
-  const head = el("div", "work-head");
-  const title = el("a", "work-title", t.title);
-  title.href = hrefFor(t);
-  head.append(title);
-  if (t.author) head.append(el("span", "work-author", t.author));
-  work.append(head);
+  const named = [el("span", "work-title", t.title), ...(t.author ? [el("span", "work-author", t.author)] : [])];
   if (t.books.length > 1) {
     const list = bookLinks(t, "book-list");
-    work.append(fold(slugOf(t), "Books", list), list);
+    work.append(foldRow(slugOf(t), "work-head fold-row", named, list), list);
+  } else {  // one book: the title opens it
+    const head = el("a", "work-head");
+    head.href = hrefFor(t);
+    head.append(...named);
+    work.append(head);
   }
   return work;
 }
 
-// A collection (a Testament): its title opens the book last read in it; under it, its
-// books, each opening at the chapter last read, with its chapters under a toggle.
+// A collection (a Testament): its title row folds out its books; a book of several
+// chapters folds out those in turn, the one last read marked; a book in one goes to it.
 function collectionEntry(c) {
   const work = el("div", "work collection");
-  const head = el("div", "work-head");
   const member = memberFor(c);
-  const title = el("a", "work-title", c.title);
-  title.href = hrefFor(member);
-  head.append(title);
-  work.append(head);
   const books = el("ul", "member-list");
   for (const t of c.texts) {
     const li = el("li", "member");
-    const row = el("div", "member-row");
-    const a = el("a", null, t.title);
-    a.href = hrefFor(t);
-    if (t === member && lastText(c.collection)) a.setAttribute("aria-current", "true");
-    row.append(a);
-    li.append(row);
+    const current = t === member && lastText(c.collection);
     if (t.books.length > 1) {
       const chapters = bookLinks(t, "chapters");
-      chapters.hidden = true;
-      const toggle = el("button", "expand");
-      toggle.innerHTML = CHEVRON;
-      toggle.setAttribute("aria-expanded", "false");
-      toggle.setAttribute("aria-label", `Chapters of ${t.title}`);
-      toggle.addEventListener("click", () => {
-        chapters.hidden = !chapters.hidden;
-        toggle.setAttribute("aria-expanded", String(!chapters.hidden));
-      });
-      row.append(toggle);
-      li.append(chapters);
+      const row = foldRow(`chapters:${slugOf(t)}`, "member-row fold-row", [el("span", null, t.title)], chapters);
+      if (current) row.setAttribute("aria-current", "true");
+      li.append(row, chapters);
+    } else {
+      const a = el("a", "member-row", t.title);
+      a.href = hrefFor(t);
+      if (current) a.setAttribute("aria-current", "true");
+      li.append(a);
     }
     books.append(li);
   }
-  work.append(fold(`collection:${c.collection ?? c.title}`, "Books", books), books);
+  work.append(foldRow(`collection:${c.collection ?? c.title}`, "work-head fold-row",
+                      [el("span", "work-title", c.title)], books), books);
   return work;
 }
 

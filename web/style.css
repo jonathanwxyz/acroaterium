@@ -298,7 +298,7 @@ main {
   border-bottom: 1px solid var(--rule);
 }
 .topbar-inner {
-  max-width: 44rem;
+  max-width: 56rem;  /* wider than the text: room for a long title and the book beside it */
   margin: 0 auto;
   padding: 0.45rem 16px;
   display: flex;
@@ -315,6 +315,28 @@ main {
 }
 /* Book picker: a button and a short menu under it (a native select fills a phone's
    screen with its list). */
+/* The title: in a book of a Testament, a button opening a menu of the Testament's books
+   (styled as the book picker); elsewhere just the title. */
+#title-picker { position: relative; min-width: 0; display: flex; }
+#title-select {
+  min-width: 0;  /* (no max-width: with the negative margin below it would clip the title) */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  margin-left: -0.3rem;  /* the text lines up as it did before it was a button */
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#title-select svg { flex: none; color: var(--muted); }
+#title-select:disabled { cursor: default; }
+#title-select:disabled svg { display: none; }
+#title-select:not(:disabled):focus-visible, #title-select[aria-expanded="true"] { border-color: var(--rule); outline: none; }
+@media (hover: hover) { #title-select:not(:disabled):hover { border-color: var(--rule); } }
 #book-picker { position: relative; min-width: 0; }
 #book-picker[hidden] { display: none; }
 #book-select {
@@ -336,7 +358,7 @@ main {
 #book-select svg { flex: none; color: var(--muted); }
 #book-select:focus-visible, #book-select[aria-expanded="true"] { border-color: var(--rule); outline: none; }
 @media (hover: hover) { #book-select:hover { border-color: var(--rule); outline: none; } }
-#book-menu {
+#book-menu, #title-menu {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -356,7 +378,7 @@ main {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
   font-size: 16px;
 }
-#book-menu a {
+#book-menu a, #title-menu a {
   display: block;
   padding: 0.45rem 0.9rem;
   color: var(--text);
@@ -365,9 +387,9 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-#book-menu a:focus-visible { background: var(--current-bg); outline: none; }
-@media (hover: hover) { #book-menu a:hover { background: var(--current-bg); outline: none; } }
-#book-menu [aria-selected="true"] a { color: var(--current-bar); font-weight: 600; }
+#book-menu a:focus-visible, #title-menu a:focus-visible { background: var(--current-bg); outline: none; }
+@media (hover: hover) { #book-menu a:hover, #title-menu a:hover { background: var(--current-bg); outline: none; } }
+#book-menu [aria-selected="true"] a, #title-menu [aria-selected="true"] a { color: var(--current-bar); font-weight: 600; }
 #to-start {
   display: inline-flex;
   align-items: center;
@@ -636,6 +658,9 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
 }
 #card .role { font-size: 0.92em; }
 #card .role code { font-size: 11px; color: var(--muted); margin-left: 0.3rem; }
+/* The New Testament's words: Strong's number by the lemma, Robinson's code after the parsing. */
+#card .lemma .strongs { font: 12px system-ui, sans-serif; color: var(--muted); margin-left: 0.5rem; }
+#card .morph code { font-size: 11px; color: var(--muted); align-self: center; }
 #card .note { font-size: 0.85em; color: var(--muted); font-style: italic; margin-top: 0.4rem; }
 #card .label { font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: 0.06em;
                text-transform: uppercase; color: var(--muted); margin-right: 0.35rem; }
@@ -1116,29 +1141,34 @@ body.prose-text .toggle:has(#focused) { display: none; }
 .category .empty { color: var(--muted); font: italic 14px system-ui, sans-serif; margin: 0.4rem 0; }
 .work { padding: 0.55rem 0; border-bottom: 1px solid color-mix(in srgb, var(--rule) 60%, transparent); }
 .work:last-child { border-bottom: none; }
-.work-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
-.work-title { color: var(--text); text-decoration: none; font-size: 1.15em; }
-@media (hover: hover) { a.work-title:hover { color: var(--current-bar); } }
+/* A work's title row: a link to it (one book), or a button folding out its list (several),
+   with a chevron at the end that turns when open. */
+.work-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  color: var(--text);
+  text-decoration: none;
+}
+.work-title { font-size: 1.15em; }
 .work-author { color: var(--muted); font-size: 0.8em; }
-/* A work in several books: a "Books" toggle under its title, folding out the list of them
-   in place (full names, the one last opened marked). */
-.fold {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-top: 0.3rem;
-  padding: 0.1rem 0.45rem 0.1rem 0.5rem;
-  font: 13px system-ui, sans-serif;
-  color: var(--muted);
+.fold-row {
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
   background: transparent;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
+  border: 0;
   cursor: pointer;
 }
-.fold svg { flex: none; transition: transform 150ms ease; }
-.fold[aria-expanded="true"] { color: var(--text); border-color: var(--current-bar); }
-.fold[aria-expanded="true"] svg { transform: rotate(180deg); }
-@media (hover: hover) { .fold:hover { color: var(--text); border-color: var(--current-bar); } }
+.fold-mark { flex: none; margin-left: auto; align-self: center; color: var(--muted); transition: transform 150ms ease; }
+.fold-row[aria-expanded="true"] .fold-mark { transform: rotate(180deg); color: var(--current-bar); }
+@media (hover: hover) {
+  a.work-head:hover .work-title, .work-head.fold-row:hover .work-title { color: var(--current-bar); }
+  .fold-row:hover .fold-mark { color: var(--text); }
+}
 .library .book-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
@@ -1172,28 +1202,17 @@ body.prose-text .toggle:has(#focused) { display: none; }
   border-radius: 10px;
 }
 .library .member + .member { border-top: 1px solid color-mix(in srgb, var(--rule) 60%, transparent); }
-.member-row a { display: block; padding: 0.35rem 0.9rem; color: var(--text); text-decoration: none; }
-@media (hover: hover) { .member-row a:hover { color: var(--current-bar); } }
-.member-row a[aria-current="true"] { color: var(--current-bar); font-weight: 600; }
-.member-row { display: flex; align-items: center; }
-.member-row a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.expand {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 2.2rem;
-  height: 2.2rem;
-  margin-right: 0.3rem;
-  padding: 0;
-  color: var(--muted);
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  cursor: pointer;
+/* A book in a collection: a link (one chapter) or a row folding out its chapters. */
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.9rem;
+  color: var(--text);
+  text-decoration: none;
 }
-.expand svg { transition: transform 150ms ease; }
-.expand[aria-expanded="true"] svg { transform: rotate(180deg); }
-@media (hover: hover) { .expand:hover { color: var(--text); background: var(--current-bg); } }
+.member-row[aria-current="true"] { color: var(--current-bar); font-weight: 600; }
+@media (hover: hover) { .member-row:hover { color: var(--current-bar); } }
 .library .chapters {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(2.3rem, 1fr));

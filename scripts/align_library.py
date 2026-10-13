@@ -15,7 +15,14 @@ an "audio" list on a text:
 files in reading order, their emissions in cache/<file>.mms.npy). With one book ("div":
 1), all the audio files of those folders, in order, are joined into one recording. With
 a range ("div": "2-24"), each book gets one file of the folder: the Nth file (in name
-order) for book N, so a playlist of every book can start later (here, at book 2).
+order) for book N, so a playlist of every book can start later (here, at book 2). With
+"div": "all" and "file": N, the Nth file of the folder holds every division (a book of
+the Bible read through, its chapters the divisions): it is aligned in one pass, and each
+chapter plays from the same file; "file" may instead be the start of the file's name
+("021", where a playlist has gaps). "order" gives the order the recording reads the
+chapters in, where it isn't theirs: "reverse" (last to first, each one forwards), or a
+list of them all. "start" and "end" ("2:1", "6:34") mark where a recording that doesn't
+read the whole book begins and stops: verses outside get no timings.
 
 The recordings often hold more than the text: an introduction or LibriVox's
 announcements at the start and end of each part, a spoken title, a translation read
@@ -65,6 +72,9 @@ VOCAB = {c: i for i, c in enumerate(["<blank>", "<pad>", "</s>", "<unk>", *"aien
 BLANK = 0
 
 STAR_COST = -3.0            # log-probability per frame of audio that matches no text
+SKIP_COST = -4.0            # per letter, to pass over a unit the recording doesn't read (a list
+                            # of names left out, a chapter missing from the upload): reading
+                            # it costs far less when it's there, and forcing it far more when not
 STRAY_GAP = 100             # frames (2 s): letters at either end of a unit (up to a quarter of
                             # it) this far from the rest are stray matches in the audio around it
                             # (a spoken title, a closing announcement), not counted in its time
@@ -79,7 +89,7 @@ def log(*a):
 # ------------------------------------------------------------------- the text
 
 def units_of(con, slug, div, form):
-    """(seq, piece, text) for each unit of a book, in reading order."""
+    """(seq, piece, text) for each unit of a division, in reading order."""
     rows = con.execute("SELECT seq, content FROM segments WHERE text = ? AND div = ? ORDER BY seq",
                        (slug, div)).fetchall()
     out = []
@@ -120,8 +130,9 @@ def tokens_of(text):
 def ctc_align(lp, units):
     """Viterbi CTC alignment of units (token lists) to all frames of lp, where the blank
     between two units, and before the first and after the last, may instead take any
-    audio at STAR_COST a frame. Returns, per unit, its first and last token's first and
-    last frames, and the path's per-frame score."""
+    audio at STAR_COST a frame, and a unit may be passed over at SKIP_COST a letter.
+    Returns, per unit, its (first frame, frame after its last sound), or None if passed
+    over, and the path's per-frame score."""
     tokens, boundary = [], []  # boundary[k]: the blank before token k is between units
     for u in units:
         for j, t in enumerate(u):
@@ -140,6 +151,9 @@ def ctc_align(lp, units):
             labels[2 * k] = V
     skip = np.zeros(S, bool)
     skip[3::2] = np.array(tokens[1:]) != np.array(tokens[:-1])
+    bounds = np.cumsum([0] + [len(u) for u in units])
+    B = 2 * bounds  # the blank (boundary) state before each unit, and the final one
+    pass_over = SKIP_COST * np.diff(bounds)
     NEG = -1e30
     alpha = np.full(S, NEG)
     alpha[0], alpha[1] = ext[0, labels[0]], ext[0, labels[1]]
@@ -147,11 +161,14 @@ def ctc_align(lp, units):
     for t in range(1, T):
         step = np.concatenate(([NEG], alpha[:-1]))
         jump = np.where(skip, np.concatenate(([NEG, NEG], alpha[:-2])), NEG)
-        best = np.maximum(alpha, np.maximum(step, jump))
-        back[t] = np.where(best == alpha, 0, np.where(best == step, 1, 2))
+        over = np.full(S, NEG)
+        over[B[1:]] = alpha[B[:-1]] + pass_over  # from before a unit to after it
+        best = np.maximum(np.maximum(alpha, step), np.maximum(jump, over))
+        back[t] = np.where(best == alpha, 0, np.where(best == step, 1, np.where(best == jump, 2, 3)))
         alpha = best + ext[t, labels]
     s = S - 1 if alpha[S - 1] >= alpha[S - 2] else S - 2
     first, last = np.zeros(L, int), np.full(L, -1)
+    before = {int(b): int(a) for a, b in zip(B[:-1], B[1:])}  # boundary after a unit -> before it
     score = np.zeros(T)
     for t in range(T - 1, -1, -1):
         score[t] = ext[t, labels[s]]
@@ -159,11 +176,13 @@ def ctc_align(lp, units):
             first[s // 2] = t
             if last[s // 2] < 0:
                 last[s // 2] = t
-        s -= int(back[t, s])
-    bounds = np.cumsum([0] + [len(u) for u in units])
+        s = before[s] if back[t, s] == 3 else s - int(back[t, s])
     spans = []
     for k in range(len(units)):
         a, b = bounds[k], bounds[k + 1] - 1
+        if last[b] < 0:  # passed over
+            spans.append(None)
+            continue
         edge = max(1, (b - a + 1) // 4)  # a stray run is a few letters at either end
         for j in range(a, min(a + edge, b)):  # the latest wide gap among the first letters
             if first[j + 1] - last[j] > STRAY_GAP:
@@ -176,8 +195,9 @@ def ctc_align(lp, units):
 
 
 def align(lp, units):
-    """(start, speech_end, end, score) in frames for each unit, aligning a window of units
-    at a time; each window starts where the last accepted unit ended."""
+    """(start, speech_end, end, score) in frames for each unit, or None for one passed
+    over, aligning a window of units at a time; each window starts where the last unit
+    read in the one before ended."""
     pace = len(lp) / max(1, sum(map(len, units)))  # frames per token, intros and all
     out, i, f0 = [], 0, 0
     while i < len(units):
@@ -188,12 +208,16 @@ def align(lp, units):
         spans, score = ctc_align(lp[f0:f1], win)
         keep = len(win) if final else KEEP
         for k in range(keep):
+            if spans[k] is None:
+                out.append(None)
+                continue
             a, e = spans[k]
             out.append([f0 + a, f0 + e, None, float(score[a:e].mean()) if e > a else -99.0])
         i += keep
-        f0 = out[-1][1]  # after the last accepted unit's last sound
-    for k, u in enumerate(out):  # end: the next unit's start (pause included)
-        u[2] = out[k + 1][0] if k + 1 < len(out) else len(lp)
+        f0 = next((u[1] for u in reversed(out) if u), f0)  # after the last unit read's last sound
+    read = [u for u in out if u]
+    for k, u in enumerate(read):  # end: the next unit's start (pause included)
+        u[2] = read[k + 1][0] if k + 1 < len(read) else len(lp)
     return out
 
 
@@ -214,11 +238,31 @@ def emissions_of(path):
 
 
 def plan(entry, divisions):
-    """{div: [audio files]} for one "audio" entry of the catalogue."""
+    """{divs: [audio files]} for one "audio" entry of the catalogue: divs is a tuple of
+    the divisions the files hold (one, or all of a text's)."""
     files = [f for folder in entry["from"] for f in audio_files(folder)]
     div = entry["div"]
+    if div == "all":
+        n = entry["file"]
+        if isinstance(n, str):
+            named = [f for f in files if f.name.startswith(n)]
+            if len(named) != 1:
+                sys.exit(f"{entry['from']}: {len(named)} files start with {n!r}")
+            file = named[0]
+        elif 1 <= n <= len(files):
+            file = files[n - 1]
+        else:
+            sys.exit(f"{entry['from']}: no file {n} (it has {len(files)})")
+        order = entry.get("order")
+        if isinstance(order, list):
+            if sorted(order) != sorted(divisions):
+                sys.exit(f"{entry['from']} {n}: \"order\" must list every division once")
+            divs = tuple(order)
+        else:
+            divs = tuple(sorted(divisions, reverse=order == "reverse"))
+        return {divs: [file]}  # (with start/end, see main)
     if isinstance(div, int):
-        return {div: files}
+        return {(div,): files}
     a, b = map(int, str(div).split("-"))
     out = {}
     for n in range(a, b + 1):
@@ -226,7 +270,7 @@ def plan(entry, divisions):
             continue
         if n > len(files):
             sys.exit(f"{entry['from']}: no file for book {n} (it has {len(files)})")
-        out[n] = [files[n - 1]]
+        out[(n,)] = [files[n - 1]]
     return out
 
 
@@ -299,35 +343,51 @@ def main():
             continue
         form = form[0]
         divisions = {n for (n,) in lib.execute("SELECT n FROM divisions WHERE text = ?", (slug,))}
-        jobs = {}
+        jobs, spans_read = {}, {}
+        cv = lambda s: tuple(map(int, s.split(":"))) if s else None
         for entry in t["audio"]:
-            for div, files in plan(entry, divisions).items():
-                jobs[div] = (files, entry.get("credit"))
-        for div in sorted(jobs):
-            if args.book and div != args.book:
+            for divs, files in plan(entry, divisions).items():
+                jobs[divs] = (files, entry.get("credit"))
+                if entry.get("start") or entry.get("end"):
+                    spans_read[divs] = (cv(entry.get("start")), cv(entry.get("end")))
+        for divs in sorted(jobs):
+            if args.book and args.book not in divs:
                 continue
-            files, credit = jobs[div]
+            files, credit = jobs[divs]
             t0 = time.time()
             lps = [emissions_of(f) for f in files]
             lp = np.concatenate(lps) if len(lps) > 1 else lps[0]
-            units = units_of(lib, slug, div, form)
-            toks = [tokens_of(text) for _, _, text in units]
+            units = [(div, *u) for div in divs for u in units_of(lib, slug, div, form)]
+            span = spans_read.get(divs)
+            if span:  # a recording of part of the book: only the verses it reads
+                refs = {(div, seq): ref for div, seq, ref in lib.execute(
+                    "SELECT div, seq, ref FROM segments WHERE text = ?", (slug,))}
+                pos = lambda u: (u[0], int(refs[(u[0], u[1])]) if refs[(u[0], u[1])].isdigit() else 0)
+                first, last = span
+                units = [u for u in units if (not first or pos(u) >= first) and (not last or pos(u) <= last)]
+            toks = [tokens_of(text) for *_, text in units]
             keep = [k for k, tk in enumerate(toks) if tk]  # a unit with no letters can't be heard
             spans = align(lp, [toks[k] for k in keep])
-            rows = [(slug, div, units[k][0], units[k][1], units[k][2],
-                     a * FRAME_S, e * FRAME_S, b * FRAME_S, sc)
-                    for k, (a, e, b, sc) in zip(keep, spans)]
-            name = reader_audio(files, slug, div, make=not args.no_audio)
-            out.execute("DELETE FROM units WHERE text = ? AND div = ?", (slug, div))
+            rows = [(slug, *units[k], span[0] * FRAME_S, span[1] * FRAME_S, span[2] * FRAME_S, span[3])
+                    for k, span in zip(keep, spans) if span]
+            skipped = len(keep) - len(rows)
+            name = reader_audio(files, slug, divs[0], make=not args.no_audio)
+            heard = {r[1] for r in rows}  # chapters the recording reads (some or all of)
+            for div in divs:
+                out.execute("DELETE FROM units WHERE text = ? AND div = ?", (slug, div))
+                if div in heard:
+                    out.execute("INSERT OR REPLACE INTO recordings VALUES (?, ?, ?, ?, ?)", (slug, div, name, credit, len(lp)))
+                else:
+                    out.execute("DELETE FROM recordings WHERE text = ? AND div = ?", (slug, div))
             out.executemany("INSERT INTO units VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
-            out.execute("INSERT OR REPLACE INTO recordings VALUES (?, ?, ?, ?, ?)", (slug, div, name, credit, len(lp)))
             out.commit()
             scores = np.array([r[-1] for r in rows])
             weak = int((scores < -2.0).sum())
+            div = f"{divs[0]}" if len(divs) == 1 else f"{divs[0]}–{divs[-1]}"
             log(f"== {slug} {div}: {len(rows)} units over {len(lp) * FRAME_S / 60:.0f} min "
                 f"({len(files)} file{'s' if len(files) > 1 else ''}), first at {rows[0][5]:.0f} s, "
                 f"last ends {rows[-1][6]:.0f} s; score median {np.median(scores):.2f}, "
-                f"{weak} below -2 · {time.time() - t0:.0f} s")
+                f"{weak} below -2, {skipped} passed over · {time.time() - t0:.0f} s")
 
 
 if __name__ == "__main__":
