@@ -71,9 +71,11 @@ def load_aliases():
     return aliases
 
 
-def main():
-    defs = load_list()
-    aliases = load_aliases()
+def matcher(defs=None, aliases=None):
+    """match(lemma) -> (definition, entry, method) or None, as described above (also used by
+    library.py for its texts' treebank lemmas)."""
+    defs = load_list() if defs is None else defs
+    aliases = load_aliases() if aliases is None else aliases
     by_no_diacr = defaultdict(list)
     by_no_accent = defaultdict(list)
     for entry in defs:
@@ -101,6 +103,13 @@ def main():
             return defs[hits[0]], hits[0], "accents"
         return None
 
+    return match
+
+
+def main():
+    defs = load_list()
+    aliases = load_aliases()
+    match = matcher(defs, aliases)
     con = sqlite3.connect(DB)
     lemmas = con.execute(
         "SELECT lemma, count(*) FROM tokens WHERE lemma IS NOT NULL AND pos IS NOT 'punctuation' "

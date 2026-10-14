@@ -42,6 +42,8 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from import_treebank import POSTAG
+
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 RECORDINGS = ROOT / "recordings"
@@ -195,8 +197,9 @@ def text_json(slug, n):
         for seq in range(a, b + 1):
             notes[seq] = notes.get(seq, 0) + 1
     has_notes = con.execute("SELECT 1 FROM note_sources WHERE text = ? LIMIT 1", (slug,)).fetchone()
-    try:  # parsed words (a word card for each): the New Testament
+    try:  # parsed words (a word card for each): the New Testament, the treebanked texts
         has_words = con.execute("SELECT 1 FROM words WHERE text = ? LIMIT 1", (slug,)).fetchone()
+        has_words = has_words or con.execute("SELECT 1 FROM treebank WHERE text = ? LIMIT 1", (slug,)).fetchone()
     except sqlite3.OperationalError:  # a library built before there were any
         has_words = None
     translated, translation_credits = {"en": {}, "el": {}}, {}
@@ -442,9 +445,18 @@ def robinson_morph(code):
     return out
 
 
+def postag_morph(postag):
+    """["verb", "3rd", "singular", "aorist", ...] for an AGDT postag, in word_json's order."""
+    m = {name: table.get(c) for c, (name, table) in zip((postag or "").ljust(9, "-"), POSTAG)}
+    order = (("pos", "person", "number", "tense", "mood", "voice", "gender", "gram_case", "degree") if m["person"]
+             else ("pos", "tense", "mood", "voice", "gender", "number", "gram_case", "degree"))
+    return [m[k] for k in order if m[k]]
+
+
 def lexword_json(slug, n, seq, index):
     """A library text's word, as /api/word gives an Iliad word: its parsing (the New
-    Testament: Robinson's, with Dodson's lexicon) for the reader's card."""
+    Testament: Robinson's, with Dodson's lexicon; others: a hand-made treebank's) for the
+    reader's card."""
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
@@ -457,10 +469,21 @@ def lexword_json(slug, n, seq, index):
                           "LEFT JOIN lexicon l ON l.strongs = w.strongs "
                           "WHERE w.text = ? AND w.div = ? AND w.seq = ? AND w.word_index = ?",
                           (slug, n, seq, index)).fetchone()
+        parts = [] if row else con.execute(
+            "SELECT t.form, t.lemma, t.postag, t.relation, t.head, d.definition FROM treebank t "
+            "LEFT JOIN lemma_defs d ON d.lemma = t.lemma "
+            "WHERE t.text = ? AND t.div = ? AND t.seq = ? AND t.word_index = ? ORDER BY t.part",
+            (slug, n, seq, index)).fetchall()
     except sqlite3.OperationalError:  # a library built before texts had parsed words
         return None
     finally:
         con.close()
+    if parts:  # a hand-made treebank's analysis, shown as the Iliad's
+        return {"word": word, "tokens": [{
+            "form": form if len(parts) > 1 else word, "lemma": lemma, "definition": definition,
+            "morph": postag_morph(postag), "relation": relation, "role": relation_label(relation),
+            "head": head or None, "root": head == ""}
+            for form, lemma, postag, relation, head, definition in parts]}
     if not row:
         return {"word": word, "tokens": [], "note": "Not parsed (the parsing doesn't have this word here)."}
     strongs, morph, lemma, gloss, definition = row

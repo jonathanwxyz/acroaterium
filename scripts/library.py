@@ -408,6 +408,90 @@ def pt_verses():
     return _pt
 
 
+# ---------------------------------------------------------------- hand-made treebanks
+
+# A text's "treebank": a hand-annotated dependency treebank of it, each word's lemma,
+# morphology (the AGDT's 9-letter postag) and syntax (relation, head), for the reader's
+# word card:
+#   agdt    the Perseus Ancient Greek Dependency Treebank 2.1 ("file": e.g.
+#           tlg0012.tlg001.perseus-grc1.tb.xml; CC BY-SA 3.0)
+#   gorman  Vanessa Gorman's treebanks ("file": a file in the repository's public/xml; CC0)
+# Its words are matched to the text's in order, by their letters (the treebank's edition
+# may differ a little); a word it doesn't share gets no card. Books are told apart by
+# the sentences' citations (subdoc "1.1-1.2": book 1), for a work in several.
+TREEBANKS = {"agdt": "https://raw.githubusercontent.com/PerseusDL/treebank_data/master/v2.1/Greek/texts/{}",
+             "gorman": "https://raw.githubusercontent.com/perseids-publications/gorman-trees/master/public/xml/{}"}
+
+
+def treebank_words(spec):
+    """[(book or None, letters key, lemma, postag, relation, head word, form)] in order."""
+    if spec["type"] not in TREEBANKS:
+        sys.exit(f"unknown treebank type {spec['type']!r}")
+    root = ElementTree.fromstring(get(TREEBANKS[spec["type"]].format(spec["file"]),
+                                      f"treebank/{spec['type']}-{spec['file']}").encode("utf-8"))
+    out = []
+    for sent in root.iter("sentence"):
+        m = re.match(r"(\d+)\.", sent.get("subdoc") or "")
+        book = int(m[1]) if m else None
+        words = sent.findall("word")
+        form_of = {w.get("id"): ("(implied word)" if w.get("artificial") or w.get("insertion_id") else w.get("form"))
+                   for w in words}
+        for w in words:
+            postag = w.get("postag") or ""
+            if w.get("artificial") or w.get("insertion_id") or postag.startswith("u"):
+                continue  # an implied word, or punctuation
+            head = w.get("head")
+            out.append((book, tb_key(w.get("form") or ""), unicodedata.normalize("NFC", w.get("lemma") or ""),
+                        postag, w.get("relation"), "" if head in (None, "0") else form_of.get(head),
+                        unicodedata.normalize("NFC", w.get("form") or "")))
+    return out
+
+
+def tb_key(word):
+    """letters_key without the elision mark (ʼ, a modifier letter), as the treebanks drop it."""
+    return letters_key(word).replace("ʼ", "")
+
+
+def treebank_rows(spec, segments):
+    """(div, seq, word index, lemma, postag, relation, head) for the text's words the treebank
+    has, matched division by division (a work in several books: by the sentences' book)."""
+    tb = treebank_words(spec)
+    rows, divs = [], sorted({s[0] for s in segments})
+    for div in divs:
+        mine = [(seq, i, tb_key(w)) for d, seq, ref, content, *_ in segments if d == div and seq > 0
+                for i, w in enumerate(content.split()) if tb_key(w)]
+        theirs = [t for t in tb if t[0] in (div, None)] if len(divs) > 1 else tb
+        sm = difflib.SequenceMatcher(None, [k for _, _, k in mine], [t[1] for t in theirs], autojunk=False)
+        a = b = 0
+        for blk in sm.get_matching_blocks():
+            rows += gap_rows(div, mine[a:blk.a], theirs[b:blk.b])
+            for k in range(blk.size):
+                seq, i, _ = mine[blk.a + k]
+                rows.append((div, seq, i, 0, *theirs[blk.b + k][2:]))
+            a, b = blk.a + blk.size, blk.b + blk.size
+    return rows
+
+
+def gap_rows(div, mine, theirs):
+    """Rows for a stretch the plain match left over: mostly words the treebank splits in
+    two (οὐδέ as οὐ + δέ, crasis such as τἀληθῆ as τὰ + ἀληθῆ), each part a row."""
+    rows, i, j = [], 0, 0
+    while i < len(mine) and j < len(theirs):
+        seq, w, key = mine[i]
+        pair = theirs[j][1] + theirs[j + 1][1] if j + 1 < len(theirs) else None
+        if key == theirs[j][1]:
+            rows.append((div, seq, w, 0, *theirs[j][2:]))
+            i, j = i + 1, j + 1
+        elif pair and (key == pair or difflib.SequenceMatcher(None, key, pair).ratio() >= 0.8):
+            rows += [(div, seq, w, 0, *theirs[j][2:]), (div, seq, w, 1, *theirs[j + 1][2:])]
+            i, j = i + 1, j + 2
+        elif j + 1 < len(theirs) and key == theirs[j + 1][1]:
+            j += 1
+        else:
+            i += 1
+    return rows
+
+
 # ---------------------------------------------------------------- translations
 
 # A text's "translations": a list of {"type": ..., "book": ..., "lang": "en"|"el",
@@ -758,7 +842,7 @@ def main():
     categories = cat.get("categories", [])
 
     perseus_members([n["file"] for t in cat["texts"] for n in t.get("notes", []) if n["type"] == "perseus"])
-    rows_t, rows_d, rows_s, rows_ns, rows_n, rows_w, rows_tr, rows_tc = [], [], [], [], [], [], [], []
+    rows_t, rows_d, rows_s, rows_ns, rows_n, rows_w, rows_tr, rows_tc, rows_tb = [], [], [], [], [], [], [], [], []
     for sort, t in enumerate(cat["texts"]):
         if t.get("category") not in categories:
             sys.exit(f"{t['slug']}: category {t.get('category')!r} is not in the catalogue's categories")
@@ -796,6 +880,11 @@ def main():
             ns, n = build_notes(t["slug"], t["notes"], segs, form)
             rows_ns += ns
             rows_n += n
+        if t.get("treebank"):
+            found = treebank_rows(t["treebank"], segs)
+            rows_tb += [(t["slug"], *r) for r in found]
+            words_total = sum(1 for s in segs if s[1] > 0 for w in s[3].split() if tb_key(w))
+            print(f"  treebank: {len({r[:3] for r in found})} of {words_total} words parsed ({100 * len({r[:3] for r in found}) / max(1, words_total):.1f}%)")
         for spec in t.get("translations", []):
             rows_tr += [(t["slug"], *row) for row in translation(spec, segs)]
             rows_tc.append((t["slug"], spec["lang"], spec.get("credit")))
@@ -812,6 +901,7 @@ def main():
         DROP TABLE IF EXISTS note_sources; DROP TABLE IF EXISTS notes;
         DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS lexicon; DROP TABLE IF EXISTS translations;
         DROP TABLE IF EXISTS translation_credits;
+        DROP TABLE IF EXISTS treebank; DROP TABLE IF EXISTS lemma_defs;
         CREATE TABLE categories (name TEXT PRIMARY KEY, sort INTEGER NOT NULL);
         CREATE TABLE texts (
             slug     TEXT PRIMARY KEY,
@@ -861,6 +951,21 @@ def main():
             strongs    INTEGER,          -- Strong's number
             morph      TEXT,             -- Robinson's code (V-AAI-3S)
             PRIMARY KEY (text, div, seq, word_index));
+        CREATE TABLE treebank (          -- a hand-made treebank's analysis of a text's words
+            text       TEXT NOT NULL,
+            div        INTEGER NOT NULL,
+            seq        INTEGER NOT NULL,
+            word_index INTEGER NOT NULL, -- 0-based whitespace chunk of the segment
+            part       INTEGER NOT NULL, -- 0, or 1 for a word the treebank splits (οὐδέ: οὐ + δέ)
+            lemma      TEXT,
+            postag     TEXT,             -- the AGDT's 9 letters (n-s---fn-)
+            relation   TEXT,             -- SBJ, OBJ, ATR, ... (_CO, _AP)
+            head       TEXT,             -- the word it depends on ('' for the sentence's root)
+            form       TEXT,             -- as the treebank spells it (a part: τὰ of τἀληθῆ)
+            PRIMARY KEY (text, div, seq, word_index, part));
+        CREATE TABLE lemma_defs (        -- short English definitions of the treebanks' lemmas
+            lemma      TEXT PRIMARY KEY,
+            definition TEXT NOT NULL);
         CREATE TABLE translations (      -- a translation of each verse (the New Testament: WEB, Vamvas)
             text    TEXT NOT NULL,
             div     INTEGER NOT NULL,
@@ -883,6 +988,12 @@ def main():
     con.executemany("INSERT INTO texts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_t)
     con.executemany("INSERT INTO translations VALUES (?, ?, ?, ?, ?)", rows_tr)
     con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)", rows_tc)
+    con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_tb)
+    if rows_tb:  # definitions, as for the Iliad (import_shortdefs.py)
+        from import_shortdefs import matcher
+        match = matcher()
+        defs = {lemma: m[0] for lemma in {r[5] for r in rows_tb if r[5]} if (m := match(lemma))}
+        con.executemany("INSERT INTO lemma_defs VALUES (?, ?)", defs.items())
     con.executemany("INSERT INTO note_sources VALUES (?, ?, ?, ?, ?, ?)", rows_ns)
     con.executemany("INSERT INTO notes VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows_n)
     con.executemany("INSERT INTO divisions VALUES (?, ?, ?)", rows_d)

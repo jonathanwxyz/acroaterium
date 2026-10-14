@@ -88,7 +88,7 @@ function render(data) {
   hasScholia = has.has("scholia");
   document.querySelector(".sch-credit").textContent = data.notesCredit ?? "";
   if (data.audio) audio.src = data.audio;
-  if (data.form === "prose") renderProse(data);
+  if (data.form === "prose") renderProse(data, has);
   else renderVerse(data, has);
   applyScholia();
   const first = refs.find((r) => r.ref && r.ref !== "0")?.ref;
@@ -220,7 +220,7 @@ function renderVerse(data, has) {
 // Prose: a paragraph per speech (or the editor's paragraph), speaker first. Where a
 // section begins, its number stands in the margin if the paragraph opens with it, and
 // in the text otherwise.
-function renderProse(data) {
+function renderProse(data, has) {
   const frag = document.createDocumentFragment();
   let li = null, text = null, num = null, lastRef = null, notes = 0, refsIn = [];
   const close = () => {  // the paragraph's notes key: its first to last segment
@@ -255,11 +255,24 @@ function renderProse(data) {
       refs.push(sectionRef);
       lastRef = v.ref;
     }
+    // Parsed words: a span per whitespace chunk, numbered through the segment (as the server's word_index).
+    let wordIndex = 0;
+    const fill = (node, str) => {
+      if (!(v.line > 0 && has.has("words"))) return node.append(str);
+      str.split(/\s+/).filter(Boolean).forEach((chunk, i) => {
+        if (i) node.append(" ");
+        const w = el("span", "w", chunk);
+        w.dataset.line = v.line;
+        w.dataset.index = wordIndex++;
+        node.append(w);
+      });
+    };
     if (v.parts) {
       // With a recording: each sentence is timed, and is what lights up, follows and seeks.
       v.parts.forEach((part, k) => {
         if (k) seg.append(" ");
-        const sent = el("span", "sent", part.text);
+        const sent = el("span", "sent");
+        fill(sent, part.text);
         const entry = { line: v.line, ref: lastRef, start: part.start, speechEnd: part.speechEnd, end: part.end,
                         cut: part.cut, el: sent, row: li };
         entryOf.set(sent, entry);
@@ -272,7 +285,7 @@ function renderProse(data) {
         seg.append(sent);
       });
     } else {
-      seg.append(v.text);
+      fill(seg, v.text);
     }
     text.append(seg, " ");
   }
@@ -843,7 +856,7 @@ function renderCard(data) {
   }
   for (const t of data.tokens) {
     const box = el("div", "token");
-    if (data.tokens.length > 1 || t.match === "variant") box.append(el("div", "form", `Perseus: ${t.form}`));
+    if (data.tokens.length > 1 || t.match === "variant") box.append(el("div", "form", TEXT === "iliad" ? `Perseus: ${t.form}` : t.form));
     const lemma = el("div", "lemma", t.lemma ?? "(no lemma)");
     if (t.lemma) {
       const a = el("a", null, "Logeion ↗");
