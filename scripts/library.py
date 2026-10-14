@@ -50,7 +50,7 @@ A text's "heading" is a title read before the text ("Πλάτωνος Ἀπολ�
 (the title, then a dialogue's characters): segments ..., -1, 0 of its first division,
 shown (and played) as a title.
 A text's "translations" (see translation()) add a translated verse under each verse:
-the World English Bible, Vamvas's modern Greek.
+the World English Bible, Vamvas's modern Greek; or passages of several lines (Murray's Homer).
 Bible books are verse texts cited by verse ("cite": verse): every verse is numbered.
 
 Notes (shown in the reader's σχόλια panel) come from a text's "notes" list, each
@@ -509,6 +509,11 @@ def gap_rows(div, mine, theirs):
 #   vamvas  Neophytos Vamvas's modern Greek (1850, public domain), CrossWire's GreVamvas as
 #           scrollmapper/bible_databases has it in CSV, in monotonic spelling ("book":
 #           Matthew, I Corinthians, ...)
+#   murray  A. T. Murray's English Homer (Loeb, public domain; Perseus's encoding CC BY-SA
+#           4.0) in passages between line numbers ("work": tlg0012.tlg001), see
+#           translation_passages()
+#   gutenberg  Polylas's modern Greek Homer (public domain) from Project Gutenberg, a line
+#           under each line ("ebooks": [the volumes' numbers]), see translation_lines()
 # The reader shows English under the "translation" switch, modern Greek under "μετάφραση".
 WEB_ZIP = "https://ebible.org/Scriptures/engwebp_vpl.zip"
 VAMVAS = "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/formats/csv/GreVamvas.csv"
@@ -555,6 +560,99 @@ def translation(spec, segments):
             c, v = moved.get((div, int(ref)), (div, int(ref)))
             if text := verses.get((spec["book"], c, v)):  # (WEB lists the verses it omits, empty)
                 out.append((div, seq, spec["lang"], text))
+    return out
+
+
+def translation_passages(spec, segments):
+    """(div, first seq, last seq, language, text) for a translation in passages between the
+    Greek line numbers it marks: Murray's Homer in Perseus ("type": "murray", "work":
+    tlg0012.tlg001, "edition": perseus-eng3), parsed as for the Iliad (import_translation.py,
+    which explains where its markers stand)."""
+    from import_translation import marker_at_line_end, passages
+    tlg, wk = spec["work"].split(".")
+    name = f"{spec['work']}.{spec.get('edition', 'perseus-eng3')}.xml"
+    root = ElementTree.fromstring(get(f"https://raw.githubusercontent.com/PerseusDL/canonical-greekLit/master/data/{tlg}/{wk}/{name}",
+                                      f"perseus_{name}").encode())
+    seq_of = {(div, int(ref)): seq for div, seq, ref, *_ in segments if seq > 0 and ref.isdigit()}
+    greek = {(div, int(ref)): content for div, seq, ref, content, *_ in segments if seq > 0 and ref.isdigit()}
+    last = {}
+    for div, line in seq_of:
+        last[div] = max(last.get(div, 0), line)
+    out = []
+    for book in root.iter(f"{TEI}div"):
+        if book.get("subtype") != "book" or int(book.get("n")) not in last:
+            continue
+        b = int(book.get("n"))
+        found = [(marker, text) for marker, text in passages(book) if text]
+        shift = marker_at_line_end(b, found, greek)
+        starts = [1 if marker == 1 else marker + shift for marker, _ in found]
+        for k, (_, text) in enumerate(found):
+            first, end = starts[k], min(starts[k + 1] - 1 if k + 1 < len(found) else last[b], last[b])
+            if (b, first) in seq_of and (b, end) in seq_of:
+                out.append((b, seq_of[(b, first)], seq_of[(b, end)], spec["lang"], text))
+    return out
+
+
+# Polylas's modern Greek Homer (public domain) as Project Gutenberg transcribed
+# it (monotonic): a book per "Ραψωδία Χ" heading, every fifth line numbered at its end, a
+# line too long for the page carried over onto the next, indented after "[".
+GUTENBERG = "https://www.gutenberg.org/cache/epub/{0}/pg{0}.txt"
+GREEK_LETTERS = "ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"
+
+
+def gutenberg_books(ebooks):
+    """{book: [(line, its number or None)]} from the volumes' plain text."""
+    books = {}
+    for n in ebooks:
+        text = get(GUTENBERG.format(n), f"gutenberg/pg{n}.txt")
+        text = text.split("*** START", 1)[1].split("*** END", 1)[0].replace("•", "·")  # (its raised stop)
+        text = re.split(r"\n\s*(?:ΤΕΛΟΣ|Τ Ε Λ Ο Σ)", text)[0]  # (then the publisher's pages)
+        parts = re.split(r"\n(Ραψωδία \S+)\n", text)
+        for head, body in zip(parts[1::2], parts[2::2]):
+            book = GREEK_LETTERS.index(head.split()[1].replace("I", "Ι")) + 1  # (a Latin I)
+            lines = []
+            for raw in body.split("\n"):
+                if not raw.strip() or re.fullmatch(r"[\sΑ-Ω]+", raw):  # (a running head left in: ΟΜΗΡΟΥ)
+                    continue
+                if re.match(r"\s+\[", raw) and lines:  # the end of the line before
+                    text_, num = lines[-1]
+                    lines[-1] = (f"{text_} {raw.strip()[1:]}", num)
+                    continue
+                m = re.match(r"(.*?)\s+(\d+)$", raw.rstrip())
+                lines.append((m[1], int(m[2])) if m else (raw.strip(), None))
+            books[book] = lines
+    return books
+
+
+def translation_lines(spec, segments):
+    """(div, seq, language, text): a line-for-line translation, a line under each line
+    ("type": "gutenberg", "ebooks": [the volumes' numbers]). A book with as many lines as
+    the Greek goes line for line; one with more or fewer is matched between its numbered
+    lines, the lines of a stretch spread over the Greek's (joined where there are more)."""
+    seq_of = {(div, int(ref)): seq for div, seq, ref, *_ in segments if seq > 0 and ref.isdigit()}
+    count = {}
+    for div, line in seq_of:
+        count[div] = max(count.get(div, 0), line)
+    out = []
+    for book, lines in gutenberg_books(spec["ebooks"]).items():
+        if book not in count:
+            continue
+        n = count[book]
+        if len(lines) == n:
+            anchors = [(0, 0), (n, n)]
+        else:
+            anchors = [(0, 0)] + [(i + 1, num) for i, (_, num) in enumerate(lines) if num and 0 < num < n] + [(len(lines), n)]
+            # A number out of step with those on either side is a misprint, not a drift.
+            off = [i - g for i, g in anchors]
+            anchors = [a for k, a in enumerate(anchors) if k in (0, len(anchors) - 1) or off[k] in (off[k - 1], off[k + 1])]
+            anchors = [a for k, a in enumerate(anchors) if k == 0 or a[1] > anchors[k - 1][1] and a[0] > anchors[k - 1][0]]
+            print(f"  translation: book {book}: {len(lines)} lines for {n}, matched between its line numbers")
+        for (i0, g0), (i1, g1) in zip(anchors, anchors[1:]):
+            mine = [t for t, _ in lines[i0:i1]]
+            for k in range(g1 - g0):  # Greek line g0+k+1 gets its share of the stretch
+                share = mine[k * len(mine) // (g1 - g0):(k + 1) * len(mine) // (g1 - g0)]
+                if share and (book, g0 + k + 1) in seq_of:
+                    out.append((book, seq_of[(book, g0 + k + 1)], spec["lang"], " ".join(share)))
     return out
 
 
@@ -978,6 +1076,7 @@ def main():
 
     perseus_members([n["file"] for t in cat["texts"] for n in t.get("notes", []) if n["type"] == "perseus"])
     rows_t, rows_d, rows_s, rows_ns, rows_n, rows_w, rows_tr, rows_tc, rows_tb = [], [], [], [], [], [], [], [], []
+    rows_tp = []
     for sort, t in enumerate(cat["texts"]):
         if t.get("category") not in categories:
             sys.exit(f"{t['slug']}: category {t.get('category')!r} is not in the catalogue's categories")
@@ -1025,7 +1124,16 @@ def main():
             words_total = sum(1 for s in segs if s[1] > 0 for w in s[3].split() if tb_key(w))
             print(f"  treebank: {len({r[:3] for r in found})} of {words_total} words parsed ({100 * len({r[:3] for r in found}) / max(1, words_total):.1f}%)")
         for spec in t.get("translations", []):
-            rows_tr += [(t["slug"], *row) for row in translation(spec, segs)]
+            if spec["type"] == "murray":
+                found = translation_passages(spec, segs)
+                rows_tp += [(t["slug"], *row) for row in found]
+                print(f"  translation: {len(found)} passages")
+            elif spec["type"] == "gutenberg":
+                found = translation_lines(spec, segs)
+                rows_tr += [(t["slug"], *row) for row in found]
+                print(f"  translation: {len(found)} lines")
+            else:
+                rows_tr += [(t["slug"], *row) for row in translation(spec, segs)]
             rows_tc.append((t["slug"], spec["lang"], spec.get("credit")))
         rows_t.append((t["slug"], t["title"], t.get("author"), t["category"], sort, form, cite, reader,
                        t.get("credit"), t.get("notes_credit"), t.get("collection"), t.get("short")))
@@ -1038,7 +1146,7 @@ def main():
         DROP TABLE IF EXISTS categories; DROP TABLE IF EXISTS texts; DROP TABLE IF EXISTS settings;
         DROP TABLE IF EXISTS divisions; DROP TABLE IF EXISTS segments;
         DROP TABLE IF EXISTS note_sources; DROP TABLE IF EXISTS notes;
-        DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS lexicon; DROP TABLE IF EXISTS translations;
+        DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS lexicon; DROP TABLE IF EXISTS translations; DROP TABLE IF EXISTS translation_passages;
         DROP TABLE IF EXISTS translation_credits;
         DROP TABLE IF EXISTS treebank; DROP TABLE IF EXISTS lemma_defs;
         CREATE TABLE categories (name TEXT PRIMARY KEY, sort INTEGER NOT NULL);
@@ -1115,6 +1223,14 @@ def main():
             lang    TEXT NOT NULL,       -- en (English), el (modern Greek)
             content TEXT NOT NULL,
             PRIMARY KEY (text, div, seq, lang));
+        CREATE TABLE translation_passages (  -- a translation in passages of several lines (Murray's Homer)
+            text     TEXT NOT NULL,
+            div      INTEGER NOT NULL,
+            seq_from INTEGER NOT NULL,
+            seq_to   INTEGER NOT NULL,
+            lang     TEXT NOT NULL,
+            content  TEXT NOT NULL,
+            PRIMARY KEY (text, div, seq_from, lang));
         CREATE TABLE translation_credits (
             text   TEXT NOT NULL,
             lang   TEXT NOT NULL,
@@ -1131,6 +1247,7 @@ def main():
         con.execute("INSERT INTO settings VALUES ('lectionary', ?)", (json.dumps(cat["lectionary"], ensure_ascii=False),))
     con.executemany("INSERT INTO texts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_t)
     con.executemany("INSERT INTO translations VALUES (?, ?, ?, ?, ?)", rows_tr)
+    con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, ?, ?)", rows_tp)
     con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)", rows_tc)
     con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_tb)
     if rows_tb or rows_w:  # definitions, as for the Iliad (import_shortdefs.py)

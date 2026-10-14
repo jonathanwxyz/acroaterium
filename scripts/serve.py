@@ -378,6 +378,12 @@ def text_json(slug, n):
         translation_credits = dict(con.execute("SELECT lang, credit FROM translation_credits WHERE text = ?", (slug,)))
     except sqlite3.OperationalError:  # a library built before there were translations
         pass
+    try:  # or English in passages of several lines, after the last line of each (Murray's Homer)
+        passages = [{"from": a, "to": b, "text": content} for a, b, content in con.execute(
+            "SELECT seq_from, seq_to, content FROM translation_passages WHERE text = ? AND div = ? AND lang = 'en' "
+            "ORDER BY seq_from", (slug, n))]
+    except sqlite3.OperationalError:
+        passages = []
     english, modern = translated["en"], translated["el"]
     con.close()
     if not rows:
@@ -403,7 +409,7 @@ def text_json(slug, n):
     # Shown while their translation is (as for the Iliad's).
     if modern and translation_credits.get("el"):
         credits.append({"text": translation_credits["el"], "id": "modern-credit"})
-    if english and translation_credits.get("en"):
+    if (english or passages) and translation_credits.get("en"):
         credits.append({"text": translation_credits["en"], "id": "translation-credit"})
     if recording and recording[1]:
         credits.append({"text": recording[1]})
@@ -426,11 +432,11 @@ def text_json(slug, n):
             **({"next": n + 1} if goes_on else {}),
             "eyebrow": f"{author} · {title}" if author else title, **({"short": short} if short else {}),
             "features": (["scholia"] if has_notes else []) + (["audio"] if recording else [])
-                        + (["words"] if has_words else []) + (["translation"] if english else [])
+                        + (["words"] if has_words else []) + (["translation"] if english or passages else [])
                         + (["modern"] if modern else []),
             "notesCredit": notes_credit, "books": books if len(books) > 1 else [],
             "audio": f"/audio/{urllib.parse.quote(recording[0])}" if recording else None,
-            "verses": verses, "translation": [], "credits": credits}
+            "verses": verses, "translation": passages, "credits": credits}
 
 
 def cut_of(con):
