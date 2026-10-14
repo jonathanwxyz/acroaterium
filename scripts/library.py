@@ -20,7 +20,12 @@ the repository shows the format. It is JSON:
                                                     -- books of a Testament) are listed together,
                                                     -- the collection's books, then their chapters
        {"slug": "apology", "title": "Ἀπολογία Σωκράτους", "author": "Πλάτων",
-        "category": "Philosophy", "source": {"type": "perseus", "work": "tlg0059.tlg002"}}]}
+        "category": "Philosophy", "source": {"type": "perseus", "work": "tlg0059.tlg002"}}],
+     "lectionary": {"category": "...", "title": "...",  -- optional: the day's readings (the
+       "aliases": {"3 Kings": "3kingdoms"}}}        -- Orthodox lectionary) at the top of a
+                                                    -- category, linking to the texts read; a
+                                                    -- book whose name doesn't give its slug
+                                                    -- (see serve.py) is named in "aliases"
 
 Sources (downloads are cached in data/raw/library/):
   wikisource  a work whose index page lists its books ("# [[/α|Ῥαψωδία α]]"); each
@@ -34,6 +39,9 @@ Sources (downloads are cached in data/raw/library/):
   byztxt      a book of the New Testament ("book": MT, MR, ..., RE as in
               github.com/byztxt/greektext-antoniades): the Patriarchal edition, accented
               after the Byzantine text; chapters are the divisions, a verse per segment
+  rahlfs      a book of the Septuagint ("books": [Gen, JudgB, DanTh, ...], see rahlfs()):
+              Rahlfs's text in the CATSS transcription, parsed word by word, punctuated
+              after Swete's ("guide": the book's swete "books")
   swete       a book of the Septuagint ("books": [Swete's abbreviations, Gen, Dat, ...],
               see swete()): Swete's text as transcribed in LXX-Swete-1930; likewise
 A text's "fixes" correct slips in its source: [{"ref": "17a", "find": "<as printed>",
@@ -628,6 +636,133 @@ def swete(src, verbose):
     return "verse", "verse", [(c, str(c)) for c in sorted(chapters)], segments
 
 
+# Rahlfs's Septuagint (1935; public domain in the UK and EU) in the CATSS transcription
+# (CCAT, University of Pennsylvania) as Eliran Wong's LXX-Rahlfs-1935 has it, a word a
+# line, with each word's CATSS morphology (James Tauber's corrections), lemma (Open
+# Scriptures), Strong's number and English gloss: CC BY-NC-SA 4.0, so non-commercial use
+# only. The transcription has no punctuation or capitals; they are taken from Swete's
+# text of the same book (the "guide", Swete's parts as for swete()) word for word.
+RAHLFS = "https://raw.githubusercontent.com/eliranwong/LXX-Rahlfs-1935/master/{}"
+RAHLFS_FILES = {"text": "01_wordlist_unicode/text_accented.csv",
+                "verses": "01_wordlist_unicode/alignment_with_OSSP/E-verse.csv",
+                "morph": "03a_morphology_with_JTauber_patches/patched_623693.csv",
+                "lemma": "02_lexemes/OSSP_lexemes.csv",
+                "strongs": "07_StrongNumber/final_Strongs.csv",
+                "gloss": "06_English_gloss/beta.csv"}
+RAHLFS_CORRECTIONS = {"κύριου": "κυρίου"}  # the transcription's slips
+_rahlfs = None
+
+
+def rahlfs_words():
+    """({book: [(chapter or None, verse, first word, end word)]}, [(word, morph, lemma, strongs, gloss)])."""
+    global _rahlfs
+    if _rahlfs is None:
+        cols = {}
+        for key, path in RAHLFS_FILES.items():
+            lines = get(RAHLFS.format(path), "rahlfs/" + path.rsplit("/", 1)[1]).splitlines()
+            cols[key] = [line.split("\t")[-1].strip() for line in lines] if key != "verses" else lines
+        words = []
+        for w, morph, lemma, strongs, gloss in zip(cols["text"], cols["morph"], cols["lemma"], cols["strongs"], cols["gloss"]):
+            w = RAHLFS_CORRECTIONS.get(w, re.sub(r"σ(?=\W*$)", "ς", w))  # and a few final sigmas
+            words.append((w, morph or None, unicodedata.normalize("NFC", lemma) or None,
+                          int(strongs[1:]) if re.fullmatch(r"G\d+", strongs) else None,
+                          re.sub(r";?<br>", "; ", gloss) or None))
+        starts = []
+        for line in cols["verses"]:
+            first, _, ref = line.split("\t")
+            book, _, cv = ref.strip("「」").partition(" ")
+            c, _, v = cv.rpartition(":")
+            starts.append((int(first) - 1, book, c or None, v))
+        books = {}
+        for k, (first, book, c, v) in enumerate(starts):
+            end = starts[k + 1][0] if k + 1 < len(starts) else len(words)
+            books.setdefault(book, []).append((c, v, first, end))
+        _rahlfs = books, words
+    return _rahlfs
+
+
+def punctuate(words, guide):
+    """words (Rahlfs's, bare) with the punctuation and capitals of guide (Swete's), matched
+    by their letters."""
+    out = list(words)
+    a, b = [letters_key(w) for w in words], [letters_key(w) for w in guide]
+
+    def take(i, j, lead=True, trail=True):
+        g_lead, g_core, g_trail = split_word(guide[j])
+        core = out[i]
+        if g_core[:1].isupper() and core[:1].islower():
+            core = core[0].upper() + core[1:]
+        if trail and g_trail.strip(" ’'"):
+            core = acute(core)  # before a stop
+        out[i] = (g_lead if lead else "") + core + (g_trail if trail else "")
+
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op == "equal" or (op == "replace" and i2 - i1 == j2 - j1):
+            for k in range(i2 - i1):
+                take(i1 + k, j1 + k)
+        elif op == "replace":  # unequal stretches: the stretch's opening and closing marks
+            take(i1, j1, trail=False)
+            take(i2 - 1, j2 - 1, lead=False)
+    return out
+
+
+def rahlfs(src, verbose, words_out=None):
+    """A book of the Septuagint from src["books"]: Rahlfs's book names as in LXX-Rahlfs-1935
+    (Gen, JudgB, 2Esdr, DanTh, ...), each as it is or a dict: {"book": "2Esdr", "chapters":
+    [11, 23], "shift": -10} (Nehemiah), {"book": "SusTh", "as": 13} (a part as one chapter),
+    {"book": "Sir", "chapters": "Prolog", "as": 1, "ref": "πρ. {v}"} (at the start of a
+    chapter, with its own verse numbers). src["regroup"]: [[ref, chapter], ...] puts the
+    verses from each ref on into that chapter, numbered as "chapter:verse" (Proverbs, whose
+    chapters 30-36 Rahlfs numbers by the Hebrew; Swete and the Orthodox editions keep 24-29).
+    words_out gets (chapter, seq, word index, strongs, morph, lemma, gloss)."""
+    books, words = rahlfs_words()
+    regroup = {ref: c for ref, c in src.get("regroup", [])}
+    chapters, seq, segments, parsed = {}, {}, [], {}
+    for part in src["books"]:
+        part = {"book": part} if isinstance(part, str) else part
+        if part["book"] not in books:
+            sys.exit(f"rahlfs: no book {part['book']!r}")
+        want = part.get("chapters")
+        moved = None
+        for c, v, first, end in books[part["book"]]:
+            if isinstance(want, list) and not (c and c.isdigit() and want[0] <= int(c) <= want[1]):
+                continue
+            if isinstance(want, str) and c != want or want is None and c and not c.isdigit():
+                continue
+            if f"{c}:{v}" in regroup:
+                moved = regroup[f"{c}:{v}"]
+            if moved is not None and c and c.isdigit() and int(c) != moved:
+                ch, ref = moved, f"{c}:{v}"
+            else:
+                ch = part.get("as") or (int(c) + part.get("shift", 0) if c else 1)
+                ref = part.get("ref", "{v}").format(v=v)
+            if not v:  # a book's or psalm's title without a verse number: before what follows
+                ref = ""
+            chapters.setdefault(ch, None)
+            seq[ch] = seq.get(ch, 0) + 1
+            segments.append((ch, seq[ch], ref, [w[0] for w in words[first:end]], None, 1))
+            parsed[(ch, seq[ch])] = words[first:end]
+    segments.sort(key=lambda s: (s[0], s[1]))
+    if src.get("guide"):
+        _, _, _, guide = swete({"books": src["guide"]}, False)
+        flat = [w for s in segments for w in s[3]]
+        flat = punctuate(flat, [w for g in guide for w in g[3].split()])
+        k, out = 0, []
+        for s in segments:
+            out.append((*s[:3], " ".join(flat[k:k + len(s[3])]), *s[4:]))
+            k += len(s[3])
+        segments = out
+    else:
+        segments = [(*s[:3], " ".join(s[3]), *s[4:]) for s in segments]
+    if words_out is not None:
+        for (ch, sq), ws in parsed.items():
+            words_out += [(ch, sq, i, strongs, morph, lemma, gloss)
+                          for i, (_, morph, lemma, strongs, gloss) in enumerate(ws)]
+    if verbose:
+        print(f"  {len(chapters)} chapters, {len(segments)} verses")
+    return "verse", "verse", [(c, str(c)) for c in sorted(chapters)], segments
+
+
 # ---------------------------------------------------------------- Perseus (Stephanus prose)
 
 def perseus(src, verbose, title):
@@ -859,6 +994,10 @@ def main():
             elif src["type"] == "byztxt":
                 found = []
                 form, cite, divs, segs = byztxt(src, args.v, found)
+                rows_w += [(t["slug"], *w, None, None) for w in found]
+            elif src["type"] == "rahlfs":
+                found = []
+                form, cite, divs, segs = rahlfs(src, args.v, found)
                 rows_w += [(t["slug"], *w) for w in found]
             elif src["type"] == "swete":
                 form, cite, divs, segs = swete(src, args.v)
@@ -896,13 +1035,14 @@ def main():
     DB.parent.mkdir(exist_ok=True)
     con = sqlite3.connect(DB)
     con.executescript("""
-        DROP TABLE IF EXISTS categories; DROP TABLE IF EXISTS texts;
+        DROP TABLE IF EXISTS categories; DROP TABLE IF EXISTS texts; DROP TABLE IF EXISTS settings;
         DROP TABLE IF EXISTS divisions; DROP TABLE IF EXISTS segments;
         DROP TABLE IF EXISTS note_sources; DROP TABLE IF EXISTS notes;
         DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS lexicon; DROP TABLE IF EXISTS translations;
         DROP TABLE IF EXISTS translation_credits;
         DROP TABLE IF EXISTS treebank; DROP TABLE IF EXISTS lemma_defs;
         CREATE TABLE categories (name TEXT PRIMARY KEY, sort INTEGER NOT NULL);
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- JSON: "lectionary"
         CREATE TABLE texts (
             slug     TEXT PRIMARY KEY,
             title    TEXT NOT NULL,
@@ -943,13 +1083,15 @@ def main():
             body     TEXT NOT NULL,      -- plain text ("lemma] note" for scholia)
             parts    TEXT);              -- JSON [[kind, text], ...] (l lemma, i italic, t text)
         CREATE INDEX notes_place ON notes (text, div, pos_from);
-        CREATE TABLE words (             -- a parsed text's words (the New Testament: Robinson's)
+        CREATE TABLE words (             -- a parsed text's words (the New Testament: Robinson's; the Septuagint: CATSS)
             text       TEXT NOT NULL,
             div        INTEGER NOT NULL,
             seq        INTEGER NOT NULL,
             word_index INTEGER NOT NULL, -- 0-based whitespace chunk of the segment
             strongs    INTEGER,          -- Strong's number
-            morph      TEXT,             -- Robinson's code (V-AAI-3S)
+            morph      TEXT,             -- Robinson's code (V-AAI-3S), or CATSS's (V.AAI3S)
+            lemma      TEXT,             -- the word's own lemma and gloss where the lexicon
+            gloss      TEXT,             --   (by Strong's number) hasn't it: the Septuagint
             PRIMARY KEY (text, div, seq, word_index));
         CREATE TABLE treebank (          -- a hand-made treebank's analysis of a text's words
             text       TEXT NOT NULL,
@@ -985,20 +1127,23 @@ def main():
             definition TEXT);            -- longer
     """)
     con.executemany("INSERT INTO categories VALUES (?, ?)", [(c, i) for i, c in enumerate(categories)])
+    if cat.get("lectionary"):
+        con.execute("INSERT INTO settings VALUES ('lectionary', ?)", (json.dumps(cat["lectionary"], ensure_ascii=False),))
     con.executemany("INSERT INTO texts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_t)
     con.executemany("INSERT INTO translations VALUES (?, ?, ?, ?, ?)", rows_tr)
     con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)", rows_tc)
     con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_tb)
-    if rows_tb:  # definitions, as for the Iliad (import_shortdefs.py)
+    if rows_tb or rows_w:  # definitions, as for the Iliad (import_shortdefs.py)
         from import_shortdefs import matcher
         match = matcher()
-        defs = {lemma: m[0] for lemma in {r[5] for r in rows_tb if r[5]} if (m := match(lemma))}
+        defs = {lemma: m[0] for lemma in {r[5] for r in rows_tb if r[5]} | {r[6] for r in rows_w if r[6]}
+                if (m := match(lemma))}
         con.executemany("INSERT INTO lemma_defs VALUES (?, ?)", defs.items())
     con.executemany("INSERT INTO note_sources VALUES (?, ?, ?, ?, ?, ?)", rows_ns)
     con.executemany("INSERT INTO notes VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows_n)
     con.executemany("INSERT INTO divisions VALUES (?, ?, ?)", rows_d)
     con.executemany("INSERT INTO segments VALUES (?, ?, ?, ?, ?, ?, ?)", rows_s)
-    con.executemany("INSERT OR IGNORE INTO words VALUES (?, ?, ?, ?, ?, ?)", rows_w)
+    con.executemany("INSERT OR IGNORE INTO words VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows_w)
     if rows_w:
         con.executemany("INSERT OR IGNORE INTO lexicon VALUES (?, ?, ?, ?)", dodson())
     con.commit()

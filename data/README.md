@@ -203,5 +203,10 @@ licence. Share-alike reaches the data, not the code that displays it.
 | `verse_timings` | made here with Meta's MMS forced aligner ([MahmoudAshraf/mms-300m-1130-forced-aligner](https://huggingface.co/MahmoudAshraf/mms-300m-1130-forced-aligner)) | the model is CC BY-NC 4.0: keep uses non-commercial |
 | recordings (not in git) | Project Eustathios readings on YouTube | the readers' copyright: stay local, link rather than redistribute |
 
+`library.sqlite`'s sources are described, with their licences, where `scripts/library.py`
+fetches them. One is non-commercial: the Septuagint's (`rahlfs`) transcription and parsing,
+CATSS's via Eliran Wong's LXX-Rahlfs-1935 (CC BY-NC-SA 4.0). Rahlfs's 1935 text itself is
+public domain in the UK and EU, though not in the US until 2031.
+
 The fonts (EB Garamond, and Gentium Book Plus as fallback, via Google Fonts) are under the
 SIL Open Font License. The code is under the MIT licence (see `LICENSE`).

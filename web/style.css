@@ -1213,6 +1213,9 @@ body.prose-text .toggle:has(#focused) { display: none; }
 }
 .member-row[aria-current="true"] { color: var(--current-bar); font-weight: 600; }
 @media (hover: hover) { .member-row:hover { color: var(--current-bar); } }
+/* The day's readings: each passage, with what it is read as at the end. */
+.reading-kind { margin-left: auto; color: var(--muted); font-size: 0.8em; white-space: nowrap; }
+.reading-note { padding: 0.35rem 0.9rem; color: var(--muted); }
 .library .chapters {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(2.3rem, 1fr));

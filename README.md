@@ -31,6 +31,12 @@ A work in several books opens from the library at the book last read, with a men
 others; texts given the same `collection` in the catalogue (the books of a Testament) are
 listed together, with a menu of their books and, under each, its chapters.
 
+**The day's readings**: with `"lectionary"` in the catalogue, a category starts with the
+day's readings in the Orthodox lectionary (the Ecumenical Patriarchate's, as the Greek
+Orthodox Archdiocese of America's online chapel publishes them), each a link to its
+passage: `&v=` also takes a reading in pieces, across chapters (`&v=33-40,12.1-2`), and
+the recording skips what lies between them.
+
 **Bookmarks**: the bookmark button in the reader's top bar (or B) marks the verse being
 read; the library lists the bookmarks, and deletes them. They are kept by the server in
 `data/bookmarks.json` (git-ignored), so every device using it shares them.

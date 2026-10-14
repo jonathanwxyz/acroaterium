@@ -14,6 +14,29 @@ const [V_FROM, V_TO] = (PARAMS.get("v") ?? "").split(/[-–]/).map((s) => s.trim
 // share one recording): start there, and play.
 const CARRY_AT = Number(PARAMS.get("at")) || null;
 let RANGE = null;  // {from, to}: the refs of the first and last verse shown, when showing a range
+// A selection of verses in pieces, maybe across chapters (a reading of the lectionary):
+// "20-21,40-52", "33-40,12.1-2", "2-5.7". Each end is a verse or chapter.verse; a verse
+// alone is in the chapter last named (at first, the book's). A verse numbered from
+// another chapter keeps its own ref ("24.31:8", Rahlfs's Proverbs). Bible texts only.
+const SELECTION = (() => {
+  const spec = PARAMS.get("v") ?? "";
+  if (TEXT === "iliad" || !/[,;:]|[-–]\s*\d+\.\d/.test(spec)) return null;
+  let ch = BOOK;
+  const end = (s) => {
+    const m = s.trim().match(/^(?:(\d+)\.)?(\d+(?::\d+)?[a-z]?)$/);
+    if (!m) return null;
+    if (m[1]) ch = Number(m[1]);
+    return { ch, v: m[2] };
+  };
+  const pieces = [];
+  for (const part of spec.split(/[,;]/)) {
+    const [a, b, extra] = part.split(/[-–]/);
+    const from = end(a), to = b == null ? from : end(b);
+    if (!from || !to || extra != null || to.ch < from.ch) return null;
+    pieces.push({ from, to });
+  }
+  return pieces;
+})();
 // Old links (?book=N, the Iliad) show the full address: ?text=iliad&book=N.
 if (!PARAMS.has("text") || CARRY_AT) {
   history.replaceState(null, "", `?${new URLSearchParams({ text: TEXT, book: BOOK, ...(V_FROM ? { v: PARAMS.get("v") } : {}) })}${location.hash}`);
@@ -66,7 +89,7 @@ function render(data) {
   DATA = data;
   list.replaceChildren();  // the loading skeleton
   list.classList.remove("loading");
-  if (V_TO) applyRange(data);
+  if (V_TO && !SELECTION) applyRange(data);
   rememberVisit(TEXT, BOOK, data.collection);
   try { localStorage.setItem(`meta:${TEXT}`, JSON.stringify({ title: data.title, eyebrow: data.eyebrow, short: data.short, books: data.books })); } catch {}
   const has = new Set(data.features ?? []);
@@ -108,7 +131,8 @@ function applyRange(data) {
       return m && ((c) => c != null && (m[2] ? c === m[1] + m[2] : c.replace(/[a-e]$/, "") === m[1]));
     }
     const m = typed.match(/^(?:(\d+)\.)?(\d+)$/);
-    return m && (!m[1] || Number(m[1]) === BOOK) && ((c) => c != null && Number(c) === Number(m[2]));
+    // (a verse takes in its additions: 18 is 18a-d too)
+    return m && (!m[1] || Number(m[1]) === BOOK) && ((c) => c != null && /^\d+[a-z]*$/.test(c) && parseInt(c, 10) === Number(m[2]));
   };
   const isFrom = matches(V_FROM), isTo = matches(V_TO);
   if (!isFrom || !isTo) return;
@@ -120,11 +144,64 @@ function applyRange(data) {
   data.verses = data.verses.slice(from, to + 1);
   data.translation = (data.translation ?? []).filter((p) => p.to >= Number(first) && p.from <= Number(last));
   RANGE = { from: first, to: last };
-  const note = el("p", "range-note", `${prose ? "Sections" : "Lines"} ${first === last ? first : `${first}–${last}`} · `);
-  const whole = el("a", null, "whole book");
+  const verse = data.cite === "verse";  // the Bible: chapter:verse, in its chapter
+  const span = first === last ? first : `${first}–${last}`;
+  const note = el("p", "range-note", `${verse ? `${BOOK}:${span}` : `${prose ? "Sections" : "Lines"} ${span}`} · `);
+  const whole = el("a", null, verse ? "whole chapter" : "whole book");
   whole.href = readerHref(TEXT, BOOK);
   note.append(whole);
   document.getElementById("credits").before(note);
+}
+
+// A selection: its pieces' verses, from as many chapters as they reach (the chapters of a
+// book share one recording), in order; the last verse of a piece is marked cut, so the
+// recording goes straight on to the next piece. One that doesn't match shows the chapter.
+async function select(data) {
+  const chapters = new Map([[BOOK, data]]);
+  for (const { from, to } of SELECTION) {
+    for (let c = from.ch; c <= to.ch; c++) {
+      if (!chapters.has(c)) {
+        const r = await fetch(`/api/text/${encodeURIComponent(TEXT)}/${c}`);
+        if (!r.ok) return data;
+        chapters.set(c, await r.json());
+      }
+    }
+  }
+  // "12" is verse 12 and its additions (12a, 12b); "12a" or "31:10" just that ref.
+  const at = (end) => (v) => (/^\d+$/.test(end.v) ? v.ref?.match(/^\d+/)?.[0] === end.v && !v.ref.includes(":") : v.ref === end.v);
+  const picked = [], runs = [];
+  for (const { from, to } of SELECTION) {
+    for (let c = from.ch; c <= to.ch; c++) {
+      const vs = chapters.get(c).verses.filter((v) => v.line > 0);
+      const i = c === from.ch ? vs.findIndex(at(from)) : 0;
+      const j = c === to.ch ? vs.findLastIndex(at(to)) : vs.length - 1;
+      if (i < 0 || j < i) return data;
+      const before = picked.length ? picked.at(-1).div ?? BOOK : BOOK;
+      vs.slice(i, j + 1).forEach((v, k) => picked.push({
+        ...v, ...(c !== BOOK ? { div: c } : {}),
+        ...(k === 0 && c !== before && !v.ref.includes(":") ? { label: `${c}:${v.ref}` } : {}),  // where another chapter begins
+      }));
+      picked.at(-1).cut = true;
+      if (c === from.ch) runs.push([picked.length - (j - i + 1), picked.length - 1]);
+      else runs.at(-1)[1] = picked.length - 1;
+    }
+  }
+  delete picked.at(-1).cut;
+  data.verses = picked;
+  data.translation = [];
+  RANGE = { from: picked[0].ref, to: picked.at(-1).ref };
+  // The note: the pieces as chapter:verse, a piece's end without its chapter where it's the same.
+  const place = (v) => (v.ref.includes(":") ? v.ref : `${v.div ?? BOOK}:${v.ref}`);
+  const shown = runs.map(([a, b]) => {
+    const [p, q] = [place(picked[a]), place(picked[b])];
+    return a === b ? p : `${p}–${p.split(":")[0] === q.split(":")[0] ? q.split(":")[1] : q}`;
+  }).join(", ");
+  const note = el("p", "range-note", `${shown} · `);
+  const whole = el("a", null, "whole chapter");
+  whole.href = readerHref(TEXT, BOOK);
+  note.append(whole);
+  document.getElementById("credits").before(note);
+  return data;
 }
 
 function renderVerse(data, has) {
@@ -137,7 +214,7 @@ function renderVerse(data, has) {
     // Every verse of the Bible is numbered; lines of poetry, every fifth.
     const shown = data.cite === "verse" || (Number(ref) % 5 === 0 && Number(ref) > 0);
     num.className = "num" + (shown ? "" : " hidden");
-    num.textContent = v.line > 0 ? ref : "";
+    num.textContent = v.line > 0 ? v.label ?? ref : "";
     const text = document.createElement("span");
     text.className = "text";
     if (v.line > 0 && has.has("words")) {
@@ -149,6 +226,7 @@ function renderVerse(data, has) {
         w.textContent = chunk;
         w.dataset.line = v.line;
         w.dataset.index = i;
+        if (v.div) w.dataset.div = v.div;
         if (v.glosses) w.dataset.gloss = v.glosses[i] ?? "—";
         if (v.groups?.[i] != null) w.dataset.group = v.groups[i];
         text.append(w);
@@ -164,7 +242,8 @@ function renderVerse(data, has) {
     }
     li.append(num, text);
     if (v.line > 0) li.dataset.ref = ref;
-    setNoteKey(li, v.line, v.line, v.line <= 0 ? "" : data.books.length > 1 ? `${BOOK}.${ref}` : ref);
+    if (v.div) li.dataset.div = v.div;  // a selection's verse from another chapter
+    setNoteKey(li, v.line, v.line, v.line <= 0 ? "" : data.books.length > 1 ? `${v.div ?? BOOK}.${ref}` : ref);
     if (v.scholia) li.append(scholiaButton(li, `line ${ref}`, v.scholia));
     if (v.paraphrase) {
       const para = document.createElement("span");
@@ -460,7 +539,7 @@ function update() {
     const v = verses[i];
     v.el.classList.toggle("pausing", t >= v.speechEnd);
     const r = v.ref ?? v.line;
-    showPosition((v.line <= 0 ? "title" : DATA.books.length > 1 ? `${BOOK}.${r}` : r) + (heldBy === v ? " · held" : ""));
+    showPosition((v.line <= 0 ? "title" : DATA.books.length > 1 ? `${v.div ?? BOOK}.${r}` : r) + (heldBy === v ? " · held" : ""));
   } else {
     showPosition(verses.length ? "—" : "");  // no recording: the box is just for jumping
   }
@@ -889,13 +968,15 @@ function renderCard(data) {
 
 // Words looked up: shown at once when tapped again. Fetching starts as the finger goes
 // down, so on a slow connection it is often there by the tap.
-const wordCache = new Map();   // "line/index" -> response promise
-const wordLoaded = new Map();  // "line/index" -> response, once it has arrived
+const wordCache = new Map();   // "book/line/index" -> response promise
+const wordLoaded = new Map();  // "book/line/index" -> response, once it has arrived
+// (the book: a selection's verse from another chapter carries its own)
+const wordId = (w) => `${w.dataset.div ?? BOOK}/${w.dataset.line}/${w.dataset.index}`;
 function fetchWord(w) {
-  const id = `${w.dataset.line}/${w.dataset.index}`;
+  const id = wordId(w);
   if (!wordCache.has(id)) {
     // The Iliad's words come from its treebank; a library text's from its own parsing.
-    const url = TEXT === "iliad" ? `/api/word/${BOOK}/${id}` : `/api/lexword/${encodeURIComponent(TEXT)}/${BOOK}/${id}`;
+    const url = TEXT === "iliad" ? `/api/word/${id}` : `/api/lexword/${encodeURIComponent(TEXT)}/${id}`;
     wordCache.set(id, fetch(url)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data) => { wordLoaded.set(id, data); return data; })
@@ -913,7 +994,7 @@ async function openCard(w) {
   selected = w;
   w.classList.add("selected");
   card.hidden = false;
-  const id = `${w.dataset.line}/${w.dataset.index}`;
+  const id = wordId(w);
   if (wordLoaded.has(id)) {
     renderCard(wordLoaded.get(id));
   } else {
@@ -1500,6 +1581,7 @@ async function toggleBookmark() {
   if (!DATA) return;
   const t = markTarget();
   if (!t) return toast("Scroll to a verse to bookmark it");
+  if (t.li.dataset.div) return toast("Open its chapter to bookmark this verse");
   const label = `${DATA.title} ${placeLabel(t.ref)}`;
   const have = marks.get(t.ref);
   try {
@@ -1572,6 +1654,7 @@ for (let i = 0; i < 14; i++) {
 
 (window.bookRequest ?? fetch(API))
   .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+  .then((data) => (SELECTION ? select(data) : data))
   .then((data) => { render(data); update(); restorePlace(); setupMediaSession(); loadMarks(); })
   .catch((err) => {
     list.classList.remove("loading");

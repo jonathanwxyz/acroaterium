@@ -27,17 +27,25 @@ Routes:
   /api/scholia/<b>/<l>   JSON: the ancient scholia on verse b.l, grouped by manuscript, and
                          the English commentaries (Leaf, Seymour, Benner)
   /audio/<path>        a file under recordings/ (subfolders too), with HTTP Range support for seeking
+  /api/lectionary/<YYYY-MM-DD>  JSON: that day's readings in the Orthodox lectionary
+                       (the Ecumenical Patriarchate's, as the Greek Orthodox Archdiocese of
+                       America's online chapel gives them), each a link to the passage in
+                       the library; where the catalogue asks for it ("lectionary")
   /api/bookmarks       JSON: the bookmarked verses (GET); POST one ({text, book, ref, …}) to add
                        it, DELETE /api/bookmarks/<id> to remove it. Kept in data/bookmarks.json
 """
 import argparse
+import datetime
+import xml.etree.ElementTree as ElementTree
 import json
 import mimetypes
 import re
 import urllib.parse
+import urllib.request
 import sqlite3
 import threading
 import time
+import unicodedata
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -152,8 +160,168 @@ def library_json():
             texts.setdefault(category, []).append(t)
     cats = [{"name": name, "texts": texts.get(name, [])}
             for (name,) in con.execute("SELECT name FROM categories ORDER BY sort")]
+    lectionary = lectionary_settings(con)
     con.close()
-    return {"categories": cats}
+    return {"categories": cats,
+            **({"lectionary": {k: lectionary.get(k) for k in ("category", "title")}} if lectionary else {})}
+
+
+# The day's readings: the Greek Orthodox Archdiocese of America's online chapel gives
+# each day's, by the Ecumenical Patriarchate's typikon and calendar, as XML (cached in
+# data/raw/lectionary/). Each reading, "St. Paul's First Letter to the Corinthians
+# 12:27-31; 13:1-8", becomes a link to that selection of its book, if the library has it.
+LECTIONARY = "https://onlinechapel.goarch.org/daily.asp?date={d.month}/{d.day}/{d.year}"
+LECTIONARY_CACHE = ROOT / "data" / "raw" / "lectionary"
+READING_KINDS = {"MG": "Εὐαγγέλιον τοῦ Ὄρθρου", "E": "Ἀπόστολος", "G": "Εὐαγγέλιον", "OT": "Ἀνάγνωσμα"}
+READING_NAMES = {"Twelve Gospels": "Τὰ Δώδεκα Εὐαγγέλια τῶν Παθῶν"}  # readings given by name, not place
+ORDINALS = {"first": "1", "second": "2", "third": "3", "fourth": "4", "1": "1", "2": "2", "3": "3", "4": "4"}
+
+
+def lectionary_settings(con):
+    try:
+        row = con.execute("SELECT value FROM settings WHERE key = 'lectionary'").fetchone()
+    except sqlite3.OperationalError:  # a library built before settings
+        return None
+    return json.loads(row[0]) if row else None
+
+
+def book_slug(name, slugs, aliases):
+    """The library's slug for a book as the chapel names it: by the name's words ("Acts of
+    the Apostles": acts, "Song of Songs": songofsongs), its ordinal ("First Letter to the
+    Corinthians": 1corinthians) or, for a letter named by its writer, his name ("St.
+    Peter's First Universal Letter": 1peter); or as the catalogue's aliases say."""
+    if name in aliases:
+        return aliases[name]
+    m = re.match(r"(?:St\.?\s+(\w+)['’]s?\s+)?(.*)", name)
+    author, rest = (m[1] or "").lower(), m[2].lower()
+    words = re.findall(r"[a-z0-9]+", rest)
+    ordinal = next((ORDINALS[w] for w in words if w in ORDINALS), "")
+    words = [w for w in words if w not in ORDINALS]
+    plain = [w for w in words if w not in ("letter", "universal", "epistle", "to", "the", "of", "according", "gospel")]
+    for guess in ("".join(words), "".join(plain), plain[0] if plain else "", author):
+        for slug in (ordinal + guess, guess):  # (Jude's "First Universal Letter": his only one)
+            if guess and slug in slugs:
+                return slug
+    return None
+
+
+# The chapel numbers the Old Testament as English Bibles do, by the Hebrew; where the
+# Septuagint's chapters differ, its verses' English numbers: book -> [(chapter, first
+# verse, last verse, English chapter, verse shift)]. (Rahlfs's Proverbs keeps the Hebrew
+# numbers for the chapters it moves, as refs "31:10" in another chapter.)
+LXX_TO_ENGLISH = {"Joel": [(3, 1, 5, 2, 27), (4, 1, 99, 3, 0)], "Malachi": [(3, 19, 24, 4, -18)]}
+
+
+def selection(con, slug, book, refs):
+    """(chapter, the reader's &v=, the place as shown) for a reading, "12:27-31; 13:1-8"
+    (→ 12, "27-31,13.1-8", "12:27-13:8"): the text's verses whose English chapter and
+    verse fall in its pieces, as runs of consecutive verses (a missing verse at the end, a
+    chapter numbered otherwise, are taken care of). None if it doesn't read."""
+    ranges, chapter = [], None
+    for part in re.split(r"\s*[,;]\s*", refs.strip()):
+        m = re.fullmatch(r"(?:(\d+):)?(\d+)[a-z]?(?:\s*[-–]\s*(?:(\d+):)?(\d+)[a-z]?)?", part)
+        if not m or (m[1] is None and chapter is None):
+            return None
+        chapter = int(m[1]) if m[1] else chapter
+        first = (chapter, int(m[2]))
+        if m[4]:
+            chapter = int(m[3]) if m[3] else chapter
+        ranges.append((first, (chapter, int(m[4] or m[2]))))
+    verses = con.execute("SELECT div, ref FROM segments WHERE text = ? AND seq > 0 ORDER BY div, seq", (slug,)).fetchall()
+
+    def english(div, ref):
+        if m := re.fullmatch(r"(\d+):(\d+)[a-z]*", ref or ""):
+            return int(m[1]), int(m[2])
+        if not (m := re.fullmatch(r"(\d+)[a-z]*", ref or "")):
+            return None
+        c, v = div, int(m[1])
+        for ch, a, b, to, shift in LXX_TO_ENGLISH.get(book, []):
+            if c == ch and a <= v <= b:
+                return to, v + shift
+        return c, v
+
+    pieces = []  # (first index, last index) of each run, in the order read
+    for a, b in ranges:
+        hit = [i for i, (div, ref) in enumerate(verses) if (e := english(div, ref)) and a <= e <= b]
+        for i in hit:
+            if pieces and pieces[-1][1] == i - 1:
+                pieces[-1][1] = i
+            else:
+                pieces.append([i, i])
+    if not pieces:
+        return None
+    def place(div, ref):
+        return ref if ":" in ref else f"{div}:{ref}"
+
+    shown, last = [], None  # a chapter named only where it changes: 21:8-9, 25-27
+    for i, j in pieces:
+        a, b = place(*verses[i]), place(*verses[j])
+        start = a.split(":")[1] if a.split(":")[0] == last else a
+        shown.append(start if i == j else f"{start}-{b.split(':')[1] if a.split(':')[0] == b.split(':')[0] else b}")
+        last = b.split(":")[0]
+    out, current = [], verses[pieces[0][0]][0]
+    for i, j in pieces:
+        (d1, r1), (d2, r2) = verses[i], verses[j]
+        text = (f"{d1}." if d1 != current else "") + r1
+        if j > i:  # (an end at an addition, 18d, as its verse: the reader takes 18 to include 18a-d)
+            text += "-" + (f"{d2}." if d2 != d1 else "") + re.sub(r"^(\d+)[a-z]+$", r"\1", r2)
+        out.append(text)
+        current = d2
+    return verses[pieces[0][0]][0], ",".join(out), ", ".join(shown)
+
+
+def lectionary_json(day):
+    """{"date", "readings": [{"kind", "label", "href"}]}: the day's readings, in the order
+    read (Matins, the Liturgy, then the Old Testament's), linking where the library has them."""
+    try:
+        date = datetime.date.fromisoformat(day)
+    except ValueError:
+        return None
+    if not LIBRARY.exists():
+        return None
+    con = sqlite3.connect(LIBRARY)
+    settings = lectionary_settings(con)
+    titles = dict(con.execute("SELECT slug, title FROM texts"))
+    if not settings:
+        con.close()
+        return None
+    path = LECTIONARY_CACHE / f"{date.isoformat()}.xml"
+    if not path.exists():
+        try:
+            req = urllib.request.Request(LECTIONARY.format(d=date), headers={"User-Agent": "Mozilla/5.0 (scrolling reader)"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                body = r.read()
+            ElementTree.fromstring(body)  # only a whole answer is kept
+        except (OSError, ElementTree.ParseError):
+            con.close()
+            return {"date": date.isoformat(), "readings": [], "error": "The readings couldn't be fetched."}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+    try:
+        root = ElementTree.parse(path).getroot()
+    except ElementTree.ParseError:  # a broken copy: fetched again next time
+        path.unlink(missing_ok=True)
+        con.close()
+        return {"date": date.isoformat(), "readings": [], "error": "The readings couldn't be read."}
+    readings = []
+    for r in root.iter("reading"):
+        kind = r.findtext("type") or ""
+        title = next((t.strip() for t in (r.findtext("translation/shorttitle"), r.findtext("translation/title"))
+                      if t and re.search(r"\d:\d", t)), (r.findtext("translation/title") or "").strip())
+        title = re.sub(r"(\d):\s+(?=\d+:)", r"\1; ", title)  # a slip: "13:31-37: 14:1-2"
+        # A reading put together from several books (Holy Thursday's Gospel): a link for each.
+        for part in re.split(r";\s*(?=[A-Za-z])", title):
+            m = re.match(r"(.*?)\s+(\d+:\d.*)$", part)
+            slug = book_slug(m[1], titles, settings.get("aliases", {})) if m else None
+            sel = selection(con, slug, m[1], m[2]) if slug else None
+            readings.append({
+                "kind": READING_KINDS.get(kind, "Ἀνάγνωσμα"),
+                "order": list(READING_KINDS).index(kind) if kind in READING_KINDS else len(READING_KINDS),
+                "label": f"{titles[slug]} {sel[2]}" if sel else READING_NAMES.get(part, part),
+                "href": f"read.html?{urllib.parse.urlencode({'text': slug, 'book': sel[0], 'v': sel[1]})}" if sel else None})
+    con.close()
+    readings.sort(key=lambda x: x.pop("order"))
+    return {"date": date.isoformat(), "readings": readings}
 
 
 def notes_json(slug, n, a, b):
@@ -445,6 +613,50 @@ def robinson_morph(code):
     return out
 
 
+# CATSS's morphology codes (the Septuagint's parsing): a type (N, V, RA, ...; C+RP for a
+# crasis), a dot, then case-number-gender (N.DSF; A.ASMC with a degree) or for verbs
+# tense-voice-mood and person-number or, for participles, case-number-gender (V.AAI3S, V.PAPNSM).
+CATSS_TYPE = {
+    "N": "noun", "A": "adjective", "RA": "article", "RD": "demonstrative pronoun", "RI": "interrogative or indefinite pronoun",
+    "RP": "personal pronoun", "RR": "relative pronoun", "RX": "indefinite relative pronoun", "C": "conjunction",
+    "X": "particle", "I": "interjection", "M": "numeral", "P": "preposition", "D": "adverb", "V": "verb"}
+CATSS_CASE = {"N": "nominative", "G": "genitive", "D": "dative", "A": "accusative", "V": "vocative"}
+CATSS_NUMBER = {"S": "singular", "D": "dual", "P": "plural"}
+CATSS_GENDER = {"M": "masculine", "F": "feminine", "N": "neuter"}
+CATSS_DEGREE = {"C": "comparative", "S": "superlative"}
+CATSS_TENSE = {"P": "present", "I": "imperfect", "F": "future", "A": "aorist", "X": "perfect", "Y": "pluperfect"}
+CATSS_VOICE = {"A": "active", "M": "middle", "P": "passive"}
+CATSS_MOOD = {"I": "indicative", "D": "imperative", "S": "subjunctive", "O": "optative", "N": "infinitive", "P": "participle"}
+CATSS_PERSON = {"1": "1st person", "2": "2nd person", "3": "3rd person"}
+
+
+def catss_morph(code):
+    """["verb", "aorist", "active", "indicative", "3rd person", "singular"] for V.AAI3S."""
+    types, _, parse = code.partition(".")
+    out = [" + ".join(CATSS_TYPE.get(t, t) for t in types.split("+"))]
+    if types == "N" and not parse:
+        return out + ["proper name, indeclinable"]
+
+    def cng(p):  # case, number, gender, degree
+        return [m[c] for m, c in zip((CATSS_CASE, CATSS_NUMBER, CATSS_GENDER, CATSS_DEGREE), p) if c in m]
+
+    if types.endswith("V") and len(parse) >= 3:
+        out += [m[c] for m, c in zip((CATSS_TENSE, CATSS_VOICE, CATSS_MOOD), parse) if c in m]
+        rest = parse[3:]
+        if parse[2] == "P":
+            out += cng(rest)
+        elif rest[:1] in CATSS_PERSON:
+            out += [CATSS_PERSON[rest[0]], *[CATSS_NUMBER[c] for c in rest[1:2] if c in CATSS_NUMBER]]
+    else:
+        out += cng(parse)
+    return out
+
+
+def letters(word):
+    """A word's letters, without accents or breathings, lowercase: Δαυίδ and Δαυιδ alike."""
+    return "".join(c for c in unicodedata.normalize("NFD", word.lower()) if unicodedata.category(c)[0] == "L")
+
+
 def postag_morph(postag):
     """["verb", "3rd", "singular", "aorist", ...] for an AGDT postag, in word_json's order."""
     m = {name: table.get(c) for c, (name, table) in zip((postag or "").ljust(9, "-"), POSTAG)}
@@ -455,8 +667,8 @@ def postag_morph(postag):
 
 def lexword_json(slug, n, seq, index):
     """A library text's word, as /api/word gives an Iliad word: its parsing (the New
-    Testament: Robinson's, with Dodson's lexicon; others: a hand-made treebank's) for the
-    reader's card."""
+    Testament: Robinson's, with Dodson's lexicon; the Septuagint: CATSS's, with its own
+    lemmas and glosses; others: a hand-made treebank's) for the reader's card."""
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
@@ -465,8 +677,9 @@ def lexword_json(slug, n, seq, index):
         if not seg or not 0 <= index < len(seg[0].split()):
             return None
         word = seg[0].split()[index]
-        row = con.execute("SELECT w.strongs, w.morph, l.lemma, l.gloss, l.definition FROM words w "
-                          "LEFT JOIN lexicon l ON l.strongs = w.strongs "
+        row = con.execute("SELECT w.strongs, w.morph, l.lemma, l.gloss, l.definition, w.lemma, w.gloss, d.definition "
+                          "FROM words w LEFT JOIN lexicon l ON l.strongs = w.strongs "
+                          "LEFT JOIN lemma_defs d ON d.lemma = w.lemma "
                           "WHERE w.text = ? AND w.div = ? AND w.seq = ? AND w.word_index = ?",
                           (slug, n, seq, index)).fetchone()
         parts = [] if row else con.execute(
@@ -486,10 +699,15 @@ def lexword_json(slug, n, seq, index):
             for form, lemma, postag, relation, head, definition in parts]}
     if not row:
         return {"word": word, "tokens": [], "note": "Not parsed (the parsing doesn't have this word here)."}
-    strongs, morph, lemma, gloss, definition = row
+    strongs, morph, lemma, gloss, definition, own_lemma, own_gloss, short = row
+    if own_lemma:  # the Septuagint: its own lemma; Strong's (and Dodson's entry) only where it's the same word
+        if not lemma or letters(lemma) != letters(own_lemma):
+            strongs = definition = None
+        lemma, gloss, definition = own_lemma, own_gloss, definition or short or own_gloss
+    catss = own_lemma is not None
     return {"word": word, "tokens": [{
-        "form": word, "lemma": lemma, "strongs": strongs, "gloss": gloss,
-        "definition": definition or gloss, "morph": robinson_morph(morph) if morph else [], "code": morph}]}
+        "form": word, "lemma": lemma, "strongs": strongs, "gloss": gloss, "definition": definition or gloss,
+        "morph": (catss_morph if catss else robinson_morph)(morph) if morph else [], "code": morph}]}
 
 
 def word_groups(sharer_sets):
@@ -589,6 +807,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(word_json(*map(int, m.groups())))
         elif m := re.fullmatch(r"/api/scholia/(\d+)/(\d+)", self.path):
             self.send_json(scholia_json(*map(int, m.groups())))
+        elif m := re.fullmatch(r"/api/lectionary/(\d{4}-\d\d-\d\d)", self.path):
+            self.send_json(lectionary_json(m[1]))
         elif self.path == "/api/bookmarks":
             self.send_json({"bookmarks": load_bookmarks()})
         elif self.path.startswith("/audio/"):

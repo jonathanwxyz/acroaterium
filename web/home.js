@@ -69,9 +69,10 @@ function bookLinks(t, cls) {
   return ul;
 }
 
-function workEntry(t) {
+// (The author is left out where the category is all one author's: its heading names him.)
+function workEntry(t, showAuthor = true) {
   const work = el("div", "work");
-  const named = [el("span", "work-title", t.title), ...(t.author ? [el("span", "work-author", t.author)] : [])];
+  const named = [el("span", "work-title", t.title), ...(t.author && showAuthor ? [el("span", "work-author", t.author)] : [])];
   if (t.books.length > 1) {
     const list = bookLinks(t, "book-list");
     work.append(foldRow(slugOf(t), "work-head fold-row", named, list), list);
@@ -111,6 +112,43 @@ function collectionEntry(c) {
   return work;
 }
 
+// The day's readings (the Orthodox lectionary), where the catalogue asks for them: a fold
+// at the top of their category, each reading a link to its passage, with what it is read
+// as (Ἀπόστολος, Εὐαγγέλιον, …). The day is the reader's own.
+function today() {
+  const d = new Date(), two = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+}
+function lectionaryEntry(l) {
+  const work = el("div", "work collection lectionary");
+  const list = el("ul", "member-list");
+  const note = (text) => list.replaceChildren(el("li", "member reading-note", text));
+  note("…");
+  work.append(foldRow("lectionary", "work-head fold-row", [el("span", "work-title", l.title)], list), list);
+  fetch(`/api/lectionary/${today()}`)
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    .then((data) => {
+      if (!data.readings.length) return note(data.error ?? "No readings today.");
+      list.replaceChildren();
+      for (const r of data.readings) {
+        const row = el(r.href ? "a" : "span", "member-row reading");
+        if (r.href) row.href = r.href;
+        row.append(el("span", null, r.label), el("span", "reading-kind", r.kind));
+        const li = el("li", "member");
+        li.append(row);
+        list.append(li);
+      }
+    })
+    .catch(() => note(navigator.onLine === false ? "The readings need the connection." : "The readings couldn't be loaded."));
+  return work;
+}
+
+// A heading in capitals, as Greek is written in capitals: without its accents (and iota
+// subscript), keeping the breathings: Ἡ ἉΓΙΑ ΓΡΑΦΗ.
+function capitals(text) {
+  return text.normalize("NFD").replace(/[\u0300\u0301\u0342\u0345]/g, "").normalize("NFC").toUpperCase();
+}
+
 function render(data) {
   root.replaceChildren();
   if (data.missing) {
@@ -123,9 +161,11 @@ function render(data) {
   }
   for (const cat of data.categories) {
     const section = el("section", "category");
-    section.append(el("h2", null, cat.name));
+    section.append(el("h2", null, capitals(cat.name)));
+    if (data.lectionary?.category === cat.name) section.append(lectionaryEntry(data.lectionary));
     if (!cat.texts.length) section.append(el("p", "empty", "Nothing here yet."));
-    for (const t of cat.texts) section.append(t.collection ? collectionEntry(t) : workEntry(t));
+    const oneAuthor = cat.texts.length > 1 && new Set(cat.texts.map((t) => t.author ?? null)).size === 1;
+    for (const t of cat.texts) section.append(t.collection ? collectionEntry(t) : workEntry(t, !oneAuthor));
     root.append(section);
   }
 }
