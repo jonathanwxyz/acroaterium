@@ -41,8 +41,8 @@ def split(text, first, last, book, cuts, errors):
             errors.append(f"{book}.{line}: no cut point")
             return None
         words = cuts[(book, line)]
-        if words is None:  # no English of its own
-            starts.append(starts[-1])
+        if words is None:  # no English of its own: it starts where the next line does (below)
+            starts.append(None)
             continue
         at = text.find(words, pos)
         if at < 0:
@@ -53,6 +53,9 @@ def split(text, first, last, book, cuts, errors):
         starts.append(at)
         pos = at + len(words)
     bounds = starts + [len(text)]
+    for k in range(len(bounds) - 2, -1, -1):  # an empty line's piece: none, the line before keeps its own
+        if bounds[k] is None:
+            bounds[k] = bounds[k + 1]
     return [text[a:b].strip() for a, b in zip(bounds, bounds[1:])]
 
 

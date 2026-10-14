@@ -601,11 +601,16 @@ def translation(spec, segments):
 
 
 def translation_passages(spec, segments):
-    """(div, first seq, last seq, language, text) for a translation in passages between the
-    Greek line numbers it marks: Murray's Homer in Perseus ("type": "murray", "work":
-    tlg0012.tlg001, "edition": perseus-eng3), parsed as for the Iliad (import_translation.py,
-    which explains where its markers stand)."""
+    """([(div, first seq, last seq, language, text)], [(div, seq, language, text)]): a
+    translation in passages between the Greek line numbers it marks: Murray's Homer in
+    Perseus ("type": "murray", "work": tlg0012.tlg001, "edition": perseus-eng3), parsed as
+    for the Iliad (import_translation.py, which explains where its markers stand). With
+    "cuts" (a file per book, "library/murray_book{:02d}.txt"), the passages of a book that
+    has one are split into its lines, as import_translation_lines.py does the Iliad's: the
+    second list; the rest stay passages. "markers" corrects a misnumbered line marker
+    ({"16.580": 280}: book 16's marker 580 is line 280)."""
     from import_translation import marker_at_line_end, passages
+    from import_translation_lines import read_cuts, split
     tlg, wk = spec["work"].split(".")
     name = f"{spec['work']}.{spec.get('edition', 'perseus-eng3')}.xml"
     root = ElementTree.fromstring(get(f"https://raw.githubusercontent.com/PerseusDL/canonical-greekLit/master/data/{tlg}/{wk}/{name}",
@@ -615,19 +620,35 @@ def translation_passages(spec, segments):
     last = {}
     for div, line in seq_of:
         last[div] = max(last.get(div, 0), line)
-    out = []
+    out, lines, errors = [], [], []
     for book in root.iter(f"{TEI}div"):
         if book.get("subtype") != "book" or int(book.get("n")) not in last:
             continue
         b = int(book.get("n"))
+        for m in book.iter(f"{TEI}milestone"):  # Perseus's slips in its line markers: "markers": {"16.580": 280}
+            if m.get("unit") == "line" and f"{b}.{m.get('n')}" in spec.get("markers", {}):
+                m.set("n", str(spec["markers"][f"{b}.{m.get('n')}"]))
         found = [(marker, text) for marker, text in passages(book) if text]
         shift = marker_at_line_end(b, found, greek)
         starts = [1 if marker == 1 else marker + shift for marker, _ in found]
+        cut_file = ROOT / spec["cuts"].format(b) if spec.get("cuts") else None
+        cuts = read_cuts(cut_file) if cut_file and cut_file.exists() else None
         for k, (_, text) in enumerate(found):
             first, end = starts[k], min(starts[k + 1] - 1 if k + 1 < len(found) else last[b], last[b])
-            if (b, first) in seq_of and (b, end) in seq_of:
+            if (b, first) not in seq_of or (b, end) not in seq_of:
+                continue
+            pieces = split(text, first, end, b, cuts, errors) if cuts is not None else None
+            if pieces and "".join("".join(pieces).split()) != "".join(text.split()):
+                errors.append(f"{b}.{first}-{end}: pieces don't rejoin to the passage")
+                pieces = None
+            if pieces:
+                lines += [(b, seq_of[(b, n)], spec["lang"], piece) for n, piece in zip(range(first, end + 1), pieces)
+                          if piece and (b, n) in seq_of]
+            else:
                 out.append((b, seq_of[(b, first)], seq_of[(b, end)], spec["lang"], text))
-    return out
+    if errors:
+        print("  translation: cut points that don't work:", *errors[:20], sep="\n    ")
+    return out, lines
 
 
 # Polylas's modern Greek Homer (public domain) as Project Gutenberg transcribed
@@ -1175,9 +1196,10 @@ def main():
             print(f"  treebank: {len({r[:3] for r in found})} of {words_total} words parsed ({100 * len({r[:3] for r in found}) / max(1, words_total):.1f}%)")
         for spec in t.get("translations", []):
             if spec["type"] == "murray":
-                found = translation_passages(spec, segs)
+                found, split_lines = translation_passages(spec, segs)
                 rows_tp += [(t["slug"], *row) for row in found]
-                print(f"  translation: {len(found)} passages")
+                rows_tr += [(t["slug"], *row) for row in split_lines]
+                print(f"  translation: {len(found)} passages" + (f", {len(split_lines)} lines split from them" if split_lines else ""))
             elif spec["type"] == "gutenberg":
                 found = translation_lines(spec, segs)
                 rows_tr += [(t["slug"], *row) for row in found]
