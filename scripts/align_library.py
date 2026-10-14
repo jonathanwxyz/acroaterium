@@ -2,7 +2,7 @@
 """Align recordings of library texts (data/library.sqlite) to their text, and give the
 reader one audio file per book.
 
-    .venv/bin/python scripts/align_library.py [SLUG ...] [--book N] [--no-audio]
+    .venv/bin/python scripts/align_library.py [SLUG ...] [--book N] [--no-audio] [-j JOBS]
 
 Which recordings go with which book is in the local catalogue (library/catalogue.json),
 an "audio" list on a text:
@@ -55,11 +55,13 @@ the emissions come from make_emissions.py, no model is run here.
 """
 import argparse
 import json
+import os
 import re
 import sqlite3
 import subprocess
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -290,8 +292,12 @@ def block_notices(lp, first):
     return out
 
 
+def emissions_path(path):
+    return path.parent / "cache" / f"{path.name}.{MODEL}.npy"
+
+
 def emissions_of(path):
-    npy = path.parent / "cache" / f"{path.name}.{MODEL}.npy"
+    npy = emissions_path(path)
     if not npy.exists():
         sys.exit(f"{npy.relative_to(ROOT)}: missing (run make_emissions.py on {path.relative_to(ROOT)})")
     return np.load(npy)
@@ -387,6 +393,8 @@ def main():
     ap.add_argument("slugs", nargs="*", help="texts to align (default: every text with \"audio\")")
     ap.add_argument("--book", type=int, help="only this book")
     ap.add_argument("--no-audio", action="store_true", help="don't (re)join multi-part recordings")
+    ap.add_argument("--jobs", "-j", type=int, default=max(1, (os.cpu_count() or 2) // 2),
+                    help="recordings aligned at once (default: half the cores)")
     args = ap.parse_args()
 
     catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
@@ -399,13 +407,13 @@ def main():
     if "cut" not in {r[1] for r in out.execute("PRAGMA table_info(units)")}:  # (made before there was one)
         out.execute("ALTER TABLE units ADD COLUMN cut INTEGER")
 
+    work = []  # one job per recording (a book, or all of a text's divisions in one file)
     for t in texts:
         slug = t["slug"]
         form = lib.execute("SELECT form FROM texts WHERE slug = ?", (slug,)).fetchone()
         if not form:
             log(f"== {slug}: not in library.sqlite (run scripts/library.py)")
             continue
-        form = form[0]
         divisions = {n for (n,) in lib.execute("SELECT n FROM divisions WHERE text = ?", (slug,))}
         jobs, spans_read = {}, {}
         cv = lambda s: tuple(map(int, s.split(":"))) if s else None
@@ -418,72 +426,98 @@ def main():
             if args.book and args.book not in divs:
                 continue
             files, credit = jobs[divs]
-            t0 = time.time()
-            raw = [emissions_of(f) for f in files]
-            heard = np.concatenate(raw) if len(raw) > 1 else raw[0]  # what was said, notices and all
-            lps = [block_notices(x, first=k == 0) for k, x in enumerate(raw)]
-            lp = np.concatenate(lps) if len(lps) > 1 else lps[0]
-            units = [(div, *u) for div in divs for u in units_of(lib, slug, div, form, t.get("speakers"))]
-            span = spans_read.get(divs)
-            if span:  # a recording of part of the book: only the verses it reads
-                refs = {(div, seq): ref for div, seq, ref in lib.execute(
-                    "SELECT div, seq, ref FROM segments WHERE text = ?", (slug,))}
-                pos = lambda u: (u[0], int(refs[(u[0], u[1])]) if refs[(u[0], u[1])].isdigit() else 0)
-                first, last = span
-                units = [u for u in units if (not first or pos(u) >= first) and (not last or pos(u) <= last)]
-            toks = [tokens_of(text) for *_, text in units]
-            keep = [k for k, tk in enumerate(toks) if tk]  # a unit with no letters can't be heard
-            # A speaker's name comes straight before the speech, nothing between.
-            glued = {n for n, k in enumerate(keep) if units[k][2] == -1}
-            spans = align(lp, [toks[k] for k in keep], glued)
-            rows, announced, skipped, heard_names, unheard = [], None, 0, 0, set()
-            for k, span in zip(keep, spans):
-                if units[k][2] == -1:  # a speaker's name: the sentence after it starts with it
-                    announced = span[0] if span else None
-                    heard_names += bool(span)
-                    if not span:  # (said, likely, but not made out: room is kept for it, see below)
-                        unheard.add((units[k][0], units[k][1]))
-                    continue
-                if not span:
-                    skipped += 1
-                    continue
-                start = max(announced, span[0] - NAME_MAX / FRAME_S) if announced is not None else span[0]
-                announced = None
-                rows.append([slug, *units[k], start * FRAME_S, span[1] * FRAME_S, span[2] * FRAME_S, span[3], 0])
-            # A gap after a unit where the model hears letters (an announcement, a part's
-            # LibriVox notice) is skipped at once; a quiet one is a pause, kept.
-            order = sorted(range(len(rows)), key=lambda r: rows[r][5])
-            for a, b in zip(order, order[1:] + [None]):
-                if b is not None and rows[b][3] == 0 and (rows[b][1], rows[b][2]) in unheard:
-                    # A name surely said but not made out: the second before the speech is kept.
-                    rows[b][5] = max(rows[a][6] + 0.1, rows[b][5] - 1.0)
-                if b is not None:  # end: the next unit's start (as adjusted for its speaker's name)
-                    rows[a][7] = rows[b][5]
-                gap_from = int(rows[a][6] / FRAME_S) + 5  # (a little past its last sound)
-                gap_to = int(rows[b][5] / FRAME_S) if b is not None else len(lp)
-                # (A short gap is a pause even if something's heard in it: a breath, a name's start.)
-                rows[a][-1] = int(gap_to - gap_from >= 1.5 / FRAME_S and heard_letters(heard[gap_from:gap_to]) >= 3)
-            name = reader_audio(files, slug, divs[0], make=not args.no_audio)
-            heard = {r[1] for r in rows}  # chapters the recording reads (some or all of)
-            for div in divs:
-                out.execute("DELETE FROM units WHERE text = ? AND div = ?", (slug, div))
-                if div in heard:
-                    out.execute("INSERT OR REPLACE INTO recordings VALUES (?, ?, ?, ?, ?)", (slug, div, name, credit, len(lp)))
-                else:
-                    out.execute("DELETE FROM recordings WHERE text = ? AND div = ?", (slug, div))
-            out.executemany("INSERT INTO units (text, div, seq, piece, content, start, speech_end, end, score, cut) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
-            out.commit()
-            scores = np.array([r[8] for r in rows])
-            weak = int((scores < -2.0).sum())
-            div = f"{divs[0]}" if len(divs) == 1 else f"{divs[0]}–{divs[-1]}"
-            log(f"== {slug} {div}: {len(rows)} units over {len(lp) * FRAME_S / 60:.0f} min "
-                f"({len(files)} file{'s' if len(files) > 1 else ''}), first at {rows[0][5]:.0f} s, "
-                f"last ends {rows[-1][6]:.0f} s; score median {np.median(scores):.2f}, "
-                f"{weak} below -2, {skipped} passed over"
-                + (f", {heard_names}/{sum(u[2] == -1 for u in units)} speakers heard" if any(u[2] == -1 for u in units) else "")
-                + f" · {time.time() - t0:.0f} s")
+            work.append({"slug": slug, "form": form[0], "divs": divs, "files": files, "credit": credit,
+                         "span": spans_read.get(divs), "speakers": t.get("speakers"), "make": not args.no_audio})
+    lib.close()
 
+    # Several recordings at once, each in a process of its own (the alignment is one core's
+    # work); the longest first, so that the last to finish isn't a long one started late.
+    # Only this process writes to library_audio.sqlite, a recording's units as it's done.
+    work.sort(key=lambda j: -sum(emissions_path(f).stat().st_size for f in j["files"] if emissions_path(f).exists()))
+    jobs_n = max(1, min(args.jobs, len(work)))
+    if jobs_n == 1:
+        results = map(align_recording, work)
+    else:
+        pool = ProcessPoolExecutor(jobs_n)
+        results = (f.result() for f in as_completed([pool.submit(align_recording, j) for j in work]))
+    for r in results:
+        slug, divs = r["slug"], r["divs"]
+        heard = {row[1] for row in r["rows"]}  # chapters the recording reads (some or all of)
+        for div in divs:
+            out.execute("DELETE FROM units WHERE text = ? AND div = ?", (slug, div))
+            if div in heard:
+                out.execute("INSERT OR REPLACE INTO recordings VALUES (?, ?, ?, ?, ?)",
+                            (slug, div, r["name"], r["credit"], r["frames"]))
+            else:
+                out.execute("DELETE FROM recordings WHERE text = ? AND div = ?", (slug, div))
+        out.executemany("INSERT INTO units (text, div, seq, piece, content, start, speech_end, end, score, cut) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", r["rows"])
+        out.commit()
+        log(r["report"])
+
+
+def align_recording(job):
+    """One recording aligned to its text: {slug, divs, rows (for units), name (the reader's
+    file), credit, frames, report}. Runs in a worker process (with its own connection)."""
+    slug, form, divs, files, span = job["slug"], job["form"], job["divs"], job["files"], job["span"]
+    lib = sqlite3.connect(LIBRARY)
+    t0 = time.time()
+    raw = [emissions_of(f) for f in files]
+    heard = np.concatenate(raw) if len(raw) > 1 else raw[0]  # what was said, notices and all
+    lps = [block_notices(x, first=k == 0) for k, x in enumerate(raw)]
+    lp = np.concatenate(lps) if len(lps) > 1 else lps[0]
+    units = [(div, *u) for div in divs for u in units_of(lib, slug, div, form, job["speakers"])]
+    if span:  # a recording of part of the book: only the verses it reads
+        refs = {(div, seq): ref for div, seq, ref in lib.execute(
+            "SELECT div, seq, ref FROM segments WHERE text = ?", (slug,))}
+        pos = lambda u: (u[0], int(refs[(u[0], u[1])]) if refs[(u[0], u[1])].isdigit() else 0)
+        first, last = span
+        units = [u for u in units if (not first or pos(u) >= first) and (not last or pos(u) <= last)]
+    lib.close()
+    toks = [tokens_of(text) for *_, text in units]
+    keep = [k for k, tk in enumerate(toks) if tk]  # a unit with no letters can't be heard
+    # A speaker's name comes straight before the speech, nothing between.
+    glued = {n for n, k in enumerate(keep) if units[k][2] == -1}
+    spans = align(lp, [toks[k] for k in keep], glued)
+    rows, announced, skipped, heard_names, unheard = [], None, 0, 0, set()
+    for k, span in zip(keep, spans):
+        if units[k][2] == -1:  # a speaker's name: the sentence after it starts with it
+            announced = span[0] if span else None
+            heard_names += bool(span)
+            if not span:  # (said, likely, but not made out: room is kept for it, see below)
+                unheard.add((units[k][0], units[k][1]))
+            continue
+        if not span:
+            skipped += 1
+            continue
+        start = max(announced, span[0] - NAME_MAX / FRAME_S) if announced is not None else span[0]
+        announced = None
+        rows.append([slug, *units[k], start * FRAME_S, span[1] * FRAME_S, span[2] * FRAME_S, span[3], 0])
+    # A gap after a unit where the model hears letters (an announcement, a part's
+    # LibriVox notice) is skipped at once; a quiet one is a pause, kept.
+    order = sorted(range(len(rows)), key=lambda r: rows[r][5])
+    for a, b in zip(order, order[1:] + [None]):
+        if b is not None and rows[b][3] == 0 and (rows[b][1], rows[b][2]) in unheard:
+            # A name surely said but not made out: the second before the speech is kept.
+            rows[b][5] = max(rows[a][6] + 0.1, rows[b][5] - 1.0)
+        if b is not None:  # end: the next unit's start (as adjusted for its speaker's name)
+            rows[a][7] = rows[b][5]
+        gap_from = int(rows[a][6] / FRAME_S) + 5  # (a little past its last sound)
+        gap_to = int(rows[b][5] / FRAME_S) if b is not None else len(lp)
+        # (A short gap is a pause even if something's heard in it: a breath, a name's start.)
+        rows[a][-1] = int(gap_to - gap_from >= 1.5 / FRAME_S and heard_letters(heard[gap_from:gap_to]) >= 3)
+    name = reader_audio(files, slug, divs[0], make=job["make"])
+    scores = np.array([r[8] for r in rows])
+    weak = int((scores < -2.0).sum())
+    div = f"{divs[0]}" if len(divs) == 1 else f"{divs[0]}–{divs[-1]}"
+    report = (f"== {slug} {div}: {len(rows)} units over {len(lp) * FRAME_S / 60:.0f} min "
+              f"({len(files)} file{'s' if len(files) > 1 else ''}), first at {rows[0][5]:.0f} s, "
+              f"last ends {rows[-1][6]:.0f} s; score median {np.median(scores):.2f}, "
+              f"{weak} below -2, {skipped} passed over"
+              + (f", {heard_names}/{sum(u[2] == -1 for u in units)} speakers heard" if any(u[2] == -1 for u in units) else "")
+              + f" · {time.time() - t0:.0f} s")
+    return {"slug": slug, "divs": divs, "rows": rows, "name": name, "credit": job["credit"],
+            "frames": len(lp), "report": report}
 
 if __name__ == "__main__":
     main()
