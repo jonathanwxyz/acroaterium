@@ -1208,7 +1208,7 @@ def main():
                 rows_tr += [(t["slug"], *row) for row in translation(spec, segs)]
             rows_tc.append((t["slug"], spec["lang"], spec.get("credit")))
         rows_t.append((t["slug"], t["title"], t.get("author"), t["category"], sort, form, cite, reader,
-                       t.get("credit"), t.get("notes_credit"), t.get("collection"), t.get("short")))
+                       t.get("credit"), t.get("notes_credit"), t.get("collection"), t.get("short"), int(bool(t.get("hidden")))))
         rows_d += [(t["slug"], n, label) for n, label in divs]
         rows_s += [(t["slug"], *s) for s in segs]
 
@@ -1235,7 +1235,8 @@ def main():
             credit   TEXT,
             notes_credit TEXT,           -- under the σχόλια panel
             collection TEXT,             -- listed with the other texts of this name (a Testament)
-            short    TEXT);              -- a short title, for narrow screens (Ματθ.)
+            short    TEXT,               -- a short title, for narrow screens (Ματθ.)
+            hidden   INTEGER NOT NULL DEFAULT 0);  -- 1: kept, and readable by link, but not listed
         CREATE TABLE divisions (
             text  TEXT NOT NULL REFERENCES texts,
             n     INTEGER NOT NULL,      -- book number (1 for an undivided work)
@@ -1317,7 +1318,7 @@ def main():
     con.executemany("INSERT INTO categories VALUES (?, ?)", [(c, i) for i, c in enumerate(categories)])
     if cat.get("lectionary"):
         con.execute("INSERT INTO settings VALUES ('lectionary', ?)", (json.dumps(cat["lectionary"], ensure_ascii=False),))
-    con.executemany("INSERT INTO texts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_t)
+    con.executemany("INSERT INTO texts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_t)
     con.executemany("INSERT INTO translations VALUES (?, ?, ?, ?, ?)", rows_tr)
     con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, ?, ?)", rows_tp)
     con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)", rows_tc)

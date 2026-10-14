@@ -143,10 +143,10 @@ function lectionaryEntry(l) {
   return work;
 }
 
-// A heading in capitals, as Greek is written in capitals: without its accents (and iota
-// subscript), keeping the breathings: Ἡ ἉΓΙΑ ΓΡΑΦΗ.
+// A heading in capitals, as Greek is written in capitals: without its accents, breathings
+// and iota subscript: Η ΑΓΙΑ ΓΡΑΦΗ.
 function capitals(text) {
-  return text.normalize("NFD").replace(/[\u0300\u0301\u0342\u0345]/g, "").normalize("NFC").toUpperCase();
+  return text.normalize("NFD").replace(/[\u0300\u0301\u0313\u0314\u0342\u0345]/g, "").normalize("NFC").toUpperCase();
 }
 
 function render(data) {

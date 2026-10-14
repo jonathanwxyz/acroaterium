@@ -87,8 +87,10 @@ SKIP_COST = -4.0            # per letter, to pass over a unit the recording does
 STRAY_GAP = 100             # frames (2 s): letters at either end of a unit (up to a quarter of
                             # it) this far from the rest are stray matches in the audio around it
                             # (a spoken title, a closing announcement), not counted in its time
-NAME_MAX = 1.6              # seconds: a speaker's name, said, takes less; an announced start
-                            # further back than this before the speech is a stray match
+NAME_MAX = 1.6              # seconds: a speaker's name, said, takes less, and the pause after
+NAME_GAP = 3.0              # it this; a name heard otherwise is a stray match
+NAME_LEAD = 0.25            # seconds: an announced speech starts this before the name is heard
+                            # (the model hears a letter a little after it begins to sound)
 WINDOW, KEEP = 30, 24       # units aligned per window / accepted from it
 SENTENCE_END = re.compile(r"(?<=[.;·;·!?])\s+")
 
@@ -565,10 +567,10 @@ def align_recording(job):
     # A speaker's name comes straight before the speech, nothing between.
     glued = {n for n, k in enumerate(keep) if units[k][2] == -1}
     spans = align(lp, [toks[k] for k in keep], glued)
-    rows, announced, skipped, heard_names, unheard = [], None, 0, 0, set()
+    rows, announced, skipped, heard_names, unheard, led = [], None, 0, 0, set(), set()
     for k, span in zip(keep, spans):
         if units[k][2] == -1:  # a speaker's name: the sentence after it starts with it
-            announced = span[0] if span else None
+            announced = span if span else None
             heard_names += bool(span)
             if not span:  # (said, likely, but not made out: room is kept for it, see below)
                 unheard.add((units[k][0], units[k][1]))
@@ -576,13 +578,19 @@ def align_recording(job):
         if not span:
             skipped += 1
             continue
-        start = max(announced, span[0] - NAME_MAX / FRAME_S) if announced is not None else span[0]
+        start = span[0]
+        if announced is not None and (announced[1] - announced[0] <= NAME_MAX / FRAME_S
+                                      and span[0] - announced[1] <= NAME_GAP / FRAME_S):
+            start = announced[0]
+            led.add(len(rows))
         announced = None
         rows.append([slug, *units[k], start * FRAME_S, span[1] * FRAME_S, span[2] * FRAME_S, span[3], 0])
     # A gap after a unit where the model hears letters (an announcement, a part's
     # LibriVox notice) is skipped at once; a quiet one is a pause, kept.
     order = sorted(range(len(rows)), key=lambda r: rows[r][5])
     for a, b in zip(order, order[1:] + [None]):
+        if b in led:  # (not into the last unit's speech)
+            rows[b][5] = max(rows[a][6] + 0.05, rows[b][5] - NAME_LEAD)
         if b is not None and rows[b][3] == 0 and (rows[b][1], rows[b][2]) in unheard:
             # A name surely said but not made out: the second before the speech is kept.
             rows[b][5] = max(rows[a][6] + 0.1, rows[b][5] - 1.0)

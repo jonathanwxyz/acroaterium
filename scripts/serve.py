@@ -149,7 +149,8 @@ def library_json():
         books.setdefault(text, []).append({"n": n, "label": label})
     texts, collections = {}, {}
     for slug, title, author, category, reader, collection in con.execute(
-            f"SELECT slug, title, author, category, reader, {collection_of(con)} FROM texts ORDER BY sort"):
+            f"SELECT slug, title, author, category, reader, {collection_of(con)} FROM texts"
+            f" WHERE {collection_of(con, 'hidden')} IS NOT 1 ORDER BY sort"):
         t = {"slug": slug, "title": title, "author": author, "reader": reader, "books": books.get(slug, [])}
         if collection:  # the texts of a collection (a Testament) go together, where its first one is
             if (category, collection) not in collections:
