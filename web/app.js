@@ -1219,24 +1219,71 @@ function fillRange(input) {
   const max = Number(input.max) || 1;
   input.style.setProperty("--pct", `${(Number(input.value) / max) * 100}%`);
 }
+// The timeline spans the whole file, or, where the recording reads more than is shown (a
+// chapter of a book of the Bible read through, a range of verses), only the verses shown:
+// a stretch of the file per run of consecutive verses, the stretches laid end to end.
+let spans = null;  // [[from, to], ...] in the file's seconds
+function setSpans() {
+  spans = null;
+  if (!(DATA?.clip || RANGE) || !verses.length) return;
+  spans = [];
+  for (const v of verses) {  // (in the order heard)
+    const run = spans.at(-1);
+    if (run && v.start - run[1] < 1) run[1] = Math.max(run[1], v.end);
+    else spans.push([v.start, v.end]);
+  }
+}
+const timelineLength = () => (spans ? spans.reduce((n, [a, b]) => n + b - a, 0) : audio.duration || 0);
+function toTimeline(t) {  // a time in the file -> a place on the timeline
+  if (!spans) return t;
+  let at = 0;
+  for (const [a, b] of spans) {
+    if (t < a) return at;
+    if (t <= b) return at + t - a;
+    at += b - a;
+  }
+  return at;
+}
+function fromTimeline(x) {  // and back
+  if (!spans) return x;
+  for (const [a, b] of spans) {
+    if (x <= b - a) return a + x;
+    x -= b - a;
+  }
+  return spans.at(-1)[1];
+}
+function setTimelineRange() {
+  setSpans();
+  seek.max = timelineLength();
+  timeTotal.textContent = fmtTime(timelineLength());
+  showTimeline(audio.currentTime);
+  showPositionState();
+}
+
 function showTimeline(t) {
-  if (!seeking) seek.value = t;
-  timeNow.textContent = fmtTime(seeking ? Number(seek.value) : t);
+  if (!seeking) seek.value = toTimeline(t);
+  timeNow.textContent = fmtTime(seeking ? Number(seek.value) : toTimeline(t));
   fillRange(seek);
 }
 
+// The lock screen's position bar, likewise.
+function showPositionState() {
+  if (!spans || !("mediaSession" in navigator) || !navigator.mediaSession.setPositionState) return;
+  try {
+    navigator.mediaSession.setPositionState({ duration: timelineLength(), playbackRate: audio.playbackRate,
+                                              position: Math.min(toTimeline(audio.currentTime), timelineLength()) });
+  } catch {}
+}
+for (const ev of ["play", "pause", "seeked", "ratechange"]) audio.addEventListener(ev, showPositionState);
+
 document.getElementById("play").addEventListener("click", togglePlay);
-audio.addEventListener("durationchange", () => {
-  seek.max = audio.duration || 0;
-  timeTotal.textContent = fmtTime(audio.duration);
-  showTimeline(audio.currentTime);
-});
+audio.addEventListener("durationchange", setTimelineRange);
 seek.addEventListener("input", () => { seeking = true; showTimeline(audio.currentTime); });
 seek.addEventListener("change", () => {
   seeking = false;
   clearHold();
   released = null;
-  audio.currentTime = Number(seek.value);
+  audio.currentTime = fromTimeline(Number(seek.value));
   lastUserScroll = 0;
   update();
 });
@@ -1487,7 +1534,7 @@ function setupMediaSession() {
     pause: () => { if (isPlaying()) togglePlay(); },
     previoustrack: stepBack,
     nexttrack: stepForward,
-    seekto: (d) => { clearHold(); audio.currentTime = d.seekTime; update(); },
+    seekto: (d) => { clearHold(); audio.currentTime = fromTimeline(d.seekTime); update(); },
   };
   for (const [action, handler] of Object.entries(actions)) {
     try { navigator.mediaSession.setActionHandler(action, handler); } catch {}  // not all are supported
@@ -1655,7 +1702,7 @@ for (let i = 0; i < 14; i++) {
 (window.bookRequest ?? fetch(API))
   .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
   .then((data) => (SELECTION ? select(data) : data))
-  .then((data) => { render(data); update(); restorePlace(); setupMediaSession(); loadMarks(); })
+  .then((data) => { render(data); setTimelineRange(); update(); restorePlace(); setupMediaSession(); loadMarks(); })
   .catch((err) => {
     list.classList.remove("loading");
     list.textContent = navigator.onLine === false || err instanceof TypeError

@@ -436,6 +436,9 @@ def text_json(slug, n):
                         + (["modern"] if modern else []),
             "notesCredit": notes_credit, "books": books if len(books) > 1 else [],
             "audio": f"/audio/{urllib.parse.quote(recording[0])}" if recording else None,
+            # The recording reads other books too (a book of the Bible, its chapters in one
+            # file): the reader's timeline spans this one's verses, not the whole file.
+            **({"clip": True} if recording and recording[2] > 1 else {}),
             "verses": verses, "translation": passages, "credits": credits}
 
 
@@ -445,14 +448,16 @@ def cut_of(con):
 
 
 def library_audio(slug, n):
-    """A library book's aligned recording, (file under recordings/, credit) or None, and
+    """A library book's aligned recording, (file under recordings/, credit, how many
+    books share the file) or None, and
     its timings: {seq: [(text, {start, speechEnd, end}), ...]} by sentence (one per line
     of verse)."""
     if not LIBRARY_AUDIO.exists():
         return None, {}
     con = sqlite3.connect(LIBRARY_AUDIO)
     try:
-        rec = con.execute("SELECT file, credit FROM recordings WHERE text = ? AND div = ?", (slug, n)).fetchone()
+        rec = con.execute("SELECT file, credit, (SELECT count(*) FROM recordings o WHERE o.file = r.file) "
+                          "FROM recordings r WHERE text = ? AND div = ?", (slug, n)).fetchone()
         if not rec or not (RECORDINGS / rec[0]).is_file():
             return None, {}
         timed = {}

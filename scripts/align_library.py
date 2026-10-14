@@ -54,6 +54,7 @@ Needs uroman (the text is romanized for the MMS aligner's vocabulary), numpy, ff
 the emissions come from make_emissions.py, no model is run here.
 """
 import argparse
+import difflib
 import json
 import os
 import re
@@ -170,8 +171,30 @@ def save_romanized(words):
     tmp.replace(ROMANIZED)
 
 
+# A number in Greek numerals is read out as its letters' names, in modern pronunciation
+# ("Κεφάλαιον ΙΣΤʹ": γιώτα σίγμα ταυ), unless what it says follows in brackets ("Κεφάλαιον
+# Δʹ (Τέταρτον)": only that is read).
+LETTER_NAMES = {"Α": "άλφα", "Β": "βήτα", "Γ": "γάμα", "Δ": "δέλτα", "Ε": "έψιλον", "Ϛ": "σίγμα ταυ",
+                "Ζ": "ζήτα", "Η": "ήτα", "Θ": "θήτα", "Ι": "γιώτα", "Κ": "κάπα", "Λ": "λάμδα", "Μ": "μι",
+                "Ν": "νι", "Ξ": "ξι", "Ο": "όμικρον", "Π": "πι", "Ϟ": "κόπα", "Ρ": "ρο", "Σ": "σίγμα",
+                "Τ": "ταυ", "Υ": "ύψιλον", "Φ": "φι", "Χ": "χι", "Ψ": "ψι", "Ω": "ωμέγα", "Ϡ": "σαμπί"}
+
+
+def spoken(text):
+    words = text.split()
+    out = []
+    for k, w in enumerate(words):
+        if "ʹ" in w:
+            if k + 1 < len(words) and words[k + 1].startswith("("):
+                continue
+            out += [LETTER_NAMES.get(c, "") for c in w if c != "ʹ"]
+        else:
+            out.append(w)
+    return " ".join(out)
+
+
 def tokens_of(text):
-    return [VOCAB[c] for c in romanize_letters(text)]
+    return [VOCAB[c] for c in romanize_letters(spoken(text))]
 
 
 # ------------------------------------------------------------------- alignment
@@ -568,7 +591,16 @@ def align_recording(job):
         gap_from = int(rows[a][6] / FRAME_S) + 5  # (a little past its last sound)
         gap_to = int(rows[b][5] / FRAME_S) if b is not None else len(lp)
         # (A short gap is a pause even if something's heard in it: a breath, a name's start.)
-        rows[a][-1] = int(gap_to - gap_from >= 1.5 / FRAME_S and heard_letters(heard[gap_from:gap_to]) >= 3)
+        speech = gap_to - gap_from >= 1.5 / FRAME_S and heard_letters(heard[gap_from:gap_to]) >= 3
+        if speech and b is not None:
+            # The next unit's own first words, said before a pause (a psalm's title, "Εἶπε δὲ
+            # Κύριος…"), and left out of it as strays: it starts with them, nothing's skipped.
+            said, frames = greedy_reading(heard[gap_from:gap_to])
+            ahead = "".join(romanize_letters(spoken(rows[b][4])))[:len(said) + 4]
+            if difflib.SequenceMatcher(None, said, ahead, autojunk=False).ratio() >= 0.6:
+                rows[b][5] = rows[a][7] = max(rows[a][6], (gap_from + frames[0] - 5) * FRAME_S)
+                speech = False
+        rows[a][-1] = int(speech)
     name = reader_audio(files, slug, divs[0], make=job["make"])
     scores = np.array([r[8] for r in rows])
     weak = int((scores < -2.0).sum())

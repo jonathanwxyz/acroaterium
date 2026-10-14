@@ -48,7 +48,8 @@ A text's "fixes" correct slips in its source: [{"ref": "17a", "find": "<as print
 "replace": "<as it should read>"}] (the text at that section; it must match once).
 A text's "heading" is a title read before the text ("Πλάτωνος Ἀπολογία Σωκράτους"), or a list of lines
 (the title, then a dialogue's characters): segments ..., -1, 0 of its first division,
-shown (and played) as a title.
+shown (and played) as a title. "chapter_heading" titles each division ("Κεφάλαιον {N}
+({nth})": Κεφάλαιον Δʹ (Τέταρτον)), segment 0, after the heading in the first.
 A text's "translations" (see translation()) add a translated verse under each verse:
 the World English Bible, Vamvas's modern Greek; or passages of several lines (Murray's Homer).
 Bible books are verse texts cited by verse ("cite": verse): every verse is numbered.
@@ -95,7 +96,43 @@ ILIAD_DB = ROOT / "data" / "iliad.sqlite"
 CACHE = ROOT / "data" / "raw" / "library"
 UA = {"User-Agent": "Mozilla/5.0 (scrolling-reader library builder; personal study tool)"}
 TEI = "{http://www.tei-c.org/ns/1.0}"
-GREEK_NUMERALS = " ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"
+GREEK_NUMERALS = " ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"  # (a work's books lettered Α–Ω, as Homer's)
+
+
+def greek_number(n):
+    """n in Greek numerals, with the keraia: 4 -> Δʹ, 16 -> ΙΣΤʹ (six as ΣΤ, as it's said:
+    σίγμα ταυ), 151 -> ΡΝΑʹ."""
+    hundreds, tens, units = " ΡΣΤΥΦΧΨΩϠ", " ΙΚΛΜΝΞΟΠϞ", [""] + list("ΑΒΓΔΕ") + ["ΣΤ"] + list("ΖΗΘ")
+    return (hundreds[n // 100 % 10] + tens[n // 10 % 10] + units[n % 10]).replace(" ", "") + "ʹ"
+
+
+# Ordinals, read out in a chapter's title ("Κεφάλαιον Δέκατον Ἕκτον"; a psalm's, masculine):
+# (stem, oxytone) for 1-9, 10-90, 100; 11 and 12 are words of their own.
+ORDINAL_UNITS = [None, ("πρῶτ", 0), ("δεύτερ", 0), ("τρίτ", 0), ("τέταρτ", 0), ("πέμπτ", 0), ("ἕκτ", 0),
+                 ("ἕβδομ", 0), ("ὄγδο", 0), ("ἔνατ", 0)]
+ORDINAL_TENS = [None, ("δέκατ", 0), ("εἰκοστ", 1), ("τριακοστ", 1), ("τεσσαρακοστ", 1), ("πεντηκοστ", 1),
+                ("ἑξηκοστ", 1), ("ἑβδομηκοστ", 1), ("ὀγδοηκοστ", 1), ("ἐνενηκοστ", 1)]
+
+
+def ordinal(n, ending="ον"):
+    """The ordinal of n, its words capitalised: 21 -> Εἰκοστὸν Πρῶτον (ending "ος": masculine)."""
+    parts = [("ἑκατοστ", 1)] if n // 100 == 1 else []
+    rest = n % 100
+    if rest in (11, 12):
+        parts.append(("ἑνδέκατ" if rest == 11 else "δωδέκατ", 0))
+    else:
+        if rest // 10:
+            parts.append(ORDINAL_TENS[rest // 10])
+        if rest % 10:
+            parts.append(ORDINAL_UNITS[rest % 10])
+    words = []
+    for k, (stem, oxytone) in enumerate(parts):
+        end = ending
+        if oxytone:  # its accent on the ending: grave before another word, acute last
+            end = ending[0] + ("\u0300" if k + 1 < len(parts) else "\u0301") + ending[1:]
+        w = unicodedata.normalize("NFC", stem + end)
+        words.append(w[0].upper() + w[1:])
+    return " ".join(words)
 PERSEUS_RAW = ROOT / "data" / "raw" / "perseus"
 PERSEUS_ARCHIVE_URL = "https://www.perseus.tufts.edu/hopper/opensource/downloads/texts/hopper-texts-GreekRoman.tar.gz"
 FIRST1K = "https://raw.githubusercontent.com/OpenGreekAndLatin/First1KGreek/master/data/{}/{}/{}.1st1K-grc1.xml"
@@ -1108,9 +1145,22 @@ def main():
                 sys.exit(f"{t['slug']}: fix at {fix['ref']} matches {len(hits)} segments")
             s = segs[hits[0]]
             segs[hits[0]] = (*s[:3], s[3].replace(fix["find"], fix["replace"], 1), *s[4:])
+        # A chapter's title, as the recording reads it before the chapter: segment 0 of each
+        # division, from "chapter_heading" ({N}: its number in Greek numerals, {nth}: as an
+        # ordinal, {nth_m}: masculine), or "chapter_headings" for one ({"13": "Σωσάννα"}, null: none).
+        titled = set()
+        if t.get("chapter_heading") or t.get("chapter_headings"):
+            own = t.get("chapter_headings", {})
+            for n, _ in divs:
+                title = own[str(n)] if str(n) in own else t.get("chapter_heading")
+                if title:
+                    segs.append((n, 0, "", title.format(N=greek_number(n), nth=ordinal(n), nth_m=ordinal(n, "ος")), None, 1))
+                    titled.add(n)
+            segs.sort(key=lambda s: (s[0], s[1]))
         if t.get("heading"):  # lines read before the text: segments ..., -1, 0 of its first division
             lines = [t["heading"]] if isinstance(t["heading"], str) else t["heading"]
-            segs = [(divs[0][0], k - len(lines) + 1, "", line, None, 1) for k, line in enumerate(lines)] + segs
+            last = -1 if divs[0][0] in titled else 0  # (before its first chapter's title)
+            segs = [(divs[0][0], last + k - len(lines) + 1, "", line, None, 1) for k, line in enumerate(lines)] + segs
         if t.get("label"):
             divs = [(n, t["label"].format(n=n, N=GREEK_NUMERALS[n] if n < len(GREEK_NUMERALS) else n))
                     for n, _ in divs]
