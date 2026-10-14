@@ -36,6 +36,11 @@ Sources (downloads are cached in data/raw/library/):
               after the Byzantine text; chapters are the divisions, a verse per segment
   swete       a book of the Septuagint ("books": [Swete's abbreviations, Gen, Dat, ...],
               see swete()): Swete's text as transcribed in LXX-Swete-1930; likewise
+A text's "fixes" correct slips in its source: [{"ref": "17a", "find": "<as printed>",
+"replace": "<as it should read>"}] (the text at that section; it must match once).
+A text's "heading" is a title read before the text ("Πλάτωνος Ἀπολογία Σωκράτους"), or a list of lines
+(the title, then a dialogue's characters): segments ..., -1, 0 of its first division,
+shown (and played) as a title.
 A text's "translations" (see translation()) add a translated verse under each verse:
 the World English Bible, Vamvas's modern Greek.
 Bible books are verse texts cited by verse ("cite": verse): every verse is numbered.
@@ -775,6 +780,15 @@ def main():
                 form, cite, divs, segs = swete(src, args.v)
             else:
                 sys.exit(f"{t['slug']}: unknown source type {src['type']!r}")
+        for fix in t.get("fixes", []):  # a slip in the source: {"ref": "17a", "find": ..., "replace": ...}
+            hits = [k for k, s in enumerate(segs) if s[2] == fix["ref"] and fix["find"] in s[3]]
+            if len(hits) != 1:
+                sys.exit(f"{t['slug']}: fix at {fix['ref']} matches {len(hits)} segments")
+            s = segs[hits[0]]
+            segs[hits[0]] = (*s[:3], s[3].replace(fix["find"], fix["replace"], 1), *s[4:])
+        if t.get("heading"):  # lines read before the text: segments ..., -1, 0 of its first division
+            lines = [t["heading"]] if isinstance(t["heading"], str) else t["heading"]
+            segs = [(divs[0][0], k - len(lines) + 1, "", line, None, 1) for k, line in enumerate(lines)] + segs
         if t.get("label"):
             divs = [(n, t["label"].format(n=n, N=GREEK_NUMERALS[n] if n < len(GREEK_NUMERALS) else n))
                     for n, _ in divs]

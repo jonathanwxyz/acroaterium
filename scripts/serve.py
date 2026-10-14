@@ -262,6 +262,11 @@ def text_json(slug, n):
             "verses": verses, "translation": [], "credits": credits}
 
 
+def cut_of(con):
+    """SQL for units.cut, or 0 in timings made before there was one."""
+    return "cut" if "cut" in {r[1] for r in con.execute("PRAGMA table_info(units)")} else "0"
+
+
 def library_audio(slug, n):
     """A library book's aligned recording, (file under recordings/, credit) or None, and
     its timings: {seq: [(text, {start, speechEnd, end}), ...]} by sentence (one per line
@@ -274,11 +279,12 @@ def library_audio(slug, n):
         if not rec or not (RECORDINGS / rec[0]).is_file():
             return None, {}
         timed = {}
-        for seq, content, start, speech_end, end in con.execute(
-                "SELECT seq, content, start, speech_end, end FROM units WHERE text = ? AND div = ? "
+        for seq, content, start, speech_end, end, cut in con.execute(
+                f"SELECT seq, content, start, speech_end, end, {cut_of(con)} FROM units WHERE text = ? AND div = ? "
                 "ORDER BY seq, piece", (slug, n)):
             timed.setdefault(seq, []).append(
-                (content, {"start": round(start, 2), "speechEnd": round(speech_end, 2), "end": round(end, 2)}))
+                (content, {"start": round(start, 2), "speechEnd": round(speech_end, 2), "end": round(end, 2),
+                           **({"cut": True} if cut else {})}))
         return rec, timed
     finally:
         con.close()

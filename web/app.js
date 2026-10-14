@@ -131,7 +131,7 @@ function renderVerse(data, has) {
   const frag = document.createDocumentFragment();
   for (const v of data.verses) {
     const li = document.createElement("li");
-    li.className = "verse" + (v.line === 0 ? " title" : "") + (v.start == null ? " untimed" : "");
+    li.className = "verse" + (v.line <= 0 ? " title" : "") + (v.start == null ? " untimed" : "");
     const ref = v.ref ?? String(v.line);
     const num = document.createElement("span");
     // Every verse of the Bible is numbered; lines of poetry, every fifth.
@@ -164,7 +164,7 @@ function renderVerse(data, has) {
     }
     li.append(num, text);
     if (v.line > 0) li.dataset.ref = ref;
-    setNoteKey(li, v.line, v.line, v.line === 0 ? "" : data.books.length > 1 ? `${BOOK}.${ref}` : ref);
+    setNoteKey(li, v.line, v.line, v.line <= 0 ? "" : data.books.length > 1 ? `${BOOK}.${ref}` : ref);
     if (v.scholia) li.append(scholiaButton(li, `line ${ref}`, v.scholia));
     if (v.paraphrase) {
       const para = document.createElement("span");
@@ -233,7 +233,7 @@ function renderProse(data) {
     const opens = v.para || !text;
     if (opens) {
       close();
-      li = el("li", "verse prose-para untimed");
+      li = el("li", "verse prose-para untimed" + (v.line <= 0 ? " title" : ""));  // (lines 0, -1…: a heading read first)
       li.dataset.from = v.line;
       num = el("span", "num");
       text = el("span", "text");
@@ -261,7 +261,7 @@ function renderProse(data) {
         if (k) seg.append(" ");
         const sent = el("span", "sent", part.text);
         const entry = { line: v.line, ref: lastRef, start: part.start, speechEnd: part.speechEnd, end: part.end,
-                        el: sent, row: li };
+                        cut: part.cut, el: sent, row: li };
         entryOf.set(sent, entry);
         sent.addEventListener("click", (e) => {
           if (e.target.closest(".w")) return;
@@ -447,7 +447,7 @@ function update() {
     const v = verses[i];
     v.el.classList.toggle("pausing", t >= v.speechEnd);
     const r = v.ref ?? v.line;
-    showPosition((v.line === 0 ? "title" : DATA.books.length > 1 ? `${BOOK}.${r}` : r) + (heldBy === v ? " · held" : ""));
+    showPosition((v.line <= 0 ? "title" : DATA.books.length > 1 ? `${BOOK}.${r}` : r) + (heldBy === v ? " · held" : ""));
   } else {
     showPosition(verses.length ? "—" : "");  // no recording: the box is just for jumping
   }
@@ -482,14 +482,22 @@ function togglePlay() {
 
 // Long silences (paragraph breaks, the lead-in of a recording) are cut short: once the
 // pause after a verse has lasted GAP_KEEP, playback jumps to LEAD_IN before the next verse.
+// A gap that isn't silence but speech outside the text (a verse marked cut: "part 1 of 3",
+// a LibriVox notice) goes at once; after the last verse, playback stops there.
 const GAP_KEEP = 0.9;  // seconds of silence kept after a verse
 const LEAD_IN = 0.35;  // seconds of silence kept before the next verse
+const CUT_KEEP = 0.1;  // seconds kept after a verse before an announcement…
+const CUT_LEAD = 0.2;  // …and before the verse after it
 function skipSilence(i, t) {
   if (audio.paused || !verses.length) return;
-  const next = verses[i + 1];
-  if (!next) return;
-  const quietSince = i >= 0 ? verses[i].speechEnd : 0;
-  if (t > quietSince + GAP_KEEP && next.start - t > LEAD_IN + 0.15) audio.currentTime = next.start - LEAD_IN;
+  const v = i >= 0 ? verses[i] : null, next = verses[i + 1];
+  if (!next) {
+    if (v?.cut && !DATA?.next && t > v.speechEnd + CUT_KEEP) audio.pause();
+    return;
+  }
+  const keep = v?.cut ? CUT_KEEP : GAP_KEEP, lead = v?.cut ? CUT_LEAD : LEAD_IN;
+  const quietSince = v ? v.speechEnd : 0;
+  if (t > quietSince + keep && next.start - t > lead + 0.05) audio.currentTime = next.start - lead;
 }
 
 // Jumping keeps the play state by default: a paused reader stays paused on the new verse.
