@@ -27,6 +27,10 @@ Routes:
   /api/scholia/<b>/<l>   JSON: the ancient scholia on verse b.l, grouped by manuscript, and
                          the English commentaries (Leaf, Seymour, Benner)
   /audio/<path>        a file under recordings/ (subfolders too), with HTTP Range support for seeking
+  /api/offline/<slug>/<n>  JSON: what to save to read and hear part of a text offline,
+                       a recording at a time (n: the first book it's for): those books' API
+                       URLs ("pages") and the recording ("audio": [{url, size}]); /api/library
+                       lists each text's ("downloads": [{n, size}])
   /api/lectionary/<YYYY-MM-DD>  JSON: that day's readings in the Orthodox lectionary
                        (the Ecumenical Patriarchate's, as the Greek Orthodox Archdiocese of
                        America's online chapel gives them), each a link to the passage in
@@ -148,10 +152,13 @@ def library_json():
     for text, n, label in con.execute("SELECT text, n, label FROM divisions ORDER BY text, n"):
         books.setdefault(text, []).append({"n": n, "label": label})
     texts, collections = {}, {}
+    downloads = downloads_of()
     for slug, title, author, category, reader, collection in con.execute(
             f"SELECT slug, title, author, category, reader, {collection_of(con)} FROM texts"
             f" WHERE {collection_of(con, 'hidden')} IS NOT 1 ORDER BY sort"):
         t = {"slug": slug, "title": title, "author": author, "reader": reader, "books": books.get(slug, [])}
+        if slug in downloads:
+            t["downloads"] = [{"n": i["n"], "size": i["size"]} for i in downloads[slug]]
         if collection:  # the texts of a collection (a Testament) go together, where its first one is
             if (category, collection) not in collections:
                 collections[category, collection] = {"collection": collection, "title": collection, "texts": []}
@@ -165,6 +172,57 @@ def library_json():
     con.close()
     return {"categories": cats,
             **({"lectionary": {k: lectionary.get(k) for k in ("category", "title")}} if lectionary else {})}
+
+
+def downloads_of(slug=None):
+    """{slug: [{"n", "divs", "file", "size"}, ...]}: what each text can be downloaded in, a
+    recording at a time with the books it's for (a book of the Iliad or Odyssey; a Bible
+    book's chapters, which share one), in book order; recordings that are there."""
+    rows = []  # (text, div, file)
+    if LIBRARY_AUDIO.exists():
+        con = sqlite3.connect(LIBRARY_AUDIO)
+        rows += con.execute("SELECT text, div, file FROM recordings WHERE ? IS NULL OR text = ? "
+                            "ORDER BY text, div", (slug, slug)).fetchall()
+        con.close()
+    if DB.exists() and slug in (None, "iliad"):
+        con = sqlite3.connect(DB)  # the Iliad: a recording per book, as book_json picks it
+        for (book,) in con.execute("SELECT DISTINCT book FROM verse_timings WHERE model = ? ORDER BY book",
+                                   (MODEL,)).fetchall():
+            rec = con.execute("SELECT recording FROM verse_timings WHERE book = ? AND model = ? "
+                              "GROUP BY recording ORDER BY recording LIKE '%.m4a' DESC LIMIT 1",
+                              (book, MODEL)).fetchone()
+            rows.append(("iliad", book, rec[0]))
+        con.close()
+    out, sizes = {}, {}
+    for text, div, file in rows:
+        if file not in sizes:
+            sizes[file] = (RECORDINGS / file).stat().st_size if (RECORDINGS / file).is_file() else None
+        if sizes[file] is None:
+            continue
+        items = out.setdefault(text, [])
+        item = next((i for i in items if i["file"] == file), None)
+        if item:
+            item["divs"].append(div)
+        else:
+            items.append({"n": div, "divs": [div], "file": file, "size": sizes[file]})
+    return out
+
+
+def offline_json(slug, n):
+    """What a text's download n (named by its first book) needs offline: its books (the
+    reader's API for each) and its recording."""
+    if not LIBRARY.exists():
+        return None
+    con = sqlite3.connect(LIBRARY)
+    row = con.execute("SELECT reader FROM texts WHERE slug = ?", (slug,)).fetchone()
+    con.close()
+    item = next((i for i in downloads_of(slug).get(slug, []) if i["n"] == n), None)
+    if not row or not item:
+        return None
+    page = (lambda d: f"/api/book/{d}") if row[0] == "iliad" else (lambda d: f"/api/text/{urllib.parse.quote(slug)}/{d}")
+    return {"slug": slug, "n": n, "pages": [page(d) for d in item["divs"]],
+            "audio": [{"url": f"/audio/{urllib.parse.quote(item['file'])}", "size": item["size"]}],
+            "size": item["size"]}
 
 
 # The day's readings: the Greek Orthodox Archdiocese of America's online chapel gives
@@ -819,6 +877,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(word_json(*map(int, m.groups())))
         elif m := re.fullmatch(r"/api/scholia/(\d+)/(\d+)", self.path):
             self.send_json(scholia_json(*map(int, m.groups())))
+        elif m := re.fullmatch(r"/api/offline/([\w-]+)/(\d+)", self.path):
+            self.send_json(offline_json(m[1], int(m[2])))
         elif m := re.fullmatch(r"/api/lectionary/(\d{4}-\d\d-\d\d)", self.path):
             self.send_json(lectionary_json(m[1]))
         elif self.path == "/api/bookmarks":

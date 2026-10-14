@@ -66,8 +66,12 @@ Needs Python 3 (standard library only) and, for the audio, ffmpeg.
 ### As an app on a phone
 
 The reader is an installable web app: "Install" or "Add to Home Screen" in the browser
-gives it its own icon and window, and books already opened stay readable offline (the
-audio still needs the server). Run the server with `--host 0.0.0.0` so the phone can
+gives it its own icon and window, and books already opened stay readable offline. A
+text with a recording can be downloaded from the library (the button at the end of its
+row; the Iliad and Odyssey book by book, and a work's or a Testament's row queues all its
+books): its books and recordings are kept on the device, to read and hear without the
+server, and survive updates to the app. On an iPhone or iPad, open the reader from the
+Home Screen to keep them: Safari clears a site's data after a week unused. Run the server with `--host 0.0.0.0` so the phone can
 reach it. Phones only install, and only work offline, over HTTPS (plain `localhost` is
 the exception), so put it behind an HTTPS proxy, e.g. `tailscale serve 8000` or Caddy.
 

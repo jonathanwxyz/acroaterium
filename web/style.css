@@ -1179,6 +1179,14 @@ body.prose-text .toggle:has(#focused) { display: none; }
   font-size: 0.8em;
 }
 .library .book-list[hidden], .library .member-list[hidden] { display: none; }
+/* Books named by a shared word and a letter (Ῥαψῳδία Α): the word once, above them. */
+.library .book-list.short { grid-template-columns: repeat(auto-fill, minmax(6.4rem, 1fr)); }
+.library .book-list .book-list-name {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.95em;
+  margin-bottom: 0.1rem;
+}
 .library .book-list a {
   display: block;
   padding: 0.2rem 0.55rem;
@@ -1237,6 +1245,42 @@ body.prose-text .toggle:has(#focused) { display: none; }
 }
 @media (hover: hover) { .library .chapters a:hover { color: var(--text); border-color: var(--current-bar); } }
 .library .chapters a[aria-current="true"] { color: var(--current-bar); border-color: var(--current-bar); }
+
+/* A text's download button, at the end of its row: the size, the progress (filling in
+   while it runs), then a tick. */
+.work-line, .member-line { display: flex; align-items: center; gap: 0.5rem; }
+.work-line > :first-child, .member-line > :first-child { flex: 1; min-width: 0; }
+.member-line > .download { margin-right: 0.6rem; }
+/* A book's own download, beside its link in the grid: just the icon (or progress). */
+.library .book-list li { display: flex; align-items: center; gap: 0.25rem; }
+.library .book-list li > a { flex: 1; min-width: 0; }
+.download.compact { min-width: 2.1rem; padding: 0.1rem 0.2rem; font-size: 11px; }
+.download {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 5.4rem;  /* (all one width, so the chevrons before them line up) */
+  min-height: 1.6rem;
+  padding: 0.1rem 0.5rem;
+  font: 12px system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.download[data-state="running"], .download[data-state="queued"] {
+  color: var(--text);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--current-bar) 22%, transparent) var(--done, 0%), transparent var(--done, 0%));
+}
+.download[data-state="done"] { color: var(--current-bar); border-color: transparent; }
+@media (hover: hover) { .download:hover { color: var(--text); border-color: var(--current-bar); } }
+#downloads { text-align: center; color: var(--muted); font: 12px system-ui, sans-serif; margin: -1rem 0 1.5rem; }
+#downloads[hidden] { display: none; }
 
 /* Bookmarks, at the top of the library. */
 #bookmarks[hidden] { display: none; }
