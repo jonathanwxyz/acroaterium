@@ -9,6 +9,8 @@
 numpy
 transformers
 uroman
+# scripts/align_library.py: compiles its alignment loop (optional: runs without, slower)
+numba
 # scripts/make_emissions.py --links (YouTube downloads); yt-dlp also wants a JavaScript
 # runtime such as deno installed for YouTube
 yt-dlp

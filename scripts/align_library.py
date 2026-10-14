@@ -125,13 +125,49 @@ def units_of(con, slug, div, form, speakers=None):
 _uroman = None
 
 
-def romanize_letters(text):
+def romanize_word(word):
     global _uroman
     if _uroman is None:
         import uroman
         _uroman = uroman.Uroman()
-    roman = _uroman.romanize_string(text, lcode="ell").lower()
-    return [c for c in roman if c in VOCAB and c != "'"]
+    roman = _uroman.romanize_string(word, lcode="ell").lower()
+    return "".join(c for c in roman if c in VOCAB and c != "'")
+
+
+# uroman is slow and the words recur: each is romanized once (word by word gives the same
+# letters as a whole line), and kept between runs in data/raw/romanized.json.
+ROMANIZED = ROOT / "data" / "raw" / "romanized.json"
+_romanized, _new_words = None, {}
+
+
+def romanize_letters(text):
+    global _romanized
+    if _romanized is None:
+        try:
+            _romanized = json.loads(ROMANIZED.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _romanized = {}
+    letters = []
+    for w in text.split():
+        if w not in _romanized:
+            _romanized[w] = _new_words[w] = romanize_word(w)
+        letters += _romanized[w]
+    return letters
+
+
+def save_romanized(words):
+    """Add words romanized in this run (by every worker) to the file kept between runs."""
+    if not words:
+        return
+    try:
+        kept = json.loads(ROMANIZED.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        kept = {}
+    kept.update(words)
+    ROMANIZED.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ROMANIZED.with_suffix(".tmp")
+    tmp.write_text(json.dumps(kept, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(ROMANIZED)
 
 
 def tokens_of(text):
@@ -168,29 +204,11 @@ def ctc_align(lp, units, glued=frozenset()):
     bounds = np.cumsum([0] + [len(u) for u in units])
     B = 2 * bounds  # the blank (boundary) state before each unit, and the final one
     pass_over = SKIP_COST * np.diff(bounds)
-    NEG = -1e30
-    alpha = np.full(S, NEG)
-    alpha[0], alpha[1] = ext[0, labels[0]], ext[0, labels[1]]
-    back = np.zeros((T, S), np.int8)
-    for t in range(1, T):
-        step = np.concatenate(([NEG], alpha[:-1]))
-        jump = np.where(skip, np.concatenate(([NEG, NEG], alpha[:-2])), NEG)
-        over = np.full(S, NEG)
-        over[B[1:]] = alpha[B[:-1]] + pass_over  # from before a unit to after it
-        best = np.maximum(np.maximum(alpha, step), np.maximum(jump, over))
-        back[t] = np.where(best == alpha, 0, np.where(best == step, 1, np.where(best == jump, 2, 3)))
-        alpha = best + ext[t, labels]
-    s = S - 1 if alpha[S - 1] >= alpha[S - 2] else S - 2
-    first, last = np.zeros(L, int), np.full(L, -1)
-    before = {int(b): int(a) for a, b in zip(B[:-1], B[1:])}  # boundary after a unit -> before it
-    score = np.zeros(T)
-    for t in range(T - 1, -1, -1):
-        score[t] = ext[t, labels[s]]
-        if s % 2:
-            first[s // 2] = t
-            if last[s // 2] < 0:
-                last[s // 2] = t
-        s = before[s] if back[t, s] == 3 else s - int(back[t, s])
+    over_from = np.full(S, -1, np.int64)  # the boundary after a unit: from the one before it
+    over_cost = np.zeros(S)
+    over_from[B[1:]] = B[:-1]
+    over_cost[B[1:]] = pass_over
+    first, last, score = viterbi(np.ascontiguousarray(ext), labels.astype(np.int64), skip, over_from, over_cost)
     spans = []
     for k in range(len(units)):
         a, b = bounds[k], bounds[k + 1] - 1
@@ -210,6 +228,50 @@ def ctc_align(lp, units, glued=frozenset()):
                 b = j - 1
         spans.append((first[a], last[b] + 1))
     return spans, score
+
+
+def viterbi_py(ext, labels, skip, over_from, over_cost):
+    """The CTC Viterbi pass and its backtrace: per token its first and last frame (-1 if
+    passed over), and the path's score per frame. Moves into a state: stay, step from the
+    one before, jump a blank between different tokens, or pass over a unit (over_from);
+    ties go in that order. (Compiled by numba where it's installed: viterbi.)"""
+    T, S = len(ext), len(labels)
+    NEG = -1e30
+    alpha = np.full(S, NEG)
+    alpha[0], alpha[1] = ext[0, labels[0]], ext[0, labels[1]]
+    back = np.zeros((T, S), np.int8)
+    for t in range(1, T):
+        prev = alpha.copy()
+        for s in range(S):
+            best, move = prev[s], 0
+            if s >= 1 and prev[s - 1] > best:
+                best, move = prev[s - 1], 1
+            if skip[s] and prev[s - 2] > best:
+                best, move = prev[s - 2], 2
+            if over_from[s] >= 0 and prev[over_from[s]] + over_cost[s] > best:
+                best, move = prev[over_from[s]] + over_cost[s], 3
+            back[t, s] = move
+            alpha[s] = best + ext[t, labels[s]]
+    L = (S - 1) // 2
+    first, last = np.zeros(L, np.int64), np.full(L, -1, np.int64)
+    score = np.zeros(T)
+    s = S - 1 if alpha[S - 1] >= alpha[S - 2] else S - 2
+    for t in range(T - 1, -1, -1):
+        score[t] = ext[t, labels[s]]
+        if s % 2:
+            first[s // 2] = t
+            if last[s // 2] < 0:
+                last[s // 2] = t
+        move = back[t, s]
+        s = over_from[s] if move == 3 else s - move
+    return first, last, score
+
+
+try:  # compiled, the loop runs many times faster; the same results either way
+    from numba import njit
+    viterbi = njit(cache=True)(viterbi_py)
+except ImportError:
+    viterbi = viterbi_py
 
 
 def heard_letters(lp):
@@ -453,6 +515,7 @@ def main():
         out.executemany("INSERT INTO units (text, div, seq, piece, content, start, speech_end, end, score, cut) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", r["rows"])
         out.commit()
+        save_romanized(r["words"])
         log(r["report"])
 
 
@@ -516,8 +579,10 @@ def align_recording(job):
               f"{weak} below -2, {skipped} passed over"
               + (f", {heard_names}/{sum(u[2] == -1 for u in units)} speakers heard" if any(u[2] == -1 for u in units) else "")
               + f" · {time.time() - t0:.0f} s")
+    new_words = dict(_new_words)
+    _new_words.clear()
     return {"slug": slug, "divs": divs, "rows": rows, "name": name, "credit": job["credit"],
-            "frames": len(lp), "report": report}
+            "frames": len(lp), "report": report, "words": new_words}
 
 if __name__ == "__main__":
     main()
