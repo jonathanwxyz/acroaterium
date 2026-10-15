@@ -190,6 +190,8 @@ def spoken(text):
             if k + 1 < len(words) and words[k + 1].startswith("("):
                 continue
             out += [LETTER_NAMES.get(c, "") for c in w if c != "ʹ"]
+        elif (bare := w.strip(".,·;:")) in LETTER_NAMES:  # a letter alone, a book of Homer's: Ῥαψῳδία Β.
+            out.append(LETTER_NAMES[bare])
         else:
             out.append(w)
     return " ".join(out)
