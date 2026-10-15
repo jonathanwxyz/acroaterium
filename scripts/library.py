@@ -545,6 +545,9 @@ def gap_rows(div, mine, theirs):
 # "credit": ...}, each a verse for each verse of the text, by chapter and verse:
 #   web     the World English Bible (public domain), eBible.org's verse-per-line edition
 #           ("book": MAT, MAR, ...)
+#   brenton  L. C. L. Brenton's English Septuagint (1851, public domain), eBible.org's
+#           verse-per-line edition ("book": GEN, 1SA (1 Kingdoms), 1KI (3 Kingdoms), DNG,
+#           ...), numbered as the Septuagint (the Psalms, Jeremiah's order), see translation()
 #   vamvas  Neophytos Vamvas's modern Greek (1850, public domain), CrossWire's GreVamvas as
 #           scrollmapper/bible_databases has it in CSV, in monotonic spelling ("book":
 #           Matthew, I Corinthians, ...)
@@ -555,24 +558,35 @@ def gap_rows(div, mine, theirs):
 #           under each line ("ebooks": [the volumes' numbers]), see translation_lines()
 # The reader shows English under the "translation" switch, modern Greek under "μετάφραση".
 WEB_ZIP = "https://ebible.org/Scriptures/engwebp_vpl.zip"
+BRENTON_ZIP = "https://ebible.org/Scriptures/eng-Brenton_vpl.zip"
 VAMVAS = "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/formats/csv/GreVamvas.csv"
-_web = _vamvas = None
+_vpl = {}
+_vamvas = None
+
+
+def vpl_verses(url, name):
+    """{(book, chapter, verse): text} of an eBible.org verse-per-line edition (zipped)."""
+    if name not in _vpl:
+        path = CACHE / "web" / f"{name}.zip"
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA)) as r:
+                path.write_bytes(r.read())
+        with zipfile.ZipFile(path) as z:
+            text = z.read(f"{name}.txt").decode("utf-8")
+        _vpl[name] = {(m[1], int(m[2]), int(m[3])): m[4].strip()
+                      for m in re.finditer(r"^(\w+) (\d+):(\d+) (.*)$", text, re.M)}
+    return _vpl[name]
 
 
 def web_verses():
     """{(book, chapter, verse): English} of the World English Bible."""
-    global _web
-    if _web is None:
-        path = CACHE / "web" / "engwebp_vpl.zip"
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with urllib.request.urlopen(urllib.request.Request(WEB_ZIP, headers=UA)) as r:
-                path.write_bytes(r.read())
-        with zipfile.ZipFile(path) as z:
-            text = z.read("engwebp_vpl.txt").decode("utf-8")
-        _web = {(m[1], int(m[2]), int(m[3])): m[4].strip()
-                for m in re.finditer(r"^(\w+) (\d+):(\d+) (.*)$", text, re.M)}
-    return _web
+    return vpl_verses(WEB_ZIP, "engwebp_vpl")
+
+
+def brenton_verses():
+    """{(book, chapter, verse): English} of Brenton's Septuagint."""
+    return vpl_verses(BRENTON_ZIP, "eng-Brenton_vpl")
 
 
 def vamvas_verses():
@@ -585,20 +599,50 @@ def vamvas_verses():
 
 
 def translation(spec, segments):
-    """(div, seq, language, text) for the segments a translation has (by chapter and verse)."""
-    verses = {"web": web_verses, "vamvas": vamvas_verses}.get(spec["type"])
+    """(div, seq, language, text) for the segments a translation has, by chapter and verse:
+    a verse "12" of chapter 3 is the translation's 3:12; one numbered for another chapter
+    ("30:15", Rahlfs's Proverbs), that chapter's; an addition ("1a") only where its chapter
+    has no plain verse of that number (Esther's first: its translation's 1:1 holds it).
+    The spec may say otherwise:
+      "moved": {"14:24": "16:25", "30:15-33": "24:35"}: verses the translation numbers
+        otherwise, one or a run (Vamvas puts the end of Romans at 16:25-27; Brenton's
+        Proverbs runs on in chapter 24 through what Rahlfs numbers 30:15-33 and 31:1-9);
+      "chapters": {"13": ["SUS", 1]}: a chapter the translation has as a book of its own
+        (Brenton's Susanna and Bel, Daniel's 13 and 14 here);
+      "refs": {"1:πρ. 1": "1:1", "1:1": null}: a verse of ours ("div:ref") read at another
+        place of the translation's, or at none (Brenton's Sirach: the prologue as 1:1)."""
+    verses = {"web": web_verses, "vamvas": vamvas_verses, "brenton": brenton_verses}.get(spec["type"])
     if not verses:
         sys.exit(f"unknown translation type {spec['type']!r}")
     verses = verses()
-    # "moved": {"14:24": "16:25"}: verses the translation numbers otherwise (Vamvas puts the
-    # end of Romans at 16:25-27, the Patriarchal text after chapter 14).
-    moved = {tuple(map(int, a.split(":"))): tuple(map(int, b.split(":"))) for a, b in spec.get("moved", {}).items()}
+    moved = {}
+    for a, b in spec.get("moved", {}).items():
+        (ca, va), (cb, vb) = a.split(":"), map(int, b.split(":"))
+        first, _, last = va.partition("-")
+        for k in range(int(last or first) - int(first) + 1):
+            moved[(int(ca), int(first) + k)] = (cb, vb + k)
+    chapters = {int(c): tuple(b) for c, b in spec.get("chapters", {}).items()}
+    refs = spec.get("refs", {})
+    plain = {(div, ref) for div, _, ref, *_ in segments}
     out = []
     for div, seq, ref, *_ in segments:
-        if ref.isdigit():
-            c, v = moved.get((div, int(ref)), (div, int(ref)))
-            if text := verses.get((spec["book"], c, v)):  # (WEB lists the verses it omits, empty)
-                out.append((div, seq, spec["lang"], text))
+        if f"{div}:{ref}" in refs:
+            target = refs[f"{div}:{ref}"]
+            if target is None:
+                continue
+            c, v = map(int, target.split(":"))
+        elif m := re.fullmatch(r"(\d+):(\d+)", ref):
+            c, v = int(m[1]), int(m[2])
+        elif ref.isdigit():
+            c, v = div, int(ref)
+        elif (m := re.fullmatch(r"(\d+)a", ref)) and (div, m[1]) not in plain:
+            c, v = div, int(m[1])
+        else:
+            continue
+        c, v = moved.get((c, v), (c, v))
+        book, c = chapters.get(c, (spec["book"], c))
+        if text := verses.get((book, c, v)):  # (WEB lists the verses it omits, empty)
+            out.append((div, seq, spec["lang"], text))
     return out
 
 

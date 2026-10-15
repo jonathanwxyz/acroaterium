@@ -502,7 +502,9 @@ main {
 }
 @media (hover: hover) { .size-step:hover:not(:disabled) { color: var(--text); border-color: var(--current-bar); } }
 .size-step:disabled { opacity: 0.35; cursor: default; }
-.credits { text-align: center; margin-bottom: 1rem; }
+/* The text's sources and the recording's, after the text. */
+.credits { text-align: center; margin: 2.5rem 0 0; padding-top: 0.8rem; border-top: 1px solid color-mix(in srgb, var(--rule) 70%, transparent); }
+.credits:empty { display: none; }
 
 #verses { list-style: none; margin: 0; padding: 0; }
 /* A book is hundreds of verses (thousands of words): the browser lays out and draws only

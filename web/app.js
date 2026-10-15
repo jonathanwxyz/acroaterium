@@ -167,7 +167,7 @@ function applyRange(data) {
   const whole = el("a", null, verse ? "whole chapter" : "whole book");
   whole.href = readerHref(TEXT, BOOK);
   note.append(whole);
-  document.getElementById("credits").before(note);
+  document.getElementById("verses").before(note);
 }
 
 // A selection: its pieces' verses, from as many chapters as they reach (the chapters of a
@@ -217,7 +217,7 @@ async function select(data) {
   const whole = el("a", null, "whole chapter");
   whole.href = readerHref(TEXT, BOOK);
   note.append(whole);
-  document.getElementById("credits").before(note);
+  document.getElementById("verses").before(note);
   return data;
 }
 
