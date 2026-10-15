@@ -120,7 +120,7 @@ function render(data) {
   if (data.cite === "section") position.title = `Type a section (e.g. ${first}) and press Enter`;
 }
 
-// The book's download (offline.js), at the end of the media bar's options: this book of
+// The book's download (offline.js), in the top bar beside the bookmark: this book of
 // the Iliad or Odyssey, the whole book a chapter of the Bible is in (they share a
 // recording), or the dialogue; as the library shows it, and with the same control.
 function showDownloadButton(data, bookLabel) {
@@ -129,7 +129,7 @@ function showDownloadButton(data, bookLabel) {
   const d = data.download;
   const name = !d ? "" : d.books > 1 ? `${data.title} (all ${d.books} chapters)`
     : bookLabel ? `${data.title} ${longLabel(bookLabel, data.book)}` : data.title;
-  const b = d && downloadButton([[`${data.text}/${d.n}`, d.size]], name, { labelled: true });
+  const b = d && downloadButton([[`${data.text}/${d.n}`, d.size]], name, { compact: true });
   slot.replaceChildren(...(b ? [b] : []));
   slot.hidden = !b;
   for (let i = downloadButtons.length; i--;) if (!downloadButtons[i].b.isConnected) downloadButtons.splice(i, 1);
@@ -1126,6 +1126,21 @@ holdOnHover.addEventListener("change", () => {
   if (!holdOnHover.checked) { clearHold(); update(); }
 });
 
+// Playback speed, remembered per browser (the pitch kept: the browser's default). The
+// default rate too, so a recording loaded later (the next book) plays at it.
+const speed = document.getElementById("speed");
+function setSpeed(v) {
+  audio.defaultPlaybackRate = audio.playbackRate = v;
+  speed.value = String(v);
+  document.getElementById("speed-label").textContent = `${v}×`;
+}
+try { const v = parseFloat(localStorage.getItem("speed")); if (v > 0) setSpeed(v); } catch {}
+speed.addEventListener("change", () => {
+  setSpeed(parseFloat(speed.value));
+  try { localStorage.setItem("speed", speed.value); } catch {}
+});
+audio.addEventListener("ratechange", () => showPositionState());
+
 // The bars' heights, for focused mode to fit the verses between them (style.css). Their
 // size on screen, which includes the Interface size (CSS zoom).
 function measureBars() {
@@ -1434,12 +1449,26 @@ function fillTitles(texts) {
 }
 dropdown(document.getElementById("title-picker"), titleSelect, titleMenu);
 
+// Space is play/pause, whatever has the focus: taken before anything else sees it, on its
+// way down and up (a focused button or checkbox would act on it as it comes up, a menu as it
+// goes down), and once per press (held, it doesn't repeat).
+window.addEventListener("keydown", (e) => {
+  if (e.key !== " " || e.isComposing) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (!e.repeat) togglePlay();
+}, true);
+window.addEventListener("keyup", (e) => {
+  if (e.key !== " ") return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
+
 document.addEventListener("keydown", (e) => {
   // Typing in the line box is left alone; on a slider the arrow keys move the slider.
   if (e.target.closest?.('input[type="text"], textarea, select, #book-picker, #size-picker')) return;
   if (e.target.type === "range" && e.key.startsWith("Arrow")) return;
-  if (e.key === " ") { e.preventDefault(); togglePlay(); }
-  else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); stepBack(); }
+  if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); stepBack(); }
   else if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); stepForward(); }
   else if (e.ctrlKey || e.metaKey || e.altKey) return;
   else if ((e.key === "f" || e.key === "F") && !document.body.classList.contains("no-audio") && DATA?.form !== "prose") {

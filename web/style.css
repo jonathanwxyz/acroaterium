@@ -430,20 +430,6 @@ main {
 @media (hover: hover) { #bookmark:hover { color: var(--text); border-color: var(--current-bar); } }
 #bookmark[aria-pressed="true"] { color: var(--current-bar); border-color: var(--current-bar); }
 #bookmark[aria-pressed="true"] path { fill: currentColor; }
-/* Theme switch: automatic (follows the system) -> light -> dark. */
-#theme {
-  display: grid;
-  place-items: center;
-  width: 1.85rem;
-  height: 1.85rem;
-  padding: 0;
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--rule);
-  border-radius: 50%;
-  cursor: pointer;
-}
-@media (hover: hover) { #theme:hover { color: var(--text); border-color: var(--current-bar); } }
 /* The bars and their controls, at the reader's Interface size. */
 #topbar, #player { zoom: var(--ui-scale, 1); }
 
@@ -484,7 +470,7 @@ main {
 /* The choices wrap among themselves, beside the label rather than under it. */
 .font-choices { display: flex; flex-wrap: wrap; gap: 0.3rem; min-width: 0; }
 .font-row .size-name { width: 5.2rem; flex: none; }
-.font-choice {
+.font-choice, .theme-choice {
   padding: 0.2rem 0.5rem;
   font-size: 17px;
   color: var(--muted);
@@ -496,8 +482,10 @@ main {
 .font-choice[data-font="garamond"] { font-family: "EB Garamond", serif; }
 .font-choice[data-font="gentium"] { font-family: "Gentium Book Plus", serif; font-size: 15.5px; }
 .font-choice[data-font="didot"] { font-family: "GFS Didot", serif; font-size: 15.5px; }
-@media (hover: hover) { .font-choice:hover { color: var(--text); border-color: var(--current-bar); } }
-.font-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
+.theme-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }  /* an icon each */
+.theme-row .font-choices { flex-wrap: nowrap; }
+@media (hover: hover) { .font-choice:hover, .theme-choice:hover { color: var(--text); border-color: var(--current-bar); } }
+.font-choice[aria-pressed="true"], .theme-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
 .size-value { text-align: center; font-variant-numeric: tabular-nums; color: var(--text); }
 .size-step {
   width: 2rem;
@@ -514,8 +502,6 @@ main {
 }
 @media (hover: hover) { .size-step:hover:not(:disabled) { color: var(--text); border-color: var(--current-bar); } }
 .size-step:disabled { opacity: 0.35; cursor: default; }
-#theme svg { display: none; }
-#theme[data-mode="auto"] .th-auto, #theme[data-mode="light"] .th-light, #theme[data-mode="dark"] .th-dark { display: block; }
 .credits { text-align: center; margin-bottom: 1rem; }
 
 #verses { list-style: none; margin: 0; padding: 0; }
@@ -913,7 +899,14 @@ body.playing .play .icon-pause { display: block; }
   margin: 0;
 }
 #seek { flex: 1; min-width: 0; }
-#volume { width: 4.5rem; }
+/* The volume, upright in its pop-up: loud at the top, filled from the bottom. */
+#volume {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 4px;
+  height: 6rem;
+  background: linear-gradient(to top, var(--current-bar) var(--pct), var(--rule) var(--pct));
+}
 #seek::-webkit-slider-thumb, #volume::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 13px; height: 13px; border-radius: 50%;
@@ -927,7 +920,67 @@ body.playing .play .icon-pause { display: block; }
 }
 #seek:focus-visible, #volume:focus-visible { outline: 2px solid var(--current-bar); outline-offset: 4px; }
 
-.volume { flex: none; display: inline-flex; align-items: center; gap: 0.1rem; }
+/* The media bar's side: the volume and the playback speed. With a mouse the volume's slider
+   pops up above the speaker while it's hovered (or focused); on a touch screen there's no
+   slider, only mute: phones set the volume with their own buttons (an iPhone won't let a
+   page set it at all). */
+.side { flex: none; display: inline-flex; align-items: center; gap: 0.35rem; }
+.volume { position: relative; flex: none; display: inline-flex; align-items: center; }
+.vol-pop {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 2px);  /* (touching the button: the pointer can move up into it) */
+  z-index: 5;
+  display: flex;
+  padding: 0.75rem 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  transform: translateX(-50%);
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 120ms ease, visibility 0s 120ms;
+}
+@media (hover: hover) {
+  .volume:hover .vol-pop, .volume:focus-within .vol-pop { visibility: visible; opacity: 1; transition: opacity 120ms ease; }
+}
+@media (hover: none) { .vol-pop { display: none; } }
+/* The speed: a pill showing it, with the menu itself laid over it unseen (a tap opens the
+   phone's own picker; 16px, so an iPhone doesn't zoom in), the pill no wider than its label. */
+.speed-pill {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 3.4rem;  /* (as wide as its widest, "1.75×": it keeps its shape as the speed changes) */
+  height: 1.85rem;
+  padding: 0;
+  font: 13px system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+}
+#speed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font-size: 16px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+#speed option { background: var(--bg); color: var(--text); }
+.speed-pill:focus-within { outline: 2px solid var(--current-bar); outline-offset: 2px; }
+@media (hover: hover) { .speed-pill:hover { color: var(--text); border-color: var(--current-bar); } }
+@media (max-width: 340px) {  /* (the smallest phones: room for "1.75×" beside the speaker) */
+  .side { gap: 0.15rem; }
+  .side #mute { width: 1.6rem; }
+  .speed-pill { width: 2.9rem; font-size: 12px; }
+}
 #mute .vol-x, body.muted #mute .vol-waves { display: none; }
 body.muted #mute .vol-x { display: inline; }
 
@@ -948,8 +1001,7 @@ body.muted #mute .vol-x { display: inline; }
 @media (max-width: 600px) {
   /* (minmax(0, …): the side columns give way, rather than push the bar past the screen.) */
   .transport { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); row-gap: 0.35rem; }
-  .volume { justify-self: start; min-width: 0; max-width: 100%; }
-  #volume { flex: 0 1 4.5rem; min-width: 1.8rem; }
+  .side { justify-self: start; min-width: 0; }
   .transport #position { justify-self: end; width: min(6.5rem, 100%); }
   .timeline { grid-column: 1 / -1; min-width: 0; }
 }
@@ -1058,7 +1110,7 @@ body.focused .verse.f-cur .seek-icon { display: none; }
   .topbar-inner { gap: 0.4rem; }
   .to-start-text { display: none; }  /* icon only */
   #to-start { padding: 0; width: 1.85rem; height: 1.85rem; justify-content: center; flex-shrink: 0; }
-  #theme, #home { flex-shrink: 0; }
+  #home { flex-shrink: 0; }
   /* iPhones zoom in on any text box under 16px when it's tapped. */
   input, select, textarea { font-size: 16px !important; }
   .trans { margin-left: calc(2.2rem + 3px + 0.5rem); }
@@ -1078,7 +1130,7 @@ body.focused .verse.f-cur .seek-icon { display: none; }
 
 /* Only the controls a text has data for: a library text without a recording keeps the
    position box (for jumping to a line or section). */
-body.no-audio .playback, body.no-audio .timeline, body.no-audio .volume,
+body.no-audio .playback, body.no-audio .timeline, body.no-audio .side,
 body.no-audio .toggle:has(#focused), body.no-audio .toggle:has(#hold-on-hover), body.no-audio .toggle:has(#follow),
 body.no-paraphrase .toggle:has(#show-paraphrase), body.no-modern .toggle:has(#show-modern),
 body.no-translation .toggle:has(#show-translation), body.no-scholia .toggle:has(#show-scholia) { display: none; }
@@ -1289,9 +1341,24 @@ body.prose-text .toggle:has(#focused) { display: none; }
 }
 .download[data-state="done"] { color: var(--current-bar); border-color: transparent; }
 @media (hover: hover) { .download:hover { color: var(--text); border-color: var(--current-bar); } }
-/* The book's own, in the reader: at the end of the media bar's options. */
+/* The book's own, in the reader's top bar: round, as the bookmark beside it (the progress
+   fills it while it runs). */
+#download-slot { flex: none; display: flex; }
 #download-slot[hidden] { display: none; }
-#download-slot .download { min-width: 4.6rem; min-height: 1.5rem; }
+#download-slot .download {
+  width: 1.85rem;
+  min-width: 0;
+  height: 1.85rem;
+  min-height: 0;
+  padding: 0;
+  font-size: 9.5px;
+  letter-spacing: -0.02em;
+  border-radius: 50%;
+}
+#download-slot .download[data-state="running"] {
+  background: conic-gradient(color-mix(in srgb, var(--current-bar) 28%, transparent) var(--done, 0%), transparent var(--done, 0%));
+}
+#download-slot .download[data-state="done"] { border-color: var(--rule); }
 #downloads { text-align: center; color: var(--muted); font: 12px system-ui, sans-serif; margin: -1rem 0 1.5rem; }
 #downloads[hidden] { display: none; }
 
