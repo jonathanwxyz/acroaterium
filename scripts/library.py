@@ -41,7 +41,9 @@ Sources (downloads are cached in data/raw/library/):
               after the Byzantine text; chapters are the divisions, a verse per segment
   rahlfs      a book of the Septuagint ("books": [Gen, JudgB, DanTh, ...], see rahlfs()):
               Rahlfs's text in the CATSS transcription, parsed word by word, punctuated
-              after Swete's ("guide": the book's swete "books")
+              after Swete's ("guide": the book's swete "books"); in the Church's edition
+              (the Apostoliki Diakonia's) where the recording reads it so
+              (library/church_text.json, from scripts/church_text.py)
   swete       a book of the Septuagint ("books": [Swete's abbreviations, Gen, Dat, ...],
               see swete()): Swete's text as transcribed in LXX-Swete-1930; likewise
 A text's "fixes" correct slips in its source: [{"ref": "17a", "find": "<as printed>",
@@ -919,6 +921,37 @@ def rahlfs(src, verbose, words_out=None):
     return "verse", "verse", [(c, str(c)) for c in sorted(chapters)], segments
 
 
+CHURCH_TEXT = ROOT / "library" / "church_text.json"
+
+
+def church_wording(slug, segments, words, verbose):
+    """Rahlfs's verses in the Church's edition, where the recording reads them so
+    (library/church_text.json, from scripts/church_text.py: {slug: {"div:ref": verse}}).
+    A word changed loses its parsing; the rest keep theirs."""
+    if not CHURCH_TEXT.exists():
+        return segments, words
+    changed = json.loads(CHURCH_TEXT.read_text()).get(slug, {})
+    if not changed:
+        return segments, words
+    plain = lambda w: re.sub(r"[^\w]", "", "".join(c for c in unicodedata.normalize("NFD", w.lower())
+                                                   if not unicodedata.combining(c)))
+    out, moved = [], {}  # moved: (div, seq) -> {old word index: new}
+    for s in segments:
+        verse = changed.get(f"{s[0]}:{s[2]}")
+        if verse is None:
+            out.append(s)
+            continue
+        old, new = s[3].split(), verse.split()
+        sm = difflib.SequenceMatcher(None, [plain(w) for w in old], [plain(w) for w in new], autojunk=False)
+        moved[(s[0], s[1])] = {i: j for a, b, n in sm.get_matching_blocks() for i, j in zip(range(a, a + n), range(b, b + n))}
+        out.append((*s[:3], verse, *s[4:]))
+    kept = [(ch, sq, moved[(ch, sq)][i], *rest) if (ch, sq) in moved else (ch, sq, i, *rest)
+            for ch, sq, i, *rest in words if (ch, sq) not in moved or i in moved[(ch, sq)]]
+    if verbose:
+        print(f"  {len(moved)} verses as read in church")
+    return out, kept
+
+
 # ---------------------------------------------------------------- Perseus (Stephanus prose)
 
 def perseus(src, verbose, title):
@@ -1155,6 +1188,7 @@ def main():
             elif src["type"] == "rahlfs":
                 found = []
                 form, cite, divs, segs = rahlfs(src, args.v, found)
+                segs, found = church_wording(t["slug"], segs, found, args.v)
                 rows_w += [(t["slug"], *w) for w in found]
             elif src["type"] == "swete":
                 form, cite, divs, segs = swete(src, args.v)
@@ -1222,7 +1256,7 @@ def main():
         DROP TABLE IF EXISTS translation_credits;
         DROP TABLE IF EXISTS treebank; DROP TABLE IF EXISTS lemma_defs;
         CREATE TABLE categories (name TEXT PRIMARY KEY, sort INTEGER NOT NULL);
-        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- JSON: "lectionary"
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- JSON: "lectionary", "church_text"
         CREATE TABLE texts (
             slug     TEXT PRIMARY KEY,
             title    TEXT NOT NULL,
@@ -1318,6 +1352,8 @@ def main():
     con.executemany("INSERT INTO categories VALUES (?, ?)", [(c, i) for i, c in enumerate(categories)])
     if cat.get("lectionary"):
         con.execute("INSERT INTO settings VALUES ('lectionary', ?)", (json.dumps(cat["lectionary"], ensure_ascii=False),))
+    if CHURCH_TEXT.exists():  # (scripts/church_text.py compares with Rahlfs's text: not with this)
+        con.execute("INSERT INTO settings VALUES ('church_text', ?)", (json.dumps(True),))
     con.executemany("INSERT INTO texts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_t)
     con.executemany("INSERT INTO translations VALUES (?, ?, ?, ?, ?)", rows_tr)
     con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, ?, ?)", rows_tp)

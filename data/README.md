@@ -206,7 +206,10 @@ licence. Share-alike reaches the data, not the code that displays it.
 `library.sqlite`'s sources are described, with their licences, where `scripts/library.py`
 fetches them. One is non-commercial: the Septuagint's (`rahlfs`) transcription and parsing,
 CATSS's via Eliran Wong's LXX-Rahlfs-1935 (CC BY-NC-SA 4.0). Rahlfs's 1935 text itself is
-public domain in the UK and EU, though not in the US until 2031.
+public domain in the UK and EU, though not in the US until 2031. The Old Testament's
+wording, where the recordings read it so, comes from Greek Wikisource's Septuagint
+(`scripts/church_text.py`, kept in `library/church_text.json`), which states no source or
+licence for it: it stays out of git.
 
 The fonts (EB Garamond, and Gentium Book Plus as fallback, via Google Fonts) are under the
 SIL Open Font License. The code is under the MIT licence (see `LICENSE`).

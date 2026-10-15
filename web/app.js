@@ -111,12 +111,29 @@ function render(data) {
   hasScholia = has.has("scholia");
   document.querySelector(".sch-credit").textContent = data.notesCredit ?? "";
   if (data.audio) audio.src = data.audio;
+  showDownloadButton(data, bookLabel);
   if (data.form === "prose") renderProse(data, has);
   else renderVerse(data, has);
   applyScholia();
   const first = refs.find((r) => r.ref && r.ref !== "0")?.ref;
   if (!data.audio) position.placeholder = data.cite === "section" ? `go to ${first}` : "go to line";
   if (data.cite === "section") position.title = `Type a section (e.g. ${first}) and press Enter`;
+}
+
+// The book's download (offline.js), at the end of the media bar's options: this book of
+// the Iliad or Odyssey, the whole book a chapter of the Bible is in (they share a
+// recording), or the dialogue; as the library shows it, and with the same control.
+function showDownloadButton(data, bookLabel) {
+  const slot = document.getElementById("download-slot");
+  if (!slot || typeof downloadButton !== "function") return;
+  const d = data.download;
+  const name = !d ? "" : d.books > 1 ? `${data.title} (all ${d.books} chapters)`
+    : bookLabel ? `${data.title} ${longLabel(bookLabel, data.book)}` : data.title;
+  const b = d && downloadButton([[`${data.text}/${d.n}`, d.size]], name, { labelled: true });
+  slot.replaceChildren(...(b ? [b] : []));
+  slot.hidden = !b;
+  for (let i = downloadButtons.length; i--;) if (!downloadButtons[i].b.isConnected) downloadButtons.splice(i, 1);
+  if (b) refreshDownloads();
 }
 
 // A range (?v=40-60): keep only its verses, and say so above them, with a way back to the
@@ -181,12 +198,12 @@ async function select(data) {
         ...v, ...(c !== BOOK ? { div: c } : {}),
         ...(k === 0 && c !== before && !v.ref.includes(":") ? { label: `${c}:${v.ref}` } : {}),  // where another chapter begins
       }));
-      picked.at(-1).cut = true;
+      picked.at(-1).jump = true;  // (the next piece is elsewhere: skipSilence goes straight to it)
       if (c === from.ch) runs.push([picked.length - (j - i + 1), picked.length - 1]);
       else runs.at(-1)[1] = picked.length - 1;
     }
   }
-  delete picked.at(-1).cut;
+  delete picked.at(-1).jump;
   data.verses = picked;
   data.translation = [];
   RANGE = { from: picked[0].ref, to: picked.at(-1).ref };
@@ -572,23 +589,32 @@ function togglePlay() {
   else audio.pause();
 }
 
-// Long silences (paragraph breaks, the lead-in of a recording) are cut short: once the
-// pause after a verse has lasted GAP_KEEP, playback jumps to LEAD_IN before the next verse.
-// A gap that isn't silence but speech outside the text (a verse marked cut: "part 1 of 3",
-// a LibriVox notice) goes at once; after the last verse, playback stops there.
-const GAP_KEEP = 0.9;  // seconds of silence kept after a verse
-const LEAD_IN = 0.35;  // seconds of silence kept before the next verse
+// The recording plays as it was read, its pauses as they are: each jump is a seek, which
+// phones (iPhones above all) make heard, a moment of the old place, a stop, then the new.
+// Only an exceptionally long silence (over LONG_GAP: a recording's lead-in, a long break)
+// is cut short, to GAP_KEEP after the verse and LEAD_IN before the next. Speech outside the
+// text (a verse marked cut: "part 1 of 3", a LibriVox notice, a repeated title) goes at
+// once, if it's long enough to be one (CUT_MIN: a shorter stretch is likelier the reader's
+// own wording of the verse than an announcement); after the last verse, playback stops
+// there. Between the pieces of a selection (jump), it goes straight on to the next.
+const LONG_GAP = 4;    // seconds: a silence longer than this is cut short…
+const GAP_KEEP = 1.5;  // …to this after the verse…
+const LEAD_IN = 0.6;   // …and this before the next
+const CUT_MIN = 3.5;   // seconds: speech outside the text this long is an announcement
 const CUT_KEEP = 0.1;  // seconds kept after a verse before an announcement…
 const CUT_LEAD = 0.2;  // …and before the verse after it
 function skipSilence(i, t) {
   if (audio.paused || !verses.length) return;
   const v = i >= 0 ? verses[i] : null, next = verses[i + 1];
+  const quietSince = v ? v.speechEnd : 0;
   if (!next) {
     if (v?.cut && !DATA?.next && t > v.speechEnd + CUT_KEEP) audio.pause();
     return;
   }
-  const keep = v?.cut ? CUT_KEEP : GAP_KEEP, lead = v?.cut ? CUT_LEAD : LEAD_IN;
-  const quietSince = v ? v.speechEnd : 0;
+  const gap = next.start - quietSince;
+  const announced = v?.jump || (v?.cut && gap >= CUT_MIN);
+  if (!announced && gap <= LONG_GAP) return;  // a pause as read
+  const keep = announced ? CUT_KEEP : GAP_KEEP, lead = announced ? CUT_LEAD : LEAD_IN;
   if (t > quietSince + keep && next.start - t > lead + 0.05) audio.currentTime = next.start - lead;
 }
 

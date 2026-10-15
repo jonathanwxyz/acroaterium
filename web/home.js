@@ -76,7 +76,7 @@ function bookLinks(t, cls) {
     li.append(a);
     // A book with a recording of its own (the Iliad's, the Odyssey's): its own download.
     const own = cls === "book-list" && t.downloads?.length > 1 && t.downloads.find((d) => d.n === b.n);
-    const button = own && downloadButton([[`${slugOf(t)}/${b.n}`, own.size]], longLabel(b.label, b.n), true);
+    const button = own && downloadButton([[`${slugOf(t)}/${b.n}`, own.size]], longLabel(b.label, b.n), { compact: true });
     if (button) li.append(button);
     ul.append(li);
   }
@@ -84,90 +84,10 @@ function bookLinks(t, cls) {
 }
 
 // Downloads, to read and hear offline (offline.js), a recording at a time: a book of the
-// Iliad or Odyssey, a Bible book, a dialogue. A button at the end of a row shows the size,
-// then the progress (tap to pause, and again to go on), then a tick (tap to remove). The
-// rows of a work in several books, and of a Testament, have one for all their downloads,
-// which queues them; a book of the Iliad or Odyssey has its own.
-const ARROW = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" ' +
-  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg>';
-const TICK = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" ' +
-  'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
-const statuses = new Map();  // "<slug>/<n>" -> {state, have, size}
-let downloadButtons = [];  // {b, items: [[key, size], ...], name, compact}
-
+// Iliad or Odyssey, a Bible book, a dialogue. A button at the end of a row (downloadButton,
+// offline.js); the rows of a work in several books, and of a Testament, have one for all
+// their downloads, which queues them; a book of the Iliad or Odyssey has its own.
 const downloadsOf = (t) => (t.downloads ?? []).map((d) => [`${slugOf(t)}/${d.n}`, d.size]);
-
-// A button's downloads together: running (or queued) if any is, done if all are.
-function together(items) {
-  let have = 0, size = 0, running = false, queued = false, failed = false, started = false, done = true;
-  for (const [key, bytes] of items) {
-    const s = statuses.get(key) ?? { state: "none" };
-    size += bytes;
-    have += s.state === "done" ? bytes : Math.min(bytes, s.have ?? 0);
-    running ||= s.state === "running";
-    queued ||= s.state === "queued";
-    failed ||= s.state === "failed";
-    started ||= s.state !== "none";
-    done &&= s.state === "done";
-  }
-  const state = running ? "running" : queued ? "queued" : done ? "done" : failed ? "failed" : started ? "partial" : "none";
-  return { state, have, size };
-}
-
-function showDownload(d) {
-  const { b, items, name, compact } = d;
-  const s = together(items);
-  const pct = s.size ? `${Math.floor((100 * s.have) / s.size)}%` : "";
-  const size = formatSize(s.size);
-  const many = items.length > 1;
-  b.dataset.state = s.state;
-  const [icon, label, title] = {
-    none: [ARROW, compact ? "" : size, `Download ${name} to read and hear offline (${size})`],
-    queued: ["", compact ? "…" : "queued", `${name} is waiting to download: tap to cancel`],
-    running: ["", pct, `Downloading ${name} (${pct} of ${size}): tap to pause`],
-    partial: [ARROW, pct, `${name} is ${pct} downloaded: tap to go on`],
-    failed: [ARROW, compact ? "!" : "retry", `The download of ${name} stopped: tap to try again`],
-    done: [TICK, "", `${name} ${many ? "are" : "is"} downloaded (${size}): tap to remove`],
-  }[s.state];
-  b.innerHTML = icon;
-  if (label) b.append(el("span", null, label));
-  b.title = title;
-  b.setAttribute("aria-label", title);
-  b.style.setProperty("--done", s.state === "running" || s.state === "queued" ? pct || "0%" : "0%");
-}
-
-// On an iPhone or iPad in Safari, before the first download: Safari deletes it after a week
-// without a visit, and the Home Screen app keeps its own copy, so download there instead.
-// Asked once (remembered on the device).
-function homeScreenFirst() {
-  if (!offline.needsHomeScreen) return true;
-  try { if (localStorage.getItem("downloadWarned")) return true; } catch {}
-  const ok = confirm("Downloads made in Safari are deleted after a week without a visit, and the Home Screen " +
-                     "app keeps its own separate copy. To keep them, tap Share → Add to Home Screen, open the " +
-                     "reader from there, and download in it.\n\nDownload here anyway?");
-  if (ok) try { localStorage.setItem("downloadWarned", "1"); } catch {}
-  return ok;
-}
-
-function downloadButton(items, name, compact = false) {
-  if (!items.length || !offline.supported) return null;
-  const b = el("button", compact ? "download compact" : "download");
-  const d = { b, items, name, compact };
-  b.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const keys = items.map(([key]) => key);
-    const { state, size } = together(items);
-    if (state === "running" || state === "queued") offline.pause(keys);
-    else if (state === "done") {
-      if (confirm(`Remove ${name} (${formatSize(size)}) from this device?`)) offline.remove(keys);
-    } else if (homeScreenFirst()) {
-      offline.download(keys.filter((k) => statuses.get(k)?.state !== "done"));
-    }
-  });
-  downloadButtons.push(d);
-  showDownload(d);
-  return b;
-}
 
 // A row with a download button (if any) at the end.
 function withDownload(row, items, name, cls) {
@@ -183,7 +103,7 @@ function withDownload(row, items, name, cls) {
 function showDownloads() {
   const box = document.getElementById("downloads");
   if (!box) return;
-  const all = [...statuses.values()];
+  const all = [...downloadStatuses.values()];
   box.hidden = !all.length;
   box.replaceChildren();
   if (!all.length) return;
@@ -195,14 +115,7 @@ function showDownloads() {
   }
 }
 
-if (offline.supported) {
-  offline.onChange((key, status) => {
-    if (status.state === "none") statuses.delete(key);
-    else statuses.set(key, status);
-    for (const d of downloadButtons) if (d.items.some(([k]) => k === key)) showDownload(d);
-    showDownloads();
-  });
-}
+document.addEventListener("downloadschange", showDownloads);
 
 // (The author is left out where the category is all one author's: its heading names him.)
 function workEntry(t, showAuthor = true) {
@@ -288,7 +201,7 @@ function capitals(text) {
 
 function render(data) {
   root.replaceChildren();
-  downloadButtons = [];
+  downloadButtons.length = 0;
   if (data.missing) {
     const p = el("p", "notice");
     p.append("No library yet. Copy ", el("code", null, "library/catalogue.example.json"), " to ",
@@ -365,15 +278,7 @@ const dropSkeleton = () => document.querySelector(".lib-skel")?.remove();
     dropSkeleton();
     renderMarks(marks);
     render(data);
-    // What's downloaded, once the device says (the list doesn't wait for it).
-    if (offline.supported) {
-      offline.statuses().then((saved) => {
-        for (const [key, s] of saved) statuses.set(key, s);
-        downloadButtons.forEach(showDownload);
-        showDownloads();
-        offline.resume();
-      }).catch(() => {});
-    }
+    refreshDownloads();  // what's downloaded, once the device says (the list doesn't wait for it)
   })
   .catch(async (err) => {
     const marks = await marksReady;

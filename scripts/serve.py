@@ -27,6 +27,7 @@ Routes:
   /api/scholia/<b>/<l>   JSON: the ancient scholia on verse b.l, grouped by manuscript, and
                          the English commentaries (Leaf, Seymour, Benner)
   /audio/<path>        a file under recordings/ (subfolders too), with HTTP Range support for seeking
+  (/api/text and /api/book give the download each book is in: "download": {n, size, books})
   /api/offline/<slug>/<n>  JSON: what to save to read and hear part of a text offline,
                        a recording at a time (n: the first book it's for): those books' API
                        URLs ("pages") and the recording ("audio": [{url, size}]); /api/library
@@ -124,7 +125,7 @@ def book_json(book):
             "translation": translation, "text": "iliad", "title": "Ἰλιάς", "author": "Ὅμηρος",
             "eyebrow": "Ὁμήρου Ἰλιάς", "form": "verse", "cite": "line", "features": ILIAD_FEATURES,
             "books": [{"n": b, "label": f"Ῥαψῳδία {GREEK_NUMERALS[b]}"} for b in range(1, 25)],
-            "credits": ILIAD_CREDITS, "notesCredit": ILIAD_NOTES_CREDIT}
+            "credits": ILIAD_CREDITS, "notesCredit": ILIAD_NOTES_CREDIT, **download_of("iliad", book)}
 
 
 # What the Iliad reader has on top of a plain text, and its credits (the scholia panel
@@ -208,6 +209,13 @@ def downloads_of(slug=None):
     return out
 
 
+def download_of(slug, n):
+    """{"download": {n, size, books}}: the download a book is in (its recording's: for a
+    Bible chapter, the whole book's), for the reader's own download button; or {}."""
+    item = next((i for i in downloads_of(slug).get(slug, []) if n in i["divs"]), None)
+    return {"download": {"n": item["n"], "size": item["size"], "books": len(item["divs"])}} if item else {}
+
+
 def offline_json(slug, n):
     """What a text's download n (named by its first book) needs offline: its books (the
     reader's API for each) and its recording."""
@@ -233,7 +241,10 @@ LECTIONARY = "https://onlinechapel.goarch.org/daily.asp?date={d.month}/{d.day}/{
 LECTIONARY_CACHE = ROOT / "data" / "raw" / "lectionary"
 READING_KINDS = {"MG": "Εὐαγγέλιον τοῦ Ὄρθρου", "E": "Ἀπόστολος", "G": "Εὐαγγέλιον", "OT": "Ἀνάγνωσμα"}
 READING_NAMES = {"Twelve Gospels": "Τὰ Δώδεκα Εὐαγγέλια τῶν Παθῶν"}  # readings given by name, not place
-ORDINALS = {"first": "1", "second": "2", "third": "3", "fourth": "4", "1": "1", "2": "2", "3": "3", "4": "4"}
+ORDINALS = {"first": "1", "second": "2", "third": "3", "fourth": "4", "1": "1", "2": "2", "3": "3", "4": "4",
+            "i": "1", "ii": "2", "iii": "3", "iv": "4"}
+# English names for books the Septuagint names otherwise: "I Kings" is 3 Kingdoms.
+SEPTUAGINT_NAMES = {"1samuel": "1kingdoms", "2samuel": "2kingdoms", "1kings": "3kingdoms", "2kings": "4kingdoms"}
 
 
 def lectionary_settings(con):
@@ -259,6 +270,7 @@ def book_slug(name, slugs, aliases):
     plain = [w for w in words if w not in ("letter", "universal", "epistle", "to", "the", "of", "according", "gospel")]
     for guess in ("".join(words), "".join(plain), plain[0] if plain else "", author):
         for slug in (ordinal + guess, guess):  # (Jude's "First Universal Letter": his only one)
+            slug = slug if slug in slugs else SEPTUAGINT_NAMES.get(slug, slug)
             if guess and slug in slugs:
                 return slug
     return None
@@ -369,7 +381,7 @@ def lectionary_json(day):
                       if t and re.search(r"\d:\d", t)), (r.findtext("translation/title") or "").strip())
         title = re.sub(r"(\d):\s+(?=\d+:)", r"\1; ", title)  # a slip: "13:31-37: 14:1-2"
         # A reading put together from several books (Holy Thursday's Gospel): a link for each.
-        for part in re.split(r";\s*(?=[A-Za-z])", title):
+        for part in re.split(r"[;,]\s*(?=[A-Za-z])", title):
             m = re.match(r"(.*?)\s+(\d+:\d.*)$", part)
             slug = book_slug(m[1], titles, settings.get("aliases", {})) if m else None
             sel = selection(con, slug, m[1], m[2]) if slug else None
@@ -498,6 +510,7 @@ def text_json(slug, n):
             # The recording reads other books too (a book of the Bible, its chapters in one
             # file): the reader's timeline spans this one's verses, not the whole file.
             **({"clip": True} if recording and recording[2] > 1 else {}),
+            **download_of(slug, n),
             "verses": verses, "translation": passages, "credits": credits}
 
 

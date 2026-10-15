@@ -262,7 +262,13 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-padding-top: 4rem; scroll-padding-bottom: 120px; overflow-x: clip; }
+/* (What's scrolled to, the current line, kept clear of the bars: --topbar-h and
+   --player-h are their heights on screen, kept up to date by app.js.) */
+html {
+  scroll-padding-top: calc(var(--topbar-h, 3.5rem) + 0.5rem);
+  scroll-padding-bottom: calc(var(--player-h, 7rem) + 0.5rem);
+  overflow-x: clip;
+}
 /* Feel like an app on phones: no double-tap zoom (pinch zoom is off in the viewport tag). */
 body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 /* No blue box flashing over whatever is tapped. */
@@ -284,7 +290,9 @@ main {
   font-size: calc(var(--text-scale, 1) * var(--font-scale, 1) * 1em);  /* the reader's Text size */
   max-width: 44rem;
   margin: 0 auto;
-  padding: 1.5rem 16px 9rem;
+  /* Room at the end for the last line to come clear of the media bar, however tall the
+     bar is (two rows on a narrow phone, the home indicator below it, a larger Interface). */
+  padding: 1.5rem 16px calc(var(--player-h, 7rem) + 3rem);
 }
 
 /* Title bar, always at the top of the viewport. */
@@ -938,10 +946,12 @@ body.muted #mute .vol-x { display: inline; }
 
 /* Narrow screens: volume, the play buttons (centred) and the line on one row, the timeline below. */
 @media (max-width: 600px) {
-  .transport { display: grid; grid-template-columns: 1fr auto 1fr; row-gap: 0.35rem; }
-  .volume { justify-self: start; }
-  #position { justify-self: end; }
-  .timeline { grid-column: 1 / -1; }
+  /* (minmax(0, …): the side columns give way, rather than push the bar past the screen.) */
+  .transport { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); row-gap: 0.35rem; }
+  .volume { justify-self: start; min-width: 0; max-width: 100%; }
+  #volume { flex: 0 1 4.5rem; min-width: 1.8rem; }
+  .transport #position { justify-self: end; width: min(6.5rem, 100%); }
+  .timeline { grid-column: 1 / -1; min-width: 0; }
 }
 
 #position {
@@ -1115,7 +1125,7 @@ body.prose-text .toggle:has(#focused) { display: none; }
 
 /* The library (index.html). */
 /* The library is all navigation: it follows the reader's Interface size, not Text. */
-.library main { padding-bottom: 4rem; font-size: 1em; }
+.library main { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); font-size: 1em; }
 .library main, .library-tools { zoom: var(--ui-scale, 1); }
 .library-tools {
   position: absolute;
@@ -1279,6 +1289,9 @@ body.prose-text .toggle:has(#focused) { display: none; }
 }
 .download[data-state="done"] { color: var(--current-bar); border-color: transparent; }
 @media (hover: hover) { .download:hover { color: var(--text); border-color: var(--current-bar); } }
+/* The book's own, in the reader: at the end of the media bar's options. */
+#download-slot[hidden] { display: none; }
+#download-slot .download { min-width: 4.6rem; min-height: 1.5rem; }
 #downloads { text-align: center; color: var(--muted); font: 12px system-ui, sans-serif; margin: -1rem 0 1.5rem; }
 #downloads[hidden] { display: none; }
 
