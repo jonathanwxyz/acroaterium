@@ -976,6 +976,12 @@ body.playing .play .icon-pause { display: block; }
   -webkit-appearance: none;
 }
 #speed option { background: var(--bg); color: var(--text); }
+/* At the end of the chapter: a button cycling stop (⏹), continue (on to the next: ⇥) and
+   repeat (🔂), as a music player's. */
+.end-side { flex: none; display: inline-flex; align-items: center; gap: 0.25rem; }
+#end-mode svg { display: none; }
+#end-mode[data-mode="continue"] .em-continue, #end-mode[data-mode="repeat"] .em-repeat,
+#end-mode[data-mode="stop"] .em-stop { display: block; }
 .speed-pill:focus-within { outline: 2px solid var(--current-bar); outline-offset: 2px; }
 @media (hover: hover) { .speed-pill:hover { color: var(--text); border-color: var(--current-bar); } }
 @media (max-width: 340px) {  /* (the smallest phones: room for "1.75×" beside the speaker) */
@@ -1004,7 +1010,8 @@ body.muted #mute .vol-x { display: inline; }
   /* (minmax(0, …): the side columns give way, rather than push the bar past the screen.) */
   .transport { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); row-gap: 0.35rem; }
   .side { justify-self: start; min-width: 0; }
-  .transport #position { justify-self: end; width: min(6.5rem, 100%); }
+  .end-side { justify-self: end; min-width: 0; max-width: 100%; }
+  .transport #position { width: auto; flex: 0 1 6.5rem; min-width: 2.6rem; }
   .timeline { grid-column: 1 / -1; min-width: 0; }
 }
 
@@ -1133,7 +1140,7 @@ body.focused .verse.f-cur .seek-icon { display: none; }
 /* Only the controls a text has data for: a library text without a recording keeps the
    position box (for jumping to a line or section). */
 body.no-audio .playback, body.no-audio .timeline, body.no-audio .side,
-body.no-audio .toggle:has(#focused), body.no-audio .toggle:has(#hold-on-hover), body.no-audio .toggle:has(#follow),
+body.no-audio .toggle:has(#focused), body.no-audio .toggle:has(#hold-on-hover), body.no-audio .toggle:has(#follow), body.no-audio #end-mode,
 body.no-paraphrase .toggle:has(#show-paraphrase), body.no-modern .toggle:has(#show-modern),
 body.no-translation .toggle:has(#show-translation), body.no-scholia .toggle:has(#show-scholia) { display: none; }
 body.no-audio.no-paraphrase.no-modern.no-translation.no-scholia .controls { display: none; }

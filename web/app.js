@@ -7,8 +7,8 @@
 // &v= opens the book at a verse, a line ("40", or "1.40") or a section ("17a"; "17" is its
 // first), or shows a range of them alone ("40-60", "17a-18c": "18" ends after all of 18).
 const PARAMS = new URLSearchParams(location.search);
-const TEXT = PARAMS.get("text") || "iliad";
-const BOOK = Number(PARAMS.get("book") || 1);
+let TEXT = PARAMS.get("text") || "iliad";  // (moves on in place to the next text: carryOn)
+let BOOK = Number(PARAMS.get("book") || 1);  // (moves on in place to the next chapter: carryOn)
 const [V_FROM, V_TO] = (PARAMS.get("v") ?? "").split(/[-–]/).map((s) => s.trim());
 // &at=: carried on from the chapter before, playing (the chapters of a book of the Bible
 // share one recording): start there, and play.
@@ -41,7 +41,8 @@ const SELECTION = (() => {
 if (!PARAMS.has("text") || CARRY_AT) {
   history.replaceState(null, "", `?${new URLSearchParams({ text: TEXT, book: BOOK, ...(V_FROM ? { v: PARAMS.get("v") } : {}) })}${location.hash}`);
 }
-const API = TEXT === "iliad" ? `/api/book/${BOOK}` : `/api/text/${encodeURIComponent(TEXT)}/${BOOK}`;
+const apiFor = (n, text = TEXT) => (text === "iliad" ? `/api/book/${n}` : `/api/text/${encodeURIComponent(text)}/${n}`);
+const API = apiFor(BOOK);
 let hasScholia = TEXT === "iliad";  // known for sure once the book has loaded
 const FEATURES = ["audio", "paraphrase", "modern", "translation", "scholia", "words"];
 // Speaker icon shown beside a verse on hover: clicking the row (not a word) goes to it.
@@ -65,6 +66,7 @@ const showModern = document.getElementById("show-modern");
 const gloss = document.getElementById("gloss");
 const holdOnHover = document.getElementById("hold-on-hover");
 const focused = document.getElementById("focused");
+const endMode = document.getElementById("end-mode");  // at the end of a chapter: continue, repeat, stop (its data-mode)
 const card = document.getElementById("card");
 const cardBody = document.getElementById("card-body");
 const bookPicker = document.getElementById("book-picker");
@@ -87,6 +89,12 @@ let released = null;  // verse the reader resumed by hand while hovering: don't 
 
 function render(data) {
   DATA = data;
+  // (Again for the next chapter, carried on in place: nothing of the last one kept.)
+  verses = []; refs = []; passages = [];
+  current = -1; focusIdx = -1; activePassage = null;
+  hovered = heldBy = released = null;
+  scholiaCache.clear(); scholiaLoaded.clear();
+  if (selected) closeCard();
   list.replaceChildren();  // the loading skeleton
   list.classList.remove("loading");
   if (V_TO && !SELECTION) applyRange(data);
@@ -110,7 +118,8 @@ function render(data) {
   }));
   hasScholia = has.has("scholia");
   document.querySelector(".sch-credit").textContent = data.notesCredit ?? "";
-  if (data.audio) audio.src = data.audio;
+  // (The same recording, a chapter carried on in place: left playing as it is.)
+  if (data.audio && audio.src !== new URL(data.audio, location.href).href) audio.src = data.audio;
   showDownloadButton(data, bookLabel);
   if (data.form === "prose") renderProse(data, has);
   else renderVerse(data, has);
@@ -118,6 +127,7 @@ function render(data) {
   const first = refs.find((r) => r.ref && r.ref !== "0")?.ref;
   if (!data.audio) position.placeholder = data.cite === "section" ? `go to ${first}` : "go to line";
   if (data.cite === "section") position.title = `Type a section (e.g. ${first}) and press Enter`;
+  showEndMode();  // (continue, only where there's a next)
 }
 
 // The book's download (offline.js), in the top bar beside the bookmark: this book of
@@ -545,9 +555,10 @@ function update() {
   }
   if (i >= 0) holdIfHovered(verses[i], t);
   // A range plays to the end of its last verse and stops there.
-  if (RANGE && !audio.paused && verses.length && t >= verses.at(-1).end) audio.pause();
-  // A chapter whose recording goes on into the next: go on there, playing.
-  if (!RANGE && DATA?.next && !audio.paused && verses.length && t >= verses.at(-1).end - 0.05) carryOn(t);
+  // The chapter's (or the range's) end: as the end button says (atEnd). The next chapter
+  // is fetched as the last verse begins, to be there when it's wanted.
+  if (endMode.dataset.mode === "continue" && current >= verses.length - 1) prefetchNext();
+  if (!audio.paused && verses.length && t >= verses.at(-1).end - 0.05) atEnd();
   skipSilence(i, t);
   document.body.classList.toggle("playing", isPlaying());
   showTimeline(audio.currentTime);
@@ -608,7 +619,7 @@ function skipSilence(i, t) {
   const v = i >= 0 ? verses[i] : null, next = verses[i + 1];
   const quietSince = v ? v.speechEnd : 0;
   if (!next) {
-    if (v?.cut && !DATA?.next && t > v.speechEnd + CUT_KEEP) audio.pause();
+    if (v?.cut && !DATA?.next && t > v.speechEnd + CUT_KEEP) atEnd();  // (a closing notice: not played)
     return;
   }
   const gap = next.start - quietSince;
@@ -1484,33 +1495,125 @@ document.addEventListener("keydown", (e) => {
 // Remember where you were: the audio position per book, saved while listening and on
 // leaving, restored (paused) on the next visit; without a recording, the scroll position.
 // Storage may be unavailable.
-const PLACE_KEY = TEXT === "iliad" ? `place:book${BOOK}` : `place:${TEXT}:${BOOK}`;
+const placeKey = () => (TEXT === "iliad" ? `place:book${BOOK}` : `place:${TEXT}:${BOOK}`);
 let restored = false;  // don't overwrite the saved place before it has been restored
 let lastSaved = 0;
 
 function savePlace() {
   if (!restored) return;
   try {
-    if (!DATA?.audio) localStorage.setItem(PLACE_KEY, `scroll:${Math.round(scrollY)}`);
-    else if (Number.isFinite(audio.currentTime)) localStorage.setItem(PLACE_KEY, audio.currentTime.toFixed(2));
+    if (!DATA?.audio) localStorage.setItem(placeKey(), `scroll:${Math.round(scrollY)}`);
+    else if (Number.isFinite(audio.currentTime)) localStorage.setItem(placeKey(), audio.currentTime.toFixed(2));
   } catch {}
   lastSaved = Date.now();
 }
 
-// The next chapter, at the same moment of the recording (this chapter's place is set back
-// to its start: it has been read through).
+// At the end of a chapter (or of a range of verses): go on to what follows, play it again,
+// or stop, as the button by the line box says (remembered per browser; stop by default). Going on is to the next
+// chapter where the recording reads on into it (a book of the Bible), else the text's next
+// book (the Odyssey's next, its own recording), else the next text of its collection (the
+// Testament's next book); at the end of all, or of a range, it stops.
+// Stop (the default), continue (only where there's a next to go on to) or repeat: the choice
+// is kept, and where it can't be had (continue, at the end of all), this text stops.
+const END_MODES = {
+  stop: "At the end: stop",
+  continue: "At the end: go on to the next chapter or book",
+  repeat: "At the end: play this chapter again",
+};
+let endChoice = "stop";
+try { const m = localStorage.getItem("endMode"); if (m in END_MODES) endChoice = m; } catch {}
+const endModes = () => Object.keys(END_MODES).filter((m) => m !== "continue" || nextPlace());
+function showEndMode() {
+  const modes = endModes();
+  const mode = modes.includes(endChoice) ? endChoice : "stop";
+  const then = modes[(modes.indexOf(mode) + 1) % modes.length];
+  endMode.dataset.mode = mode;
+  endMode.title = `${END_MODES[mode]} (click for: ${END_MODES[then].replace("At the end: ", "")})`;
+  endMode.setAttribute("aria-label", END_MODES[mode]);
+}
+showEndMode();
+endMode.addEventListener("click", () => {
+  const modes = endModes();
+  endChoice = modes[(modes.indexOf(endMode.dataset.mode) + 1) % modes.length];
+  try { localStorage.setItem("endMode", endChoice); } catch {}
+  showEndMode();
+});
+audio.addEventListener("ended", () => atEnd());
+
+function nextPlace() {
+  if (RANGE || !DATA) return null;
+  if (DATA.next) return { text: TEXT, book: DATA.next, same: true };  // (the same recording)
+  const i = DATA.books.findIndex((b) => b.n === BOOK);
+  if (i >= 0 && i + 1 < DATA.books.length) return { text: TEXT, book: DATA.books[i + 1].n };
+  const members = DATA.collectionTexts ?? [];
+  const k = members.findIndex((m) => m.slug === TEXT);
+  if (k >= 0 && k + 1 < members.length) return { text: members[k + 1].slug, book: 1 };
+  return null;
+}
+
+let ending = false;
+function atEnd() {
+  if (ending || carrying || !verses.length) return;
+  ending = true;
+  const next = endMode.dataset.mode === "continue" ? nextPlace() : null;
+  if (endMode.dataset.mode === "repeat") seekTo(0, { play: true });
+  else if (next) carryOn(next);
+  else audio.pause();
+  ending = false;
+}
+
+// What follows, shown in place, playing on (no new page: a page loaded in the background
+// may not play, and a phone drops its player notification with the old page): where it's
+// the same recording read on, untouched; else its own recording, from its start. It's
+// fetched as the chapter's last verse begins, so it's there when it's wanted. This
+// chapter's place is set back to its start: it has been read through.
 let carrying = false;
-function carryOn(t) {
+let nextChapter = null;  // {key, data}: what follows, on its way
+function prefetchNext() {
+  const next = nextPlace();
+  if (!next) return;
+  const key = `${next.text}/${next.book}`;
+  if (nextChapter?.key === key) return;
+  nextChapter = { key, data: fetch(apiFor(next.book, next.text)).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+    .then((data) => (data && data.book === next.book ? data : null)) };
+}
+async function carryOn(next) {
   if (carrying) return;
   carrying = true;
-  try { localStorage.setItem(PLACE_KEY, verses[0].start.toFixed(2)); } catch {}
-  location.href = `${readerHref(TEXT, DATA.next)}&at=${t.toFixed(2)}`;
+  const playing = isPlaying() || audio.ended;
+  try { localStorage.setItem(placeKey(), verses[0].start.toFixed(2)); } catch {}
+  prefetchNext();
+  const data = await nextChapter?.data;
+  nextChapter = null;
+  if (!data) {  // (not to be had: its page, as before)
+    location.href = readerHref(next.text, next.book) + (next.same ? `&at=${audio.currentTime.toFixed(2)}` : "");
+    return;
+  }
+  TEXT = next.text;
+  BOOK = data.book;
+  history.replaceState(null, "", readerHref(TEXT, BOOK));
+  render(data);  // (its own recording: loaded here)
+  setTimelineRange();
+  update();
+  setupMediaSession();
+  loadMarks();
+  if (!next.same) {  // from the start of its own recording (past any introduction)
+    const start = verses.length && verses[0].start > 1 ? Math.max(0, verses[0].start - LEAD_IN) : 0;
+    whenAudioReady(() => {
+      audio.currentTime = start;
+      if (playing) audio.play().catch(() => {});
+      update();
+    });
+  } else if (playing && audio.paused) {
+    audio.play().catch(() => {});
+  }
+  carrying = false;
 }
 
 function restorePlace() {
   if (V_FROM) return goToLinked();
   let saved = null;
-  try { saved = localStorage.getItem(PLACE_KEY); } catch {}
+  try { saved = localStorage.getItem(placeKey()); } catch {}
   if (!DATA.audio) {
     const y = saved?.startsWith("scroll:") ? Number(saved.slice(7)) : 0;
     if (y > 0) window.scrollTo(0, y);
