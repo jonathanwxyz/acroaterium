@@ -999,6 +999,7 @@ function renderCard(data) {
       box.append(r);
     }
     if (MATCH_NOTES[t.match]) box.append(el("div", "note", MATCH_NOTES[t.match]));
+    if (t.note) box.append(el("div", "note", t.note));  // (automatic parsing: says so)
     cardBody.append(box);
   }
 }

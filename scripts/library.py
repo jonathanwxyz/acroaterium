@@ -481,6 +481,12 @@ def treebank_words(spec):
         m = re.match(r"(\d+)\.", sent.get("subdoc") or "")
         book = int(m[1]) if m else None
         words = sent.findall("word")
+        # A sentence whose annotation has slipped against its words (a word tagged as
+        # punctuation, the lemmas a word out from there on: Euthyphro 3d, "οὐδʼ αὐτὸς πάνυ τι
+        # γιγνώσκω…"): left out, its words parsed automatically instead (auto_words).
+        if any((w.get("postag") or "").startswith("u") and _GREEK_LETTER.search(w.get("form") or "")
+               and not w.get("artificial") for w in words):
+            continue
         form_of = {w.get("id"): ("(implied word)" if w.get("artificial") or w.get("insertion_id") else w.get("form"))
                    for w in words}
         for w in words:
@@ -491,7 +497,21 @@ def treebank_words(spec):
             out.append((book, tb_key(w.get("form") or ""), unicodedata.normalize("NFC", w.get("lemma") or ""),
                         postag, w.get("relation"), "" if head in (None, "0") else form_of.get(head),
                         unicodedata.normalize("NFC", w.get("form") or "")))
+    # Two words each annotated as the other (the Odyssey's "οὐ δέ": οὐ as δέ, δέ as οὐ): put back.
+    for k in range(len(out) - 1):
+        a, b = out[k], out[k + 1]
+        if (_fits(a[6], b[2]) and _fits(b[6], a[2]) and not _fits(a[6], a[2]) and not _fits(b[6], b[2])):
+            out[k], out[k + 1] = (*a[:2], *b[2:6], a[6]), (*b[:2], *a[2:6], b[6])
     return out
+
+
+_GREEK_LETTER = re.compile(r"[\u0370-\u03ff\u1f00-\u1fff]")
+
+
+def _fits(form, lemma):
+    """A form plausibly of a lemma: their first letters alike (accents aside)."""
+    a, b = letters_key(form)[:4], letters_key(lemma.rstrip("0123456789"))[:4]
+    return bool(a) and bool(b) and difflib.SequenceMatcher(None, a, b).ratio() >= 0.75
 
 
 def tb_key(word):
@@ -965,6 +985,31 @@ def rahlfs(src, verbose, words_out=None):
     return "verse", "verse", [(c, str(c)) for c in sorted(chapters)], segments
 
 
+AUTO_PARSING = ROOT / "data" / "raw" / "lemmatised"
+
+
+def auto_words(slug, segments, gold):
+    """Rows of auto_words: the lemmatiser's parsing (data/raw/lemmatised/<slug>.json, from
+    scripts/lemmatise_library.py) of the words without gold parsing, where the segment still
+    reads as it was lemmatised."""
+    path = AUTO_PARSING / f"{slug}.json"
+    if not path.exists():
+        return []
+    done = json.loads(path.read_text())
+    out = []
+    for div, seq, ref, content, *_ in segments:
+        entry = done.get(f"{div}:{seq}")
+        if not entry or entry["text"] != content:
+            continue
+        for i, r in entry["words"].items():
+            if (div, seq, int(i)) in gold:
+                continue
+            alt = max(r.get("alternatives") or {}, key=(r.get("alternatives") or {}).get, default=None)
+            out.append((slug, div, seq, int(i), r["lemma"], r.get("headword"), r.get("definition"), r.get("pos"),
+                        json.dumps(r.get("morph") or [], ensure_ascii=False), r.get("confidence"), alt))
+    return out
+
+
 CHURCH_TEXT = ROOT / "library" / "church_text.json"
 
 
@@ -1211,8 +1256,9 @@ def main():
 
     perseus_members([n["file"] for t in cat["texts"] for n in t.get("notes", []) if n["type"] == "perseus"])
     rows_t, rows_d, rows_s, rows_ns, rows_n, rows_w, rows_tr, rows_tc, rows_tb = [], [], [], [], [], [], [], [], []
-    rows_tp = []
+    rows_tp, rows_aw = [], []
     for sort, t in enumerate(cat["texts"]):
+        gold_from = (len(rows_w), len(rows_tb))  # (this text's gold parsing: rows added from here)
         if t.get("category") not in categories:
             sys.exit(f"{t['slug']}: category {t.get('category')!r} is not in the catalogue's categories")
         print(f"{t['slug']}: {t['title']}")
@@ -1285,6 +1331,11 @@ def main():
             else:
                 rows_tr += [(t["slug"], *row) for row in translation(spec, segs)]
             rows_tc.append((t["slug"], spec["lang"], spec.get("credit")))
+        gold = {r[1:4] for r in rows_w[gold_from[0]:]} | {r[1:4] for r in rows_tb[gold_from[1]:]}
+        found = auto_words(t["slug"], segs, gold)
+        rows_aw += found
+        if found:
+            print(f"  automatic parsing: {len(found)} words")
         rows_t.append((t["slug"], t["title"], t.get("author"), t["category"], sort, form, cite, reader,
                        t.get("credit"), t.get("notes_credit"), t.get("collection"), t.get("short"), int(bool(t.get("hidden")))))
         rows_d += [(t["slug"], n, label) for n, label in divs]
@@ -1298,7 +1349,7 @@ def main():
         DROP TABLE IF EXISTS note_sources; DROP TABLE IF EXISTS notes;
         DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS lexicon; DROP TABLE IF EXISTS translations; DROP TABLE IF EXISTS translation_passages;
         DROP TABLE IF EXISTS translation_credits;
-        DROP TABLE IF EXISTS treebank; DROP TABLE IF EXISTS lemma_defs;
+        DROP TABLE IF EXISTS treebank; DROP TABLE IF EXISTS auto_words; DROP TABLE IF EXISTS lemma_defs;
         CREATE TABLE categories (name TEXT PRIMARY KEY, sort INTEGER NOT NULL);
         CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- JSON: "lectionary", "church_text"
         CREATE TABLE texts (
@@ -1364,6 +1415,19 @@ def main():
             head       TEXT,             -- the word it depends on ('' for the sentence's root)
             form       TEXT,             -- as the treebank spells it (a part: τὰ of τἀληθῆ)
             PRIMARY KEY (text, div, seq, word_index, part));
+        CREATE TABLE auto_words (        -- the lemmatiser's parsing, for words without gold parsing
+            text       TEXT NOT NULL,      --   (scripts/lemmatise_library.py)
+            div        INTEGER NOT NULL,
+            seq        INTEGER NOT NULL,
+            word_index INTEGER NOT NULL, -- 0-based whitespace chunk of the segment
+            lemma      TEXT,
+            headword   TEXT,             -- the short definitions' headword, and its definition
+            definition TEXT,
+            pos        TEXT,             -- UD's UPOS (NOUN, VERB, ...)
+            morph      TEXT,             -- JSON: Morpheus's reading(s) as chosen in context ("aor ind act 3rd sg")
+            confidence REAL,             -- the lemma's (0-1)
+            alternative TEXT,            -- the next likeliest lemma, where it was a choice
+            PRIMARY KEY (text, div, seq, word_index));
         CREATE TABLE lemma_defs (        -- short English definitions of the treebanks' lemmas
             lemma      TEXT PRIMARY KEY,
             definition TEXT NOT NULL);
@@ -1403,6 +1467,7 @@ def main():
     con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, ?, ?)", rows_tp)
     con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)", rows_tc)
     con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_tb)
+    con.executemany("INSERT INTO auto_words VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_aw)
     if rows_tb or rows_w:  # definitions, as for the Iliad (import_shortdefs.py)
         from import_shortdefs import matcher
         match = matcher()

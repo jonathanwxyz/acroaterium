@@ -439,6 +439,10 @@ def text_json(slug, n):
     try:  # parsed words (a word card for each): the New Testament, the treebanked texts
         has_words = con.execute("SELECT 1 FROM words WHERE text = ? LIMIT 1", (slug,)).fetchone()
         has_words = has_words or con.execute("SELECT 1 FROM treebank WHERE text = ? LIMIT 1", (slug,)).fetchone()
+        try:  # (or the lemmatiser's, where there's no gold parsing)
+            has_words = has_words or con.execute("SELECT 1 FROM auto_words WHERE text = ? LIMIT 1", (slug,)).fetchone()
+        except sqlite3.OperationalError:  # a library built before automatic parsing
+            pass
     except sqlite3.OperationalError:  # a library built before there were any
         has_words = None
     translated, translation_credits = {"en": {}, "el": {}}, {}
@@ -748,6 +752,56 @@ def postag_morph(postag):
     return [m[k] for k in order if m[k]]
 
 
+# Morpheus's abbreviations, spelled out as the treebanks' parsing is.
+MORPHEUS_WORDS = {
+    "pres": "present", "imperf": "imperfect", "fut": "future", "aor": "aorist", "perf": "perfect",
+    "plup": "pluperfect", "futperf": "future perfect", "ind": "indicative", "subj": "subjunctive",
+    "opt": "optative", "imperat": "imperative", "inf": "infinitive", "part": "participle",
+    "act": "active", "mid": "middle", "pass": "passive", "mp": "middle/passive", "sg": "singular",
+    "pl": "plural", "dual": "dual", "nom": "nominative", "gen": "genitive", "dat": "dative",
+    "acc": "accusative", "voc": "vocative", "masc": "masculine", "fem": "feminine", "neut": "neuter",
+    "comp": "comparative", "superl": "superlative", "indeclinable": None, "adverbial": "adverbial",
+}
+UPOS_WORDS = {
+    "NOUN": "noun", "PROPN": "proper noun", "VERB": "verb", "AUX": "verb", "ADJ": "adjective",
+    "ADV": "adverb", "PRON": "pronoun", "DET": "article", "ADP": "preposition", "CCONJ": "conjunction",
+    "SCONJ": "conjunction", "PART": "particle", "INTJ": "interjection", "NUM": "numeral",
+}
+
+
+def morpheus_morph(pos, readings):
+    """["verb", "aorist", "indicative", ...]: a part of speech and Morpheus's reading(s),
+    spelled out; readings the context couldn't decide between joined by "or"."""
+    out = [UPOS_WORDS[pos]] if pos in UPOS_WORDS else []
+    for k, reading in enumerate(r for rs in readings for r in rs.split(" | ")):
+        if k:
+            out.append("or")
+        out += [" or ".join(MORPHEUS_WORDS.get(p, p) for p in w.split("/")) for w in reading.split()
+                if MORPHEUS_WORDS.get(w, w) is not None]  # (nom/voc: nominative or vocative)
+    return out
+
+
+def automatic_parsing(slug, n, seq, index):
+    """The lemmatiser's parsing of a word without gold parsing (auto_words), as a card's token."""
+    con = sqlite3.connect(LIBRARY)
+    try:
+        row = con.execute("SELECT lemma, headword, definition, pos, morph, confidence, alternative FROM auto_words "
+                          "WHERE text = ? AND div = ? AND seq = ? AND word_index = ?", (slug, n, seq, index)).fetchone()
+    except sqlite3.OperationalError:  # a library built before automatic parsing
+        return None
+    finally:
+        con.close()
+    if not row:
+        return None
+    lemma, headword, definition, pos, morph, confidence, alternative = row
+    note = "Automatic parsing (may be wrong)."
+    other = (alternative or "").rstrip("0123456789")
+    if confidence is not None and confidence < 0.6 and other and other != lemma.rstrip("0123456789"):
+        note = f"Automatic parsing, uncertain: perhaps {other}."  # (not where it's only which λέγω)
+    return {"form": None, "lemma": headword or lemma.rstrip("0123456789"), "definition": definition,
+            "morph": morpheus_morph(pos, json.loads(morph or "[]")), "note": note}
+
+
 def lexword_json(slug, n, seq, index):
     """A library text's word, as /api/word gives an Iliad word: its parsing (the New
     Testament: Robinson's, with Dodson's lexicon; the Septuagint: CATSS's, with its own
@@ -781,6 +835,9 @@ def lexword_json(slug, n, seq, index):
             "head": head or None, "root": head == ""}
             for form, lemma, postag, relation, head, definition in parts]}
     if not row:
+        auto = automatic_parsing(slug, n, seq, index)
+        if auto:
+            return {"word": word, "tokens": [auto]}
         return {"word": word, "tokens": [], "note": "Not parsed (the parsing doesn't have this word here)."}
     strongs, morph, lemma, gloss, definition, own_lemma, own_gloss, short = row
     if own_lemma:  # the Septuagint: its own lemma; Strong's (and Dodson's entry) only where it's the same word
