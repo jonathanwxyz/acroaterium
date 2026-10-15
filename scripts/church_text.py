@@ -204,8 +204,11 @@ SENTENCE_END = re.compile(r"[.;·;:]$")
 
 def spread(rows, words):
     """Their chapter's words (words) among our verses (rows: (seq, ref, content)), lined up by
-    the words: {verse index: [words]}. Where a verse begins otherwise in their division, the
-    words up to a sentence's end go with the verse before ("ἀπέθανε. | Καὶ ἔζησε")."""
+    the words: {verse index: [words]}. Words of theirs standing for words of ours go with
+    those words' verses, each with the one it's most like ("συμπαραληφθῇς. εἶπε" for
+    "συμπαραλημφθῇς. | εἶπεν": the first with the verse before, the second with the next).
+    Words of theirs ours lacks at a verse's start, up to a sentence's end, go with the verse
+    before ("ἀπέθανε. | Καὶ ἔζησε")."""
     ours_all = [(k, w) for k, (_, _, content) in enumerate(rows) for w in content.split()]
     sm = difflib.SequenceMatcher(None, [norm(w) for _, w in ours_all], [norm(w) for w in words], autojunk=False)
     out = {k: [] for k in range(len(rows))}
@@ -218,6 +221,15 @@ def spread(rows, words):
         k = ours_all[min(i1, len(ours_all) - 1)][0]
         if i1 >= len(ours_all):  # (after our last word: with the last verse)
             out[k].extend(piece)
+            continue
+        if i2 > i1 and ours_all[i1][0] != ours_all[i2 - 1][0]:  # (across a verse's end)
+            at = i1
+            for w in piece:
+                near = [(similarity(list(norm(w)), list(norm(ours_all[i][1]))), i) for i in range(at, i2)]
+                score, i = max(near)
+                if score >= 0.5:
+                    at = i
+                out[ours_all[at][0]].append(w)
             continue
         if i1 > 0 and ours_all[i1 - 1][0] == k - 1:  # at a verse's start
             ends = [n for n, w in enumerate(piece) if SENTENCE_END.search(w)]
@@ -269,11 +281,13 @@ def book(slug):
             if not theirs[k] or theirs[k] == ours:
                 continue
             words, places = theirs[k], []
-            span = aud.execute("SELECT min(start), max(end) FROM units WHERE text = ? AND div = ? AND seq = ?",
+            # (The verse's own speech: not the next one's first words, which a word misplaced
+            # at its end would match.)
+            span = aud.execute("SELECT min(start), max(speech_end) FROM units WHERE text = ? AND div = ? AND seq = ?",
                                (slug, div, seq)).fetchone() if rec else (None,)
             if [norm(w) for w in ours] != [norm(w) for w in theirs[k]] and span[0] is not None:
                 lp = lp_cache[rec[0]]
-                window = lp[max(0, int((span[0] - 0.5) / A.FRAME_S)):int((span[1] + 0.5) / A.FRAME_S)]
+                window = lp[max(0, int((span[0] - 0.25) / A.FRAME_S)):int((span[1] + 0.25) / A.FRAME_S)]
                 words, places = church_verse(theirs[k], ours, window)
                 report["differ"] += 1
             report["places"] += len(places)
