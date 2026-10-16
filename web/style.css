@@ -1805,3 +1805,5 @@ dialog, .dl-list, .plan-days { overscroll-behavior: contain; }
 .app-scrollbar.shown > div { pointer-events: auto; }
 .app-scrollbar > div::before { content: ""; position: absolute; inset: -12px -2px -12px -28px; }
 .app-scrollbar.dragging > div { width: 8px; margin-left: -4px; opacity: 1; background: var(--current-bar); }
+/* (The app's own bounce at the ends (native.js): not the WebView's stretch too.) */
+html.app-bounce { overscroll-behavior-y: none; }
