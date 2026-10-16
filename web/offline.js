@@ -7,7 +7,10 @@
 //
 // Each download's record is kept at /offline/<slug>/<n>: what /api/offline/<slug>/<n>
 // gave (empty until it starts), when it was asked for ("queued", its place in the queue),
-// whether it's paused and whether it's done. The queue is those not done nor paused, in
+// whether it's paused and whether it's done.
+//
+// In the Android app (native.js), recordings are kept as the app's own files instead, where
+// its player can play them: fetched a piece at a time likewise, by the app. The queue is those not done nor paused, in
 // that order, so it outlasts the page: whichever page of the reader is open (the library,
 // or a book being read) works through it, one download at a time, and one page at a time
 // (a lock), and the next page opened goes on where the last left off.
@@ -31,6 +34,7 @@ const offline = (() => {
     tellAll(new Map(keys.map((k) => [k, now.get(k) ?? { state: "none" }])));
   }
   const supported = "caches" in window && "serviceWorker" in navigator;
+  const files = window.nativeApp?.files;  // (in the app: recordings as its files)
 
   async function records() {
     const cache = await caches.open(OFFLINE);
@@ -49,6 +53,13 @@ const offline = (() => {
     await (await caches.open(OFFLINE)).put(recordKey(keyOf(info)), Response.json(info));
   }
   async function audioKeys() {
+    if (files) {  // (the same keys, for the pieces the app has)
+      const keys = new Set();
+      for (const e of await files.list()) {
+        for (let k = 0; k < pieces(e.size); k++) if (e.done || e.have.includes(k)) keys.add(`${e.url}?piece=${k}`);
+      }
+      return keys;
+    }
     return new Set((await (await caches.open(AUDIO)).keys()).map((r) => r.url));
   }
   // The bytes of a download's recording saved so far (the pieces there).
@@ -103,6 +114,10 @@ const offline = (() => {
     }
     for (const a of info.audio) {
       const url = abs(a.url);
+      if (files) {
+        await saveNative(job, url, a.size, keys);
+        continue;
+      }
       let meta = await (await audio.match(`${url}?offline`))?.json();
       if (meta && meta.size !== a.size) {  // the recording changed since: start it again
         for (let k = 0; k < meta.pieces; k++) await audio.delete(`${url}?piece=${k}`);
@@ -128,6 +143,27 @@ const offline = (() => {
     // (Paused or removed meanwhile in another page: left as that page left it.)
     const now = await record(job.key);
     if (now && !now.paused) await saveRecord({ ...info, done: true });
+  }
+
+  // A recording into the app's files, a piece at a time (a pause or removal stops it
+  // between pieces). The app starts it again if its size has changed.
+  async function saveNative(job, url, size, keys) {
+    const { signal } = job.controller;
+    for (let k = 0; k < pieces(size); k++) {
+      if (keys.has(`${url}?piece=${k}`)) continue;
+      signal.throwIfAborted();
+      const before = (await files.list()).find((e) => e.url === url);
+      if (before && before.size !== size) {  // (begun when it was another size: from nothing)
+        job.have -= saved({ audio: [{ url, size: before.size }] }, keys);
+        keys = new Set([...keys].filter((key) => !key.startsWith(`${url}?`)));
+      }
+      await files.fetchPiece(url, size, PIECE, k);
+      keys.add(`${url}?piece=${k}`);
+      job.have += Math.min(PIECE, size - k * PIECE);
+      tell(job.key, { state: "running", have: job.have, size: job.size });
+    }
+    signal.throwIfAborted();
+    await files.finish(url);
   }
 
   // Work through the queue, while this page holds the lock (another page of the reader may
@@ -210,6 +246,10 @@ const offline = (() => {
       for (const a of info.audio) {
         const url = abs(a.url);
         if (kept.has(url)) continue;
+        if (files) {
+          deletions.push(files.remove(url));
+          continue;
+        }
         deletions.push(audio.delete(`${url}?offline`));
         for (let k = 0; k < pieces(a.size); k++) deletions.push(audio.delete(`${url}?piece=${k}`));
       }

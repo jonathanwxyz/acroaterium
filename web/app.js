@@ -65,7 +65,7 @@ const SCHOLIA_ICON = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidde
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 5h16v11H10l-4 3.5V16H4z"/>' +
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 9h8M8 12.3h5"/></svg>';
 
-const audio = document.getElementById("audio");
+const audio = window.nativeApp?.audio() ?? document.getElementById("audio");  // (native.js: in the app)
 const list = document.getElementById("verses");
 const position = document.getElementById("position");
 const follow = document.getElementById("follow");

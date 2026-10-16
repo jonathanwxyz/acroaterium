@@ -9,13 +9,13 @@
 // kept in caches of their own that a new version leaves alone. A recording saved whole is
 // played from there, the byte ranges the player asks for read out of its pieces; any other
 // audio is left to the browser.
-const VERSION = "v59";
+const VERSION = "v60";
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 const FONTS = "fonts";  // kept across versions
 const OFFLINE = "offline";  // downloaded texts' books (and their records), kept across versions
 const AUDIO = "audio";  // downloaded recordings, in pieces, kept across versions
-const SHELL_FILES = ["./", "index.html", "home.js", "read.html", "app.js", "i18n.js", "theme.js", "shared.js", "offline.js", "style.css",
+const SHELL_FILES = ["./", "index.html", "home.js", "read.html", "app.js", "i18n.js", "theme.js", "shared.js", "offline.js", "native.js", "style.css",
                      "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png", "icons/icon-32.png"];
 
 self.addEventListener("install", (e) => {

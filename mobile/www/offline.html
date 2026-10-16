@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reader</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fdf6e3; --fg: #3b3226; --muted: #8a7d6a; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1d1a16; --fg: #e8dfcf; --muted: #9a8f7d; } }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); }
+  body { display: grid; place-items: center; font: 17px/1.5 Georgia, serif; text-align: center; padding: 0 24px; }
+  p { margin: 0 0 1.2em; } .sub { color: var(--muted); font-size: 15px; }
+  button { font: inherit; color: inherit; background: none; border: 1px solid var(--muted); border-radius: 8px; padding: 8px 22px; }
+</style>
+</head>
+<body>
+<div>
+  <p id="msg">The library can't be reached.</p>
+  <p class="sub" id="sub">Connect to the internet and try again. What you have opened before, and your downloads, open without a connection once the app has been online once.</p>
+  <button id="retry">Try again</button>
+</div>
+<script>
+  if ((navigator.language || "").startsWith("el")) {
+    msg.textContent = "Η βιβλιοθήκη δεν είναι διαθέσιμη.";
+    sub.textContent = "Συνδεθείτε στο διαδίκτυο και δοκιμάστε ξανά.";
+    retry.textContent = "Ξανά";
+  }
+  // (The server's address, which the app opens: the page this one stands in for.)
+  retry.addEventListener("click", () => { location.href = window.Capacitor?.getServerUrl?.() || "/"; });
+</script>
+</body>
+</html>
