@@ -701,15 +701,12 @@ function show(next) {
 addEventListener("pagehide", () => {
   if (!library?.categories) return;  // (before the list: the #library element)
   try {
-    localStorage.setItem(SHOWN, JSON.stringify({ data: library, marks: shownMarks ?? [], plans,
-                                                 downloads: [...downloadStatuses] }));
+    localStorage.setItem(SHOWN, JSON.stringify({ data: library, marks: shownMarks ?? [], plans }));
   } catch {}
 });
 let saved = null;
 try { saved = JSON.parse(localStorage.getItem(SHOWN)); } catch {}
 if (saved?.data?.categories) {
-  // (With what was downloaded then, for the buttons: what the device says now follows.)
-  for (const [key, status] of saved.downloads ?? []) if (!downloadStatuses.has(key)) downloadStatuses.set(key, status);
   show(saved);
   showDownloads();  // (the line under the heading, likewise: so it doesn't push the list down after)
 }

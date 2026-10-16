@@ -1159,6 +1159,7 @@ body.no-audio .toggle:has(#focused), body.no-audio .toggle:has(#hold-on-hover), 
 body.no-paraphrase .toggle:has(#show-paraphrase), body.no-modern .toggle:has(#show-modern),
 body.no-translation .toggle:has(#show-translation), body.no-scholia .toggle:has(#show-scholia) { display: none; }
 body.no-audio.no-paraphrase.no-modern.no-translation.no-scholia .controls { display: none; }
+body.features-unknown .controls { visibility: hidden; }  /* (a text not opened before: until its book comes) */
 body.no-audio .transport { display: flex; justify-content: center; }
 body.no-audio #position { width: 8rem; margin-left: 0; border-color: var(--rule); }
 body.no-audio .verse { cursor: auto; }

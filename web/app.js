@@ -108,7 +108,15 @@ function render(data) {
   list.classList.remove("loading");
   if (V_TO && !(SELECTION && data.cite === "verse")) applyRange(data);  // (a book's lines: 3.20-3.40)
   rememberVisit(TEXT, BOOK, data.collection);
-  try { localStorage.setItem(`meta:${TEXT}`, JSON.stringify({ title: data.title, eyebrow: data.eyebrow, short: data.short, books: data.books })); } catch {}
+  // (What the next visit shows before the book comes: read.html and the loading below.)
+  try {
+    const old = JSON.parse(localStorage.getItem(`meta:${TEXT}`)) ?? {};
+    localStorage.setItem(`meta:${TEXT}`, JSON.stringify({
+      title: data.title, eyebrow: data.eyebrow, short: data.short, books: data.books, text: data.text,
+      features: data.features ?? [], form: data.form, downloads: { ...old.downloads, [BOOK]: data.download ?? null },
+    }));
+  } catch {}
+  document.body.classList.remove("features-unknown");
   const has = new Set(data.features ?? []);
   for (const f of FEATURES) document.body.classList.toggle(`no-${f}`, !has.has(f));
   // Focused mode shows whole rows: not for prose, where a sentence is what plays.
@@ -1995,6 +2003,11 @@ try {
   if (meta?.title) {
     showTitle(meta.eyebrow ?? meta.title, meta.short ?? meta.title);
     fillBooks(meta.books ?? []);
+  }
+  // And its download button, at once (in the place read.html kept for it).
+  if (meta?.downloads?.[BOOK]) {
+    showDownloadButton({ download: meta.downloads[BOOK], text: meta.text ?? TEXT, title: meta.title, book: BOOK },
+                       meta.books?.find((b) => b.n === BOOK)?.label);
   }
 } catch {}
 list.classList.add("loading");

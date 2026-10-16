@@ -289,6 +289,8 @@ function formatSize(bytes) {
 // says it has changed. While another page of the reader is downloading, it's looked at
 // again every few seconds.
 const downloadStatuses = new Map();  // "<slug>/<n>" -> {state, have, size}
+// (As the device had them last time, until it says again: buttons drawn as they'll stay.)
+try { for (const [key, s] of JSON.parse(localStorage.getItem("downloadStatuses")) ?? []) downloadStatuses.set(key, s); } catch {}
 const downloadButtons = [];  // {b, items, name, compact}
 {
   const svg = (body, size = 18) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${body}</svg>`;
@@ -344,6 +346,7 @@ const downloadButtons = [];  // {b, items, name, compact}
     b.setAttribute("aria-label", title);
   };
   const showAll = () => {
+    try { localStorage.setItem("downloadStatuses", JSON.stringify([...downloadStatuses])); } catch {}
     downloadButtons.forEach(show);
     document.dispatchEvent(new Event("downloadschange"));
   };

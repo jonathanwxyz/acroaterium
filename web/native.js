@@ -142,11 +142,12 @@ window.nativeApp = (() => {
   };
 
   // The scrollbar (the app turns off the WebView's own, which runs the screen's height): a
-  // thin one that runs only where the page scrolls, between the reader's bars (or, in the
-  // library, below the status bar), shown while scrolling as Android's is. While it shows,
+  // thin one that runs only where the text scrolls, between the reader's bars, shown while
+  // scrolling as Android's is. (The library has none.) While it shows,
   // its thumb can be held and dragged (it widens), to move far through the page at once;
   // when it's hidden, a tap there goes to the page (the scholia buttons at the edge).
   function scrollbar() {
+    if (!document.getElementById("topbar")) return;
     const track = document.createElement("div");
     track.className = "app-scrollbar";
     track.setAttribute("aria-hidden", "true");
@@ -158,8 +159,7 @@ window.nativeApp = (() => {
     let drag = null;  // {id, y, from}: the pointer holding the thumb, where it began, scrollY then
     const place = () => {
       queued = false;
-      const top = document.getElementById("topbar")?.getBoundingClientRect().bottom
-        ?? (parseFloat(getComputedStyle(document.body, "::before").height) || 0);
+      const top = document.getElementById("topbar").getBoundingClientRect().bottom;
       const bar = document.getElementById("player")?.getBoundingClientRect();
       const bottom = bar?.height ? innerHeight - bar.top : 0;
       length = Math.max(0, innerHeight - top - bottom);

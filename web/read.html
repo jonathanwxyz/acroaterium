@@ -131,6 +131,25 @@
     </button>
   </div>
 </header>
+<script>
+  // The text's features as last seen (app.js keeps them): the player shows only its own
+  // toggles, and the top bar keeps the download button's place, from the first paint. A
+  // text not opened before shows its toggles once they're known.
+  try {
+    const q = new URLSearchParams(location.search), book = Number(q.get("book") || 1);
+    const meta = JSON.parse(localStorage.getItem(`meta:${q.get("text") || "iliad"}`));
+    if (!meta?.features) throw 0;
+    for (const f of ["audio", "paraphrase", "modern", "translation", "scholia", "words"]) {
+      document.body.classList.toggle(`no-${f}`, !meta.features.includes(f));
+    }
+    document.body.classList.toggle("prose-text", meta.form === "prose");
+    if (meta.downloads?.[book]) {
+      const slot = document.getElementById("download-slot");
+      slot.innerHTML = '<button class="download compact" disabled aria-hidden="true"></button>';
+      slot.hidden = false;
+    }
+  } catch { document.body.classList.add("features-unknown"); }
+</script>
 <main>
   <ol id="verses" aria-live="off"></ol>
   <div class="credits" id="credits"></div>
