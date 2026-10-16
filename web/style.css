@@ -1773,3 +1773,8 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
   cursor: pointer;
 }
 @media (hover: hover) { .plan-start:hover { color: var(--text); border-color: var(--current-bar); } }
+
+/* While a dialog is open (the downloads panel, a new reading plan), the page behind it
+   stays still; the dialog's own list scrolls without carrying the page on. */
+html:has(dialog[open]), html:has(dialog[open]) body { overflow: hidden; }
+dialog, .dl-list, .plan-days { overscroll-behavior: contain; }
