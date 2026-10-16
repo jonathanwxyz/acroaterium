@@ -143,7 +143,9 @@ window.nativeApp = (() => {
 
   // The scrollbar (the app turns off the WebView's own, which runs the screen's height): a
   // thin one that runs only where the page scrolls, between the reader's bars (or, in the
-  // library, below the status bar), shown while scrolling as Android's is.
+  // library, below the status bar), shown while scrolling as Android's is. While it shows,
+  // its thumb can be held and dragged (it widens), to move far through the page at once;
+  // when it's hidden, a tap there goes to the page (the scholia buttons at the edge).
   function scrollbar() {
     const track = document.createElement("div");
     track.className = "app-scrollbar";
@@ -152,28 +154,55 @@ window.nativeApp = (() => {
     track.append(thumb);
     document.body.append(track);
     let hideTimer = 0, queued = false;
+    let length = 0, size = 0, range = 0;  // the track's length, the thumb's, how far the page scrolls
+    let drag = null;  // {id, y, from}: the pointer holding the thumb, where it began, scrollY then
     const place = () => {
       queued = false;
       const top = document.getElementById("topbar")?.getBoundingClientRect().bottom
         ?? (parseFloat(getComputedStyle(document.body, "::before").height) || 0);
       const bar = document.getElementById("player")?.getBoundingClientRect();
       const bottom = bar?.height ? innerHeight - bar.top : 0;
-      const length = Math.max(0, innerHeight - top - bottom);
-      const range = document.documentElement.scrollHeight - innerHeight;
+      length = Math.max(0, innerHeight - top - bottom);
+      range = document.documentElement.scrollHeight - innerHeight;
       if (range <= 0 || length < 48) { track.hidden = true; return; }
       track.hidden = false;
-      const size = Math.max(36, length * innerHeight / document.documentElement.scrollHeight);
+      size = Math.max(36, length * innerHeight / document.documentElement.scrollHeight);
       Object.assign(track.style, { top: `${top}px`, height: `${length}px` });
       Object.assign(thumb.style, { height: `${size}px`,
                                    transform: `translateY(${(length - size) * Math.min(1, Math.max(0, scrollY / range))}px)` });
     };
-    addEventListener("scroll", () => {
-      if (!queued) { queued = true; requestAnimationFrame(place); }
+    const show = () => {
       track.classList.add("shown");
       clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => track.classList.remove("shown"), 900);
+      if (!drag) hideTimer = setTimeout(() => track.classList.remove("shown"), 1500);
+    };
+    addEventListener("scroll", () => {
+      if (!queued) { queued = true; requestAnimationFrame(place); }
+      show();
     }, { passive: true });
     addEventListener("resize", place);
+
+    thumb.addEventListener("pointerdown", (e) => {
+      if (!track.classList.contains("shown")) return;
+      e.preventDefault();
+      thumb.setPointerCapture(e.pointerId);
+      drag = { id: e.pointerId, y: e.clientY, from: scrollY };
+      track.classList.add("dragging");
+      show();
+    });
+    thumb.addEventListener("pointermove", (e) => {
+      if (drag?.id !== e.pointerId || length <= size) return;
+      const to = drag.from + (e.clientY - drag.y) * range / (length - size);
+      scrollTo({ top: Math.max(0, Math.min(range, to)), behavior: "instant" });
+    });
+    const release = (e) => {
+      if (drag?.id !== e.pointerId) return;
+      drag = null;
+      track.classList.remove("dragging");
+      show();
+    };
+    thumb.addEventListener("pointerup", release);
+    thumb.addEventListener("pointercancel", release);
     place();
   }
   if (document.readyState === "loading") addEventListener("DOMContentLoaded", scrollbar);

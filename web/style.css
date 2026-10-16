@@ -1799,4 +1799,9 @@ dialog, .dl-list, .plan-days { overscroll-behavior: contain; }
                  opacity: 0; transition: opacity 300ms ease 200ms; }
 .app-scrollbar.shown { opacity: 1; transition-delay: 0s; transition-duration: 100ms; }
 .app-scrollbar[hidden] { display: none; }
-.app-scrollbar > div { width: 100%; border-radius: 2px; background: var(--muted); opacity: 0.7; }
+.app-scrollbar > div { position: relative; width: 100%; border-radius: 2px; background: var(--muted); opacity: 0.7;
+                       touch-action: none; transition: width 120ms ease, margin 120ms ease; }
+/* (While it shows, the thumb can be held: a wider place to take it by than it looks.) */
+.app-scrollbar.shown > div { pointer-events: auto; }
+.app-scrollbar > div::before { content: ""; position: absolute; inset: -12px -2px -12px -28px; }
+.app-scrollbar.dragging > div { width: 8px; margin-left: -4px; opacity: 1; background: var(--current-bar); }
