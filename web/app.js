@@ -9,7 +9,7 @@
 const PARAMS = new URLSearchParams(location.search);
 let TEXT = PARAMS.get("text") || "iliad";  // (moves on in place to the next text: carryOn)
 let BOOK = Number(PARAMS.get("book") || 1);  // (moves on in place to the next chapter: carryOn)
-const [V_FROM, V_TO] = (PARAMS.get("v") ?? "").split(/[-–]/).map((s) => s.trim());
+let V_FROM, V_TO;  // ?v=: a verse, or the ends of a range (moves on in place: a reading plan's next part)
 // &at=: carried on from the chapter before, playing (the chapters of a book of the Bible
 // share one recording): start there, and play.
 const CARRY_AT = Number(PARAMS.get("at")) || null;
@@ -17,13 +17,21 @@ let RANGE = null;  // {from, to}: the refs of the first and last verse shown, wh
 // A selection of verses in pieces, maybe across chapters (a reading of the lectionary):
 // "20-21,40-52", "33-40,12.1-2", "2-5.7". Each end is a verse or chapter.verse; a verse
 // alone is in the chapter last named (at first, the book's). A verse numbered from
-// another chapter keeps its own ref ("24.31:8", Rahlfs's Proverbs). Bible texts only.
-const SELECTION = (() => {
-  const spec = PARAMS.get("v") ?? "";
-  if (TEXT === "iliad" || !/[,;:]|[-–]\s*\d+\.\d/.test(spec)) return null;
+// another chapter keeps its own ref ("24.31:8", Rahlfs's Proverbs: with a chapter before it,
+// as "2:4" alone is chapter 2, verse 4, like "2.4"); "start" and "end" are
+// a chapter's first and last (a reading plan's: "3.start-5.end"). Bible texts only.
+let SELECTION = null;
+function setSpec(spec) {
+  [V_FROM, V_TO] = spec.split(/[-–]/).map((s) => s.trim());
+  SELECTION = selectionOf(spec);
+}
+function selectionOf(spec) {
+  if (TEXT === "iliad" || !/[,;:]|[-–]\s*\d+\.\d|\.(start|end)\b/.test(spec)) return null;
   let ch = BOOK;
   const end = (s) => {
-    const m = s.trim().match(/^(?:(\d+)\.)?(\d+(?::\d+)?[a-z]?)$/);
+    const cv = s.trim().match(/^(\d+):(\d+[a-z]?)$/);  // chapter:verse, as chapter.verse
+    if (cv) s = `${cv[1]}.${cv[2]}`;
+    const m = s.trim().match(/^(?:(\d+)\.)?(\d+(?::\d+)?[a-z]?|start|end)$/);
     if (!m) return null;
     if (m[1]) ch = Number(m[1]);
     return { ch, v: m[2] };
@@ -36,7 +44,8 @@ const SELECTION = (() => {
     pieces.push({ from, to });
   }
   return pieces;
-})();
+}
+setSpec(PARAMS.get("v") ?? "");
 // Old links (?book=N, the Iliad) show the full address: ?text=iliad&book=N.
 if (!PARAMS.has("text") || CARRY_AT) {
   history.replaceState(null, "", `?${new URLSearchParams({ text: TEXT, book: BOOK, ...(V_FROM ? { v: PARAMS.get("v") } : {}) })}${location.hash}`);
@@ -75,7 +84,7 @@ const bookMenu = document.getElementById("book-menu");
 
 let DATA = null;   // the book as loaded
 let verses = [];   // {line, text, start, speechEnd, end, el}, timed ones in recording order
-let refs = [];     // {ref, el, entry}: every line or section start, for the position box
+let refs = [];     // {ref, div, el, entry}: every line or section start, for the position box (div: its chapter)
 let current = -1;  // index into verses
 let lastUserScroll = 0;
 let passages = [];    // {from, to, el}: Murray's English passages
@@ -97,7 +106,7 @@ function render(data) {
   if (selected) closeCard();
   list.replaceChildren();  // the loading skeleton
   list.classList.remove("loading");
-  if (V_TO && !SELECTION) applyRange(data);
+  if (V_TO && !(SELECTION && data.cite === "verse")) applyRange(data);  // (a book's lines: 3.20-3.40)
   rememberVisit(TEXT, BOOK, data.collection);
   try { localStorage.setItem(`meta:${TEXT}`, JSON.stringify({ title: data.title, eyebrow: data.eyebrow, short: data.short, books: data.books })); } catch {}
   const has = new Set(data.features ?? []);
@@ -128,6 +137,42 @@ function render(data) {
   if (!data.audio) position.placeholder = data.cite === "section" ? `go to ${first}` : "go to line";
   if (data.cite === "section") position.title = `Type a section (e.g. ${first}) and press Enter`;
   showEndMode();  // (continue, only where there's a next)
+  showChapterNav();
+}
+
+// At the foot of a chapter or book (not a range): the one before and the one after (the
+// text's previous or next book, else the collection's previous or next text).
+function prevPlace() {
+  if (!DATA) return null;
+  const i = DATA.books.findIndex((b) => b.n === BOOK);
+  if (i > 0) return { text: TEXT, book: DATA.books[i - 1].n };
+  const members = DATA.collectionTexts ?? [];
+  const k = members.findIndex((m) => m.slug === TEXT);
+  if (k > 0) return { text: members[k - 1].slug, book: members[k - 1].last ?? 1 };
+  return null;
+}
+function placeName(p) {
+  if (p.text !== TEXT) {
+    const m = DATA.collectionTexts?.find((x) => x.slug === p.text);
+    return p.book > 1 || m?.last > 1 ? `${m?.title ?? p.text} ${p.book}` : m?.title ?? p.text;
+  }
+  const b = DATA.books.find((x) => x.n === p.book);
+  return `${DATA.title} ${shortLabel(b?.label, p.book)}`;
+}
+function showChapterNav() {
+  document.querySelector(".chapter-nav")?.remove();
+  if (RANGE || !DATA) return;
+  const prev = prevPlace(), next = nextPlace();
+  if (!prev && !next) return;
+  const nav = el("nav", "chapter-nav");
+  nav.setAttribute("aria-label", "Chapters");
+  for (const [p, cls, text] of [[prev, "prev", (n) => `‹ ${n}`], [next, "next", (n) => `${n} ›`]]) {
+    if (!p) { nav.append(el("span", cls)); continue; }
+    const a = el("a", cls, text(placeName(p)));
+    a.href = readerHref(p.text, p.book);
+    nav.append(a);
+  }
+  list.after(nav);
 }
 
 // The book's download (offline.js), in the top bar beside the bookmark: this book of
@@ -157,7 +202,7 @@ function applyRange(data) {
       const m = typed.toLowerCase().replace(/[\s.§]+/g, "").match(/^(\d+)([a-e]?)$/);
       return m && ((c) => c != null && (m[2] ? c === m[1] + m[2] : c.replace(/[a-e]$/, "") === m[1]));
     }
-    const m = typed.match(/^(?:(\d+)\.)?(\d+)$/);
+    const m = typed.match(/^(?:(\d+)[.:])?(\d+)$/);
     // (a verse takes in its additions: 18 is 18a-d too)
     return m && (!m[1] || Number(m[1]) === BOOK) && ((c) => c != null && /^\d+[a-z]*$/.test(c) && parseInt(c, 10) === Number(m[2]));
   };
@@ -168,16 +213,29 @@ function applyRange(data) {
   if (to < 0 && !prose && Number(V_TO.split(".").at(-1)) > Number(cites.at(-1))) to = cites.length - 1;  // past the end
   if (from < 0 || to < from) return;
   const first = cites[from], last = cites[to];
-  data.verses = data.verses.slice(from, to + 1);
+  const fromStart = from === cites.findIndex((c) => c != null), toEnd = to === cites.findLastIndex((c) => c != null);
+  // (from the book's start: with its titles, read before it)
+  data.verses = data.verses.slice(fromStart ? 0 : from, to + 1);
   data.translation = (data.translation ?? []).filter((p) => p.to >= Number(first) && p.from <= Number(last));
   RANGE = { from: first, to: last };
   const verse = data.cite === "verse";  // the Bible: chapter:verse, in its chapter
   const span = first === last ? first : `${first}–${last}`;
-  const note = el("p", "range-note", `${verse ? `${BOOK}:${span}` : `${prose ? "Sections" : "Lines"} ${span}`} · `);
+  // Named with its text (and book): "Γένεσις 26", "Γένεσις 2:4–9", "Ἰλιάς Β 1–299", "Κρίτων 43a–47a".
+  const label = data.books.find((b) => b.n === BOOK)?.label;
+  const book = verse ? String(BOOK) : data.books.length > 1 ? shortLabel(label, BOOK).replace(/ \(\d+\)$/, "") : "";
+  const where = fromStart && toEnd ? book : verse ? `${BOOK}:${span}` : `${book} ${span}`.trim();
+  const note = el("p", "range-note");
+  note.append(greekName(`${data.title} ${where}`.trim()), " · ");
   const whole = el("a", null, verse ? "whole chapter" : "whole book");
   whole.href = readerHref(TEXT, BOOK);
   note.append(whole);
   document.getElementById("verses").before(note);
+}
+
+// A name in Greek in a line of the interface: in the Greek font (a breathing at its start
+// crowds what comes before it in the interface's).
+function greekName(text) {
+  return el("span", "greek-name", text);
 }
 
 // A selection: its pieces' verses, from as many chapters as they reach (the chapters of a
@@ -195,35 +253,49 @@ async function select(data) {
     }
   }
   // "12" is verse 12 and its additions (12a, 12b); "12a" or "31:10" just that ref.
-  const at = (end) => (v) => (/^\d+$/.test(end.v) ? v.ref?.match(/^\d+/)?.[0] === end.v && !v.ref.includes(":") : v.ref === end.v);
+  const at = (end) => (v) => (end.v === "start" || end.v === "end" ? true
+    : /^\d+$/.test(end.v) ? v.ref?.match(/^\d+/)?.[0] === end.v && !v.ref.includes(":") : v.ref === end.v);
   const picked = [], runs = [];
   for (const { from, to } of SELECTION) {
     for (let c = from.ch; c <= to.ch; c++) {
-      const vs = chapters.get(c).verses.filter((v) => v.line > 0);
+      const all = chapters.get(c).verses, vs = all.filter((v) => v.line > 0);
       const i = c === from.ch ? vs.findIndex(at(from)) : 0;
       const j = c === to.ch ? vs.findLastIndex(at(to)) : vs.length - 1;
       if (i < 0 || j < i) return data;
       const before = picked.length ? picked.at(-1).div ?? BOOK : BOOK;
+      // A chapter read from its start: with its titles (the book's, the chapter's), as read.
+      if (i === 0 && (c > from.ch || from.v === "start")) {
+        for (const v of all.filter((x) => x.line <= 0)) picked.push({ ...v, ...(c !== BOOK ? { div: c } : {}) });
+      }
       vs.slice(i, j + 1).forEach((v, k) => picked.push({
         ...v, ...(c !== BOOK ? { div: c } : {}),
         ...(k === 0 && c !== before && !v.ref.includes(":") ? { label: `${c}:${v.ref}` } : {}),  // where another chapter begins
       }));
       picked.at(-1).jump = true;  // (the next piece is elsewhere: skipSilence goes straight to it)
-      if (c === from.ch) runs.push([picked.length - (j - i + 1), picked.length - 1]);
-      else runs.at(-1)[1] = picked.length - 1;
+      // (each run: its first and last verse, and whether it begins and ends with a chapter's)
+      if (c === from.ch) runs.push([picked.length - (j - i + 1), picked.length - 1, i === 0, j === vs.length - 1]);
+      else Object.assign(runs.at(-1), { 1: picked.length - 1, 3: j === vs.length - 1 });
     }
   }
   delete picked.at(-1).jump;
   data.verses = picked;
   data.translation = [];
-  RANGE = { from: picked[0].ref, to: picked.at(-1).ref };
+  RANGE = { from: picked.find((v) => v.line > 0).ref, to: picked.at(-1).ref };
   // The note: the pieces as chapter:verse, a piece's end without its chapter where it's the same.
-  const place = (v) => (v.ref.includes(":") ? v.ref : `${v.div ?? BOOK}:${v.ref}`);
-  const shown = runs.map(([a, b]) => {
+  const place = (v) => (v.ref.includes(":") ? v.ref : v.ref ? `${v.div ?? BOOK}:${v.ref}` : String(v.div ?? BOOK));
+  // Whole chapters as their numbers: "26", "26–27".
+  const shown = runs.map(([a, b, startWhole, endWhole], k) => {
     const [p, q] = [place(picked[a]), place(picked[b])];
-    return a === b ? p : `${p}–${p.split(":")[0] === q.split(":")[0] ? q.split(":")[1] : q}`;
+    if (startWhole && endWhole) {
+      const [c, d] = [picked[a].div ?? BOOK, picked[b].div ?? BOOK];
+      return c === d ? String(c) : `${c}–${d}`;
+    }
+    // (a chapter named once: "4:5–11, 14–18")
+    const from = k > 0 && p.split(":")[0] === place(picked[runs[k - 1][1]]).split(":")[0] && p.includes(":") ? p.split(":")[1] : p;
+    return a === b ? from : `${from}–${p.split(":")[0] === q.split(":")[0] ? q.split(":")[1] : q}`;
   }).join(", ");
-  const note = el("p", "range-note", `${shown} · `);
+  const note = el("p", "range-note");
+  note.append(greekName(`${data.title} ${shown}`), " · ");
   const whole = el("a", null, "whole chapter");
   whole.href = readerHref(TEXT, BOOK);
   note.append(whole);
@@ -295,7 +367,7 @@ function renderVerse(data, has) {
     }
     const entry = { ...v, el: li };
     entryOf.set(li, entry);
-    if (v.line > 0) refs.push({ ref, el: li, entry: v.start != null ? entry : null });
+    if (v.line > 0) refs.push({ ref, div: v.div ?? BOOK, el: li, entry: v.start != null ? entry : null });
     if (v.start != null) {
       li.addEventListener("click", () => seekTo(verses.indexOf(entry)));
       verses.push(entry);
@@ -567,7 +639,7 @@ function update() {
     const v = verses[i];
     v.el.classList.toggle("pausing", t >= v.speechEnd);
     const r = v.ref ?? v.line;
-    showPosition((v.line <= 0 ? "title" : DATA.books.length > 1 ? `${v.div ?? BOOK}.${r}` : r) + (heldBy === v ? " · held" : ""));
+    showPosition((v.line <= 0 ? "title" : DATA.books.length > 1 ? `${v.div ?? BOOK}${DATA.cite === "verse" ? ":" : "."}${r}` : r) + (heldBy === v ? " · held" : ""));
   } else {
     showPosition(verses.length ? "—" : "");  // no recording: the box is just for jumping
   }
@@ -641,20 +713,30 @@ function seekTo(i, { play = isPlaying() } = {}) {
   if (play && audio.paused) audio.play();
 }
 
-// Position box: shows the current line; type a line ("40" or "1.40") and Enter to jump.
+// Position box: shows the current line; type a line ("40", "1.40" or "1:40") and Enter to jump.
 function showPosition(text) {
   if (document.activeElement !== position) position.value = text;
 }
 
-// A line ("40", or "1.40" in book 1), or for prose a section ("172a"; "172" is its first).
+// A line or verse ("40"; "1.40" or "1:40": in book or chapter 1, of those shown: a selection
+// may show several), or for prose a section ("172a"; "172" is its first). A verse alone is
+// in the chapter playing (else the first shown); "12" is 12 or its first addition (12a).
+// Past the end of a chapter: its last line.
 function findLine(typed) {
-  const m = typed.match(/^(?:(\d+)\.)?(\d+)$/);
-  if (!m || (m[1] && Number(m[1]) !== BOOK)) return null;
-  const line = Number(m[2]);
-  const lines = refs.filter((r) => Number(r.ref) > 0);
+  const m = typed.replace(/\s+/g, "").match(/^(?:(\d+)[.:])?(\d+)([a-z]?)$/i);
+  if (!m) return null;
+  const numbered = refs.filter((r) => /^\d/.test(r.ref));
+  const div = m[1] ? Number(m[1]) : (current >= 0 ? verses[current].div ?? BOOK : numbered[0]?.div ?? BOOK);
+  const lines = numbered.filter((r) => r.div === div);
+  const line = Number(m[2]), exact = m[2] + m[3].toLowerCase();
+  const found = lines.find((r) => r.ref === exact) ?? (m[3] ? null : lines.find((r) => parseInt(r.ref, 10) === line));
+  if (found) return found;
+  if (!m[1] && !m[3]) {  // (not in the chapter playing: the first chapter shown that has it)
+    const other = numbered.find((r) => parseInt(r.ref, 10) === line);
+    if (other) return other;
+  }
   const last = lines.at(-1);
-  // Past the end of the book: its last line.
-  return lines.find((r) => Number(r.ref) === line) ?? (last && line > Number(last.ref) ? last : null);
+  return last && !m[3] && line > parseInt(last.ref, 10) ? last : null;
 }
 function findSection(typed) {
   const m = typed.toLowerCase().replace(/[\s.§]+/g, "").match(/^(\d+)([a-e]?)$/);
@@ -665,6 +747,12 @@ function findSection(typed) {
 function jumpToTyped() {
   const typed = position.value.trim();
   const target = DATA?.cite === "section" ? findSection(typed) : findLine(typed);
+  // Another chapter or book of the text, not shown here: open it there.
+  const other = !target && DATA?.cite !== "section" && typed.replace(/\s+/g, "").match(/^(\d+)[.:](\d+[a-z]?)$/i);
+  if (other && DATA.books.some((b) => b.n === Number(other[1]))) {
+    location.href = readerHref(TEXT, Number(other[1]), other[2]);
+    return;
+  }
   if (!target) {
     position.classList.add("invalid");
     position.select();
@@ -1515,6 +1603,7 @@ let restored = false;  // don't overwrite the saved place before it has been res
 let lastSaved = 0;
 
 function savePlace() {
+  savePlanPlace();
   if (!restored) return;
   try {
     if (!DATA?.audio) localStorage.setItem(placeKey(), `scroll:${Math.round(scrollY)}`);
@@ -1570,6 +1659,7 @@ let ending = false;
 function atEnd() {
   if (ending || carrying || !verses.length) return;
   ending = true;
+  if (PLAN && RANGE && planPartHeard()) { ending = false; return; }
   const next = endMode.dataset.mode === "continue" ? nextPlace() : null;
   if (endMode.dataset.mode === "repeat") seekTo(0, { play: true });
   else if (next) carryOn(next);
@@ -1625,17 +1715,32 @@ async function carryOn(next) {
   carrying = false;
 }
 
+// Got to the end last time (the last verse reached, or heard): opened again from the beginning.
+function reachedEnd(t) {
+  const last = verses.at(-1);
+  return verses.length > 1 && last && t >= last.start - 0.05;
+}
+// (Come back to with the back button, the page as it was left: likewise.)
+window.addEventListener("pageshow", (e) => {
+  if (!e.persisted || !DATA?.audio || RANGE || !audio.paused || !reachedEnd(audio.currentTime)) return;
+  seekTo(0, { play: false });
+  if (!focused.checked) centerRow(verses[0].el);
+});
+
 function restorePlace() {
   if (V_FROM) return goToLinked();
   let saved = null;
   try { saved = localStorage.getItem(placeKey()); } catch {}
   if (!DATA.audio) {
     const y = saved?.startsWith("scroll:") ? Number(saved.slice(7)) : 0;
-    if (y > 0) window.scrollTo(0, y);
+    // (read to the bottom last time: from the top again)
+    const bottom = document.documentElement.scrollHeight - innerHeight;
+    if (y > 0 && y < bottom - 40) window.scrollTo(0, y);
     restored = true;
     return;
   }
   let t = CARRY_AT ?? parseFloat(saved);
+  if (!CARRY_AT && reachedEnd(t)) t = 0;
   // Not opened before: at the first verse (past any introduction, or the chapters before
   // it in a recording of the whole book).
   if (!(t > 0) && verses.length && verses[0].start > 1) t = Math.max(0, verses[0].start - LEAD_IN);
@@ -1662,6 +1767,19 @@ function whenAudioReady(fn) {
 // verse, so a reload comes back to wherever reading got to. A range (?v=40-60) starts
 // at its beginning and keeps its address; its place isn't saved over the book's.
 function goToLinked() {
+  if (PLAN && RANGE && MARK) {  // (a bookmark made in the plan's day: at its verse)
+    const target = DATA.cite === "section" ? refs.find((r) => r.ref === MARK) : refs.find((r) => r.ref === MARK && r.div === BOOK);
+    planRestored = true;
+    if (target) {
+      if (!focused.checked || !target.entry) centerRow(target.el);
+      target.el.classList.add("located");
+      setTimeout(() => target.el.classList.remove("located"), 1800);
+      if (target.entry) whenAudioReady(() => { audio.currentTime = target.entry.start; update(); });
+      history.replaceState(null, "", location.href.replace(/&mark=[^&]*/, ""));  // (a reload: the place reached)
+      return;
+    }
+  }
+  if (PLAN && RANGE && restorePlanPlace()) return;
   const target = RANGE ? refs[0] : V_TO ? null : DATA.cite === "section" ? findSection(V_FROM) : findLine(V_FROM);
   if (!target) {
     if (!RANGE) history.replaceState(null, "", readerHref(TEXT, BOOK));
@@ -1816,6 +1934,7 @@ async function toggleBookmark() {
       const mark = await bookmarksApi.add({
         text: TEXT, book: BOOK, ref: t.ref, title: DATA.title, label,
         snippet: words.length > 90 ? `${words.slice(0, 88).trimEnd()}…` : words,
+        ...(PLAN && RANGE ? { plan: { id: PLAN.id, day: PLAN.day, part: PLAN.part } } : {}),
       });
       marks.set(t.ref, mark);
       toast(`Bookmarked · ${label}`);
@@ -1872,10 +1991,158 @@ for (let i = 0; i < 14; i++) {
   list.append(li);
 }
 
+// A reading plan's day (&plan=…&day=…&part=…, from the library; its reading shown as a
+// range or selection): said above the verses, and at their end, its next part, or marking
+// the day read (as the recording reaches the end of its last part, too) and the next day.
+const MARK = PARAMS.get("mark");  // (opened from a bookmark made in the plan: its verse)
+const PLAN = PARAMS.get("plan") && { id: PARAMS.get("plan"), day: Number(PARAMS.get("day")) || 1, part: Number(PARAMS.get("part")) || 0 };
+let plan = null;  // that plan, once fetched
+async function showPlan() {
+  if (!PLAN || !RANGE) return;
+  try { plan = (await plansApi.list()).find((p) => p.id === PLAN.id) ?? null; } catch {}
+  planNotes();
+}
+function planNotes() {
+  const parts = plan?.portions[PLAN.day - 1]?.parts;
+  if (!parts) return;
+  const top = el("p", "plan-note-top");
+  const home = el("a", null);
+  home.append(el("span", "plan-readings", plan.title), ` in ${plan.days} days`);
+  home.href = "./";
+  // (the day's readings, then which of them this is)
+  // (the Greek in its own font, a little apart: a breathing at its start crowds the colon)
+  top.append("Reading plan: ", home, ` · day ${PLAN.day}:`, el("span", "plan-readings", plan.portions[PLAN.day - 1].label));
+  (document.querySelector(".range-note") ?? list).before(top);
+  // (its link, to the whole chapter or book, leaves the plan: a part may be the whole chapter)
+  const leave = document.querySelector(".range-note a");
+  if (leave) leave.textContent = "exit reading plan";
+  // (and which of the day's readings this page is, after its name)
+  if (parts.length > 1) document.querySelector(".range-note .greek-name")?.after(` (part ${PLAN.part + 1} of ${parts.length})`);
+  showPlanEnd();
+}
+function showPlanEnd() {
+  document.querySelector(".plan-end")?.remove();
+  const parts = plan.portions[PLAN.day - 1].parts;
+  const box = el("div", "plan-end");
+  const link = (text, href, cls) => {
+    const a = el("a", cls, text);
+    a.href = href;
+    return a;
+  };
+  // Back: the day's part before, else the last part of the day before.
+  const back = PLAN.part > 0 ? [PLAN.day, PLAN.part - 1] : PLAN.day > 1 ? [PLAN.day - 1, plan.portions[PLAN.day - 2].parts.length - 1] : null;
+  if (back) {
+    const p = plan.portions[back[0] - 1].parts[back[1]];
+    box.append(link(`‹ Back to: ${back[0] !== PLAN.day ? `Day ${back[0]}, ` : ""}${p.label}`, planHref(plan, ...back)));
+  }
+  if (PLAN.part + 1 < parts.length) {
+    box.append(link(`Continue reading plan: ${parts[PLAN.part + 1].label} ›`, planHref(plan, PLAN.day, PLAN.part + 1), "primary"));
+  } else if (plan.done.includes(PLAN.day)) {
+    const read = el("button", "done-mark", `✓ Day ${PLAN.day} read`);
+    read.title = "Tap to unmark";
+    read.addEventListener("click", () => markPlanDay(false));
+    const next = planNext(plan);
+    box.append(read, next ? link(`Day ${next}: ${planLabel(plan, next)} ›`, planHref(plan, next), "primary")
+      : el("span", "plan-msg", "Plan finished"), link("Library", "./"));
+  } else {
+    const mark = el("button", "primary", `Mark day ${PLAN.day} read`);
+    mark.addEventListener("click", () => markPlanDay(true));
+    box.append(mark);
+  }
+  list.after(box);
+}
+// Where reading got to in the plan's day (planPlace): saved as the book's place is, and
+// a part opened again (from the library) goes back there.
+let planRestored = false;
+function savePlanPlace() {
+  if (!PLAN || !RANGE || !planRestored) return;
+  const at = DATA?.audio && Number.isFinite(audio.currentTime) ? Number(audio.currentTime.toFixed(2)) : `scroll:${Math.round(scrollY)}`;
+  setPlanPlace(PLAN.id, { day: PLAN.day, part: PLAN.part, at });
+}
+function restorePlanPlace() {
+  const saved = planPlace(PLAN.id);
+  planRestored = true;
+  if (saved?.day !== PLAN.day || saved.part !== PLAN.part || saved.at == null) return false;
+  if (typeof saved.at === "string") {
+    const y = Number(saved.at.slice(7));
+    if (y > 0) requestAnimationFrame(() => window.scrollTo(0, y));
+    return true;
+  }
+  const first = verses[0]?.start ?? 0, last = verses.at(-1)?.end ?? Infinity;
+  if (!(saved.at > first && saved.at < last)) return false;  // (at the start, or past the end: from the start)
+  const i = verseAt(saved.at);
+  if (i >= 0 && !focused.checked) centerRow(verses[i].el);
+  whenAudioReady(() => {
+    audio.currentTime = saved.at;
+    update();
+  });
+  return true;
+}
+
+async function markPlanDay(done) {
+  const saved = await plansApi.mark(PLAN.id, PLAN.day, done).catch(() => undefined);
+  if (saved === undefined) return;  // (refused: left as it was)
+  if (!plan) return;
+  plan.done = saved?.done ?? (done ? [...new Set([...plan.done, PLAN.day])] : plan.done.filter((d) => d !== PLAN.day));
+  showPlanEnd();
+}
+// The recording at the end of a part: the day read, if it's the last; else on to the next
+// part (the next chapter, on its own page), shown in place and playing on, as carryOn
+// does. True if it goes on.
+function planPartHeard() {
+  const parts = plan?.portions[PLAN.day - 1]?.parts;
+  if (!parts) return false;
+  if (PLAN.part + 1 < parts.length) {
+    planNextPart();
+    return true;
+  }
+  if (!plan.done.includes(PLAN.day)) markPlanDay(true);
+  return false;
+}
+async function planNextPart() {
+  if (carrying) return;
+  carrying = true;
+  const part = plan.portions[PLAN.day - 1].parts[PLAN.part + 1];
+  const playing = isPlaying() || audio.ended, src = audio.src;
+  try {
+    const r = await fetch(apiFor(part.book, part.text));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    let data = await r.json();
+    TEXT = part.text;
+    BOOK = data.book;
+    setSpec(part.v);
+    RANGE = null;
+    for (const e of document.querySelectorAll(".range-note, .plan-note-top, .plan-end")) e.remove();
+    if (SELECTION && data.cite === "verse") data = await select(data);  // (else render takes the range)
+    PLAN.part++;
+    history.replaceState(null, "", planHref(plan, PLAN.day, PLAN.part));
+    planRestored = true;
+    savePlanPlace();
+    render(data);
+    setTimelineRange();
+    update();
+    setupMediaSession();
+    loadMarks();
+    planNotes();
+    if (!verses.length) return;
+    // (the same recording read on, already there: left playing, unmoved)
+    const start = verses[0].start > 1 ? Math.max(0, verses[0].start - LEAD_IN) : 0;
+    whenAudioReady(() => {
+      if (audio.src !== src || Math.abs(audio.currentTime - verses[0].start) > 1.5) audio.currentTime = start;
+      if (playing && audio.paused) audio.play().catch(() => {});
+      update();
+    });
+  } catch {
+    location.href = planHref(plan, PLAN.day, PLAN.part + 1);  // (its page, as a link would)
+  } finally {
+    carrying = false;
+  }
+}
+
 (window.bookRequest ?? fetch(API))
   .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-  .then((data) => (SELECTION ? select(data) : data))
-  .then((data) => { render(data); setTimelineRange(); update(); restorePlace(); setupMediaSession(); loadMarks(); })
+  .then((data) => (SELECTION && data.cite === "verse" ? select(data) : data))
+  .then((data) => { render(data); setTimelineRange(); update(); restorePlace(); setupMediaSession(); loadMarks(); showPlan(); })
   .catch((err) => {
     list.classList.remove("loading");
     list.textContent = navigator.onLine === false || err instanceof TypeError

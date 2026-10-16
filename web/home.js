@@ -1,8 +1,9 @@
-// Library: bookmarks, then the texts by category (from /api/library), each linking to the
+// Library: reading plans, bookmarks, then the texts by category (from /api/library), each linking to the
 // reader. A work in several books, or a collection (a Testament), folds out its list
 // when its title is tapped; the place last opened in each is marked.
 const root = document.getElementById("library");
 const marksBox = document.getElementById("bookmarks");
+const plansBox = document.getElementById("plans");
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -265,10 +266,7 @@ function collectionEntry(c) {
 // The day's readings (the Orthodox lectionary), where the catalogue asks for them: a fold
 // at the top of their category, each reading a link to its passage, with what it is read
 // as (Ἀπόστολος, Εὐαγγέλιον, …). The day is the reader's own.
-function today() {
-  const d = new Date(), two = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
-}
+const today = () => isoDate();
 function lectionaryEntry(l) {
   const work = el("div", "work collection lectionary");
   const list = el("ul", "member-list");
@@ -299,7 +297,9 @@ function capitals(text) {
   return text.normalize("NFD").replace(/[\u0300\u0301\u0313\u0314\u0342\u0345]/g, "").normalize("NFC").toUpperCase();
 }
 
+let library = null;  // (what a new reading plan can be of)
 function render(data) {
+  library = data;
   downloadNames.clear();
   for (const t of data.categories.flatMap((c) => c.texts.flatMap((x) => (x.texts ? x.texts : [x])))) {
     for (const d of t.downloads ?? []) {
@@ -328,8 +328,303 @@ function render(data) {
   }
 }
 
+// Reading plans: each with how far it has got (a bar, and the days read against the
+// days gone), the next day's reading to go on with, and every day folded out under it (to
+// open, or tick off). "New plan" opens a dialog: a text (or a Testament), how long, from when.
+const TICK = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+let plans = [];
+function renderPlans(list) {
+  plans = list;
+  plansBox.hidden = false;
+  if (shownMarks) renderMarks(shownMarks);  // (a day read, or a plan gone: its bookmarks as others)
+  // None yet: just a button to make one, no section.
+  plansBox.classList.toggle("no-plans", !list.length);
+  if (!list.length) {
+    const start = el("button", "plan-start", "Create reading plan");
+    start.title = "Read a text in the time you choose: a reading a day";
+    start.addEventListener("click", openPlanDialog);
+    plansBox.replaceChildren(start);
+    return;
+  }
+  const head = el("div", "plans-head");
+  const add = el("button", "plan-new", "+ New plan");
+  add.addEventListener("click", openPlanDialog);
+  head.append(el("h2", null, "Reading plans"), add);
+  plansBox.replaceChildren(head);
+  for (const plan of list) plansBox.append(planEntry(plan));
+}
+
+function planStatus(plan) {
+  const today = planDayOf(plan), done = new Set(plan.done);
+  if (done.size >= plan.days) return "Finished";
+  if (today < 1) return `Starts ${planDate(plan, 1)}`;
+  let behind = 0;
+  for (let d = 1; d < Math.min(today, plan.days + 1); d++) if (!done.has(d)) behind++;  // (today's not yet)
+  const ahead = [...done].filter((d) => d > today).length;
+  if (today > plan.days) return `Ended ${planDate(plan, plan.days)} · ${behind} to go`;
+  if (behind) return `Day ${today} of ${plan.days} · ${behind} behind`;
+  return `Day ${today} of ${plan.days} · ${ahead ? `${ahead} ahead` : "on schedule"}`;
+}
+
+function planEntry(plan) {
+  const box = el("div", "work plan");
+  const next = planNext(plan);
+  const top = el("div", "plan-top");
+  const title = el("span", "work-title", plan.title);
+  top.append(title, el("span", "plan-length", `${plan.days} ${plan.days === 1 ? "day" : "days"}`), planDelete(plan));
+  const bar = el("div", "plan-bar");
+  bar.style.setProperty("--done", `${(100 * plan.done.length) / plan.days}%`);
+  const expected = Math.min(Math.max(planDayOf(plan), 0), plan.days);
+  bar.style.setProperty("--due", `${(100 * expected) / plan.days}%`);
+  bar.setAttribute("role", "progressbar");
+  bar.setAttribute("aria-valuemin", "0");
+  bar.setAttribute("aria-valuemax", String(plan.days));
+  bar.setAttribute("aria-valuenow", String(plan.done.length));
+  bar.title = `${plan.done.length} of ${plan.days} days read`;
+  const status = el("div", "plan-status");
+  status.append(el("span", null, planStatus(plan)), el("span", "plan-count", `${plan.done.length}/${plan.days}`));
+  box.append(top, bar, status);
+  if (next) {
+    const go = el("a", "plan-next");
+    go.href = planHref(plan, next);
+    go.append(el("span", "plan-day", `Day ${next}`), el("span", "plan-reading", planLabel(plan, next)),
+              el("span", "plan-go", "Continue ›"));
+    box.append(go);
+  }
+  const days = el("ol", "plan-days");
+  const fold = foldRow(`plan:${plan.id}`, "plan-fold fold-row", [el("span", null, "All days")], days);
+  box.append(fold, days);
+  // (Opened at the next day to read, the list scrolled within itself.)
+  const toNext = () => {
+    const row = days.children[(next ?? plan.days) - 1];
+    if (!days.hidden && row) days.scrollTop = Math.max(0, row.offsetTop - days.clientHeight / 3);
+  };
+  fold.addEventListener("click", toNext);
+  requestAnimationFrame(toNext);
+  const fill = () => {
+    days.replaceChildren();
+    const done = new Set(plan.done), today = planDayOf(plan);
+    plan.portions.forEach((_, k) => {
+      const day = k + 1;
+      const li = el("li", "plan-row");
+      if (day === today) li.classList.add("today");
+      const tick = el("button", "plan-tick");
+      tick.innerHTML = TICK;
+      tick.setAttribute("aria-pressed", String(done.has(day)));
+      tick.title = done.has(day) ? `Day ${day}: read (tap to unmark)` : `Mark day ${day} read`;
+      tick.setAttribute("aria-label", tick.title);
+      tick.addEventListener("click", async () => {
+        const read = !done.has(day);
+        tick.disabled = true;
+        try {
+          const saved = await plansApi.mark(plan.id, day, read);
+          Object.assign(plan, saved ?? { done: read ? [...plan.done, day] : plan.done.filter((d) => d !== day) });
+          renderPlans(plans);
+        } catch {
+          tick.disabled = false;
+        }
+      });
+      const a = el("a", "plan-row-link");
+      a.href = planHref(plan, day);
+      a.append(el("span", "plan-row-day", `${day} · ${planDate(plan, day)}`), el("span", "plan-row-label", planLabel(plan, day)));
+      li.append(tick, a);
+      days.append(li);
+    });
+  };
+  fill();
+  return box;
+}
+
+// Deleting a plan: a bin by its title, which asks again (a second tap within a few
+// seconds) before it goes.
+function planDelete(plan) {
+  const b = el("button", "plan-delete");
+  const idle = () => {
+    b.classList.remove("armed");
+    b.innerHTML = BIN_ICON;
+    b.title = `Delete the plan for ${plan.title}`;
+    b.setAttribute("aria-label", b.title);
+  };
+  idle();
+  let armed = null;
+  b.addEventListener("click", async () => {
+    if (!armed) {
+      b.classList.add("armed");
+      b.textContent = "Delete?";
+      b.title = "Tap again to delete this plan";
+      armed = setTimeout(() => { armed = null; idle(); }, 4000);
+      return;
+    }
+    clearTimeout(armed);
+    b.disabled = true;
+    try {
+      await plansApi.remove(plan.id);
+      renderPlans(plans.filter((p) => p !== plan));
+    } catch {
+      b.disabled = false;
+      b.textContent = "Offline?";
+    }
+  });
+  return b;
+}
+
+// The new plan dialog: what to read (a text, or the whole of a Testament), in how long (days,
+// weeks, months, a year), from when; what each day would be is shown as it's chosen.
+let planDialog = null;
+function openPlanDialog() {
+  if (!library?.categories) return;
+  if (!planDialog) planDialog = buildPlanDialog();
+  planDialog.showModal();
+  planDialog.update();
+}
+function buildPlanDialog() {
+  const d = el("dialog");
+  d.id = "plan-dialog";
+  d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+  const head = el("div", "dl-head");
+  const close = el("button", "dl-close", "×");
+  close.setAttribute("aria-label", "Close");
+  close.addEventListener("click", () => d.close());
+  head.append(el("h2", null, "New reading plan"), close);
+  const form = el("form", "plan-form");
+  // What to read, narrowed a step at a time: a category (or all of it), a collection in it
+  // (a Testament) or a text, a text in the collection, and of a text in several books (or
+  // chapters), from which to which.
+  const pick = () => el("select", "plan-pick");
+  const cat = pick(), item = pick(), member = pick(), from = pick(), to = pick();
+  const cats = library.categories.filter((c) => c.texts.length);
+  cats.forEach((c, i) => cat.append(new Option(c.name, i)));
+  const fillItems = () => {
+    const c = cats[cat.value];
+    item.replaceChildren(new Option("All", `category:${c.name}`),
+                         ...c.texts.map((t) => new Option(t.title, t.collection ? `collection:${t.collection}` : slugOf(t))));
+  };
+  const chosenText = () => {  // the text chosen, if it's one (not a category or collection)
+    const c = cats[cat.value];
+    const t = c.texts.find((x) => !x.collection && slugOf(x) === item.value);
+    if (t) return t;
+    const col = c.texts.find((x) => x.collection && `collection:${x.collection}` === item.value);
+    return col?.texts.find((x) => slugOf(x) === member.value) ?? null;
+  };
+  const fillMembers = () => {
+    const col = cats[cat.value].texts.find((x) => x.collection && `collection:${x.collection}` === item.value);
+    memberRow.hidden = !col;
+    if (col) member.replaceChildren(new Option("All", item.value), ...col.texts.map((t) => new Option(t.title, slugOf(t))));
+  };
+  const fillBooks = () => {
+    const t = chosenText();
+    booksRow.hidden = !(t?.books.length > 1);
+    if (booksRow.hidden) return;
+    const chapters = t.books.every((b) => /\d$/.test(b.label ?? ""));
+    booksRow.querySelector(".plan-label").textContent = chapters ? "Chapters" : "Books";
+    for (const s of [from, to]) s.replaceChildren(...t.books.map((b) => new Option(chapters ? String(b.n) : shortLabel(b.label, b.n), b.n)));
+    to.value = t.books.at(-1).n;
+  };
+  const target = () => {
+    const t = chosenText();
+    if (!t) return memberRow.hidden ? item.value : member.value;
+    if (t.books.length < 2 || (Number(from.value) === t.books[0].n && Number(to.value) === t.books.at(-1).n)) return slugOf(t);
+    return `${slugOf(t)}:${from.value}-${to.value}`;
+  };
+  const count = el("input");
+  Object.assign(count, { type: "number", min: 1, max: 999, value: 30, name: "count", inputMode: "numeric" });
+  const unit = el("select");
+  unit.name = "unit";
+  for (const [v, label] of [["days", "days"], ["weeks", "weeks"], ["months", "months"], ["years", "years"]]) unit.append(new Option(label, v));
+  const start = el("input");
+  Object.assign(start, { type: "date", name: "start", value: isoDate() });
+  const field = (label, ...inputs) => {
+    const l = el("label", "plan-field");
+    const row = el("span", "plan-inputs");
+    row.append(...inputs);
+    l.append(el("span", "plan-label", label), row);
+    return l;
+  };
+  const preview = el("div", "plan-preview");
+  const create = el("button", "plan-create", "Start plan");
+  create.type = "submit";
+  const memberRow = field("", member), booksRow = field("Books", from, el("span", "plan-to", "to"), to);
+  form.append(field("Read", cat), field("", item), memberRow, booksRow, field("In", count, unit), field("Starting", start), preview);
+  fillItems();
+  fillMembers();
+  fillBooks();
+  cat.addEventListener("change", () => { fillItems(); fillMembers(); fillBooks(); });
+  item.addEventListener("change", () => { fillMembers(); fillBooks(); });
+  member.addEventListener("change", fillBooks);
+  from.addEventListener("change", () => { if (Number(to.value) < Number(from.value)) to.value = from.value; });
+  to.addEventListener("change", () => { if (Number(to.value) < Number(from.value)) from.value = to.value; });
+  const foot = el("div", "dl-foot");
+  foot.append(create);
+  form.append(foot);
+  const days = () => {
+    const n = Math.max(1, Math.min(999, Math.floor(Number(count.value)) || 1));
+    if (unit.value === "days") return n;
+    if (unit.value === "weeks") return n * 7;
+    const [y, m, dd] = (start.value || isoDate()).split("-").map(Number);
+    const from = Date.UTC(y, m - 1, dd);
+    const to = unit.value === "months" ? Date.UTC(y, m - 1 + n, dd) : Date.UTC(y + n, m - 1, dd);
+    return Math.round((to - from) / 864e5);
+  };
+  let asked = 0, shown = null;
+  d.update = async () => {
+    const ask = ++asked, n = days();
+    create.disabled = true;
+    // (The last days stay, dimmed, until the new ones come: the dialog keeps its size.)
+    if (preview.children.length) preview.classList.add("stale");
+    else preview.replaceChildren(el("p", "plan-note", "…"));
+    try {
+      const r = await fetch(`/api/plans/preview?${new URLSearchParams({ target: target(), days: n })}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const p = await r.json();
+      if (ask !== asked) return;
+      shown = p;
+      const words = Math.round(p.portions.reduce((s, q) => s + q.words, 0) / p.days);
+      preview.classList.remove("stale");
+      preview.replaceChildren(el("p", "plan-note", `${p.days} days, about ${words.toLocaleString()} words a day`
+                                 + (p.days < n ? ` (it can't be split finer than ${p.days})` : "")));
+      const ol = el("ol", "plan-sample");
+      const shownDays = p.days <= 4 ? p.portions.map((q, i) => [i, q]) : [[0, p.portions[0]], [1, p.portions[1]], null, [p.days - 1, p.portions.at(-1)]];
+      for (const entry of shownDays) {
+        if (!entry) { ol.append(el("li", "plan-gap", "…")); continue; }
+        const li = el("li");
+        li.append(el("span", "plan-row-day", `Day ${entry[0] + 1}`),
+                  el("span", "plan-row-label", planLabel({ ...p, target: target() }, entry[0] + 1)));
+        ol.append(li);
+      }
+      preview.append(ol);
+      create.disabled = false;
+    } catch {
+      if (ask === asked) preview.classList.remove("stale");
+      if (ask === asked) preview.replaceChildren(el("p", "plan-note", navigator.onLine === false ? "Plans need the connection." : "Couldn't work out the days."));
+    }
+  };
+  for (const input of [cat, item, member, from, to, unit, start]) input.addEventListener("change", d.update);
+  let typing = null;
+  count.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(d.update, 300); });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!shown) return;
+    create.disabled = true;
+    try {
+      const plan = await plansApi.create(target(), days(), start.value || isoDate());
+      d.close();
+      renderPlans([...plans, plan]);
+    } catch {
+      create.disabled = false;
+      preview.append(el("p", "plan-note", "Couldn't start it (offline?)"));
+    }
+  });
+  d.append(head, form);
+  document.body.append(d);
+  return d;
+}
+
 // Bookmarks: each opens the reader at its verse; × deletes it.
+// One made in a reading plan's day, while that day isn't read: opens the plan's day at
+// its verse, and says so.
+let shownMarks = null;
 function renderMarks(marks) {
+  shownMarks = marks;
   marksBox.replaceChildren();
   marksBox.hidden = !marks.length;
   if (!marks.length) return;
@@ -339,7 +634,15 @@ function renderMarks(marks) {
     const li = el("li");
     const a = el("a", "mark");
     a.href = readerHref(m.text, m.book, m.ref);
-    a.append(el("span", "mark-label", m.label ?? `${m.title ?? m.text} ${m.ref}`));
+    const plan = m.plan && plans.find((p) => p.id === m.plan.id);
+    const inPlan = plan && m.plan.day <= plan.days && !plan.done.includes(m.plan.day)
+      && plan.portions[m.plan.day - 1].parts[m.plan.part];
+    const label = el("span", "mark-label", m.label ?? `${m.title ?? m.text} ${m.ref}`);
+    if (inPlan) {
+      a.href = `${planHref(plan, m.plan.day, m.plan.part)}&mark=${encodeURIComponent(m.ref)}`;
+      label.append(el("span", "mark-plan", `Reading plan · ${plan.title}, day ${m.plan.day}`));
+    }
+    a.append(label);
     if (m.snippet) a.append(el("span", "mark-snippet", m.snippet));
     const del = el("button", "mark-delete", "×");
     del.title = "Delete this bookmark";
@@ -348,6 +651,7 @@ function renderMarks(marks) {
       del.disabled = true;
       try {
         await bookmarksApi.remove(m.id);
+        shownMarks = shownMarks.filter((x) => x !== m);
         li.remove();
         if (!ul.children.length) marksBox.hidden = true;
       } catch {
@@ -366,6 +670,7 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 // The bookmarks and the library are shown together, so the bookmarks don't push the
 // list down when they arrive after it.
 const marksReady = bookmarksApi.list().catch(() => []);
+const plansReady = plansApi.list().catch(() => null);
 // Grey rows until the list comes (they fade in only if it takes a moment).
 const dropSkeleton = () => document.querySelector(".lib-skel")?.remove();
 {
@@ -376,21 +681,23 @@ const dropSkeleton = () => document.querySelector(".lib-skel")?.remove();
     s.style.setProperty("--w", `${45 + ((i * 29) % 40)}%`);
     skel.append(s);
   }
-  marksBox.before(skel);  // above the bookmarks and the list; removed when they come
+  plansBox.before(skel);  // above the plans, the bookmarks and the list; removed when they come
 }
 (window.libraryRequest ?? fetch("/api/library"))
   .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
   .then(async (data) => {
-    const marks = await marksReady;
+    const [marks, planList] = await Promise.all([marksReady, plansReady]);
     dropSkeleton();
     renderMarks(marks);
+    if (planList) renderPlans(planList);
     render(data);
     refreshDownloads();  // what's downloaded, once the device says (the list doesn't wait for it)
   })
   .catch(async (err) => {
-    const marks = await marksReady;
+    const [marks, planList] = await Promise.all([marksReady, plansReady]);
     dropSkeleton();
     renderMarks(marks);
+    if (planList) renderPlans(planList);
     root.replaceChildren(el("p", "notice", navigator.onLine === false || err instanceof TypeError
       ? "The library isn't available offline yet: open it once while online."
       : `Could not load the library: ${err.message}`));
@@ -401,5 +708,6 @@ const dropSkeleton = () => document.querySelector(".lib-skel")?.remove();
 window.addEventListener("pageshow", (e) => {
   if (!e.persisted) return;
   bookmarksApi.list().then(renderMarks).catch(() => {});
+  plansApi.list().then(renderPlans).catch(() => {});
   fetch("/api/library").then((r) => r.json()).then(render).catch(() => {});
 });

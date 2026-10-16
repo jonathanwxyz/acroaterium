@@ -22,3 +22,7 @@ library/*
 # Bookmarks (scripts/serve.py), kept local
 data/bookmarks.json
 data/bookmarks.tmp
+
+# Reading plans (scripts/serve.py), kept local
+data/plans.json
+data/plans.tmp

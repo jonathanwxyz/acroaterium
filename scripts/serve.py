@@ -38,8 +38,14 @@ Routes:
                        (the Ecumenical Patriarchate's, as the Greek Orthodox Archdiocese of
                        America's online chapel gives them), each a link to the passage in
                        the library; where the catalogue asks for it ("lectionary")
-  /api/bookmarks       JSON: the bookmarked verses (GET); POST one ({text, book, ref, …}) to add
+  /api/bookmarks       JSON: the bookmarked verses (GET); POST one ({text, book, ref, …, plan?}) to add
                        it, DELETE /api/bookmarks/<id> to remove it. Kept in data/bookmarks.json
+  /api/plans           JSON: the reading plans (GET), each a text (or a Testament) in so many
+                       days, a reading a day; POST {target, days, start} to start one (target: a
+                       slug, "<slug>:<from book>-<to book>", "collection:<name>" or
+                       "category:<name>"), POST /api/plans/<id> {day, done} to mark a
+                       day read (or not), DELETE /api/plans/<id> to end it. Kept in data/plans.json
+  /api/plans/preview?target=…&days=…  JSON: the days such a plan would have
 """
 import argparse
 import datetime
@@ -66,6 +72,7 @@ DB = ROOT / "data" / "iliad.sqlite"
 LIBRARY = ROOT / "data" / "library.sqlite"
 LIBRARY_AUDIO = ROOT / "data" / "library_audio.sqlite"
 BOOKMARKS = ROOT / "data" / "bookmarks.json"
+PLANS = ROOT / "data" / "plans.json"
 GREEK_NUMERALS = " ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"
 MODEL = "mms"
 
@@ -363,9 +370,10 @@ def selection(con, slug, book, refs):
     out, current = [], verses[pieces[0][0]][0]
     for i, j in pieces:
         (d1, r1), (d2, r2) = verses[i], verses[j]
-        text = (f"{d1}." if d1 != current else "") + r1
+        # (a ref numbered from another chapter, 31:8, always with its own: "31:8" alone is chapter 31)
+        text = (f"{d1}." if d1 != current or ":" in r1 else "") + r1
         if j > i:  # (an end at an addition, 18d, as its verse: the reader takes 18 to include 18a-d)
-            text += "-" + (f"{d2}." if d2 != d1 else "") + re.sub(r"^(\d+)[a-z]+$", r"\1", r2)
+            text += "-" + (f"{d2}." if d2 != d1 or ":" in r2 else "") + re.sub(r"^(\d+)[a-z]+$", r"\1", r2)
         out.append(text)
         current = d2
     return verses[pieces[0][0]][0], ",".join(out), ", ".join(shown)
@@ -522,8 +530,10 @@ def text_json(slug, n):
     # next as it plays.
     # The other books of its collection (a Testament): the reader's title is a menu of them.
     con = sqlite3.connect(LIBRARY)
-    members = [{"slug": s, "title": tt} for s, tt in con.execute(
-        "SELECT slug, title FROM texts WHERE collection = ? ORDER BY sort", (collection,))] if collection else []
+    # (with each one's last book: the reader goes back to it from the start of the one after)
+    members = [{"slug": s, "title": tt, "last": last} for s, tt, last in con.execute(
+        "SELECT slug, title, (SELECT MAX(n) FROM divisions WHERE text = slug) FROM texts WHERE collection = ? ORDER BY sort",
+        (collection,))] if collection else []
     con.close()
     goes_on = False
     if recording and timed:
@@ -936,6 +946,11 @@ def add_bookmark(data):
                 return None
             value = None
         mark[key] = value
+    # Made in a reading plan's day: which ({id, day, part}), so the library opens it there.
+    plan = data.get("plan")
+    if (isinstance(plan, dict) and isinstance(plan.get("id"), str) and re.fullmatch(r"[0-9a-f]{1,32}", plan["id"])
+            and all(isinstance(plan.get(k), int) for k in ("day", "part"))):
+        mark["plan"] = {k: plan[k] for k in ("id", "day", "part")}
     with bookmarks_lock:
         items = load_bookmarks()
         for b in items:
@@ -955,6 +970,266 @@ def delete_bookmark(mark_id):
         if len(kept) == len(items):
             return False
         save_bookmarks(kept)
+    return True
+
+
+# Reading plans: a text (or a collection: a Testament) read in so many days. It's split
+# into that many readings of about the same length (in words), each ending where a chapter
+# or book ends if one is near, else at a verse, line or section; a reading a day from the
+# day it starts. Kept with the days read, in a JSON file like the bookmarks.
+plans_lock = threading.Lock()
+VERSE_REF = re.compile(r"\d+(?::\d+)?[a-z]?")  # a ref a selection can name (read.html ?v=)
+
+
+def plan_target(con, target):
+    """(title, [(slug, title, cite, books)], text) of a plan's texts, in order: a category
+    ("category:<name>": all its texts), a collection ("collection:<name>"), a text (its slug)
+    or some of its books ("<slug>:3-5"; books, (from, to), else None for all); text: the
+    title of the one text a plan is of, else None. None if there's no such."""
+    hidden = collection_of(con, "hidden")
+    for kind, column in (("category:", "category"), ("collection:", collection_of(con))):
+        if target.startswith(kind):
+            name = target[len(kind):]
+            rows = con.execute(f"SELECT slug, title, cite FROM texts WHERE {column} = ? AND {hidden} IS NOT 1 "
+                               "ORDER BY sort", (name,)).fetchall()
+            if not rows:
+                return None
+            # (a category's name is in Greek and English, "Ὅμηρος · Homer": the Greek)
+            return name.split(" · ")[0], [(*r, None) for r in rows], rows[0][1] if len(rows) == 1 else None
+    m = re.fullmatch(r"([\w-]+)(?::(\d+)(?:-(\d+))?)?", target)
+    row = m and con.execute(f"SELECT slug, title, cite FROM texts WHERE slug = ? AND {hidden} IS NOT 1", (m[1],)).fetchone()
+    if not row:
+        return None
+    if not m[2]:
+        return row[1], [(*row, None)], row[1]
+    books = (int(m[2]), int(m[3] or m[2]))
+    labels = dict(con.execute("SELECT n, label FROM divisions WHERE text = ?", (row[0],)).fetchall())
+    if books[0] > books[1] or books[0] not in labels or books[1] not in labels:
+        return None
+    if len(labels) == 1:
+        return row[1], [(*row, None)], row[1]
+    name = lambda n: shortLabel(labels[n], n)  # noqa: E731  (Α, or 5)
+    span = name(books[0]) if books[0] == books[1] else f"{name(books[0])}–{name(books[1])}"
+    return f"{row[1]} {span}", [(*row, books)], row[1]
+
+
+def plan_units(con, slug, cite):
+    """A text's units, in order, that a plan's readings are made of: a verse of the Bible
+    (with its additions, 12a, 12b), a line of Homer, a Stephanus section. Each
+    {book, first, last (refs), words, open, close}: whether a reading may begin with it (its
+    first ref can be named, or it begins its chapter) and end with it."""
+    if slug == "iliad":
+        icon = sqlite3.connect(DB)
+        rows = [(b, str(n), homer) for b, n, homer in icon.execute("SELECT book, line, homer FROM verses ORDER BY book, line")]
+        icon.close()
+    else:
+        rows = con.execute("SELECT div, ref, content FROM segments WHERE text = ? AND seq > 0 ORDER BY div, seq",
+                           (slug,)).fetchall()
+    units, section = [], None
+    for book, ref, content in rows:
+        ref = ref or ""
+        if cite == "section":
+            ref = section = ref or section or ""
+        named = cite != "verse" or bool(VERSE_REF.fullmatch(ref))
+        key = re.sub(r"[a-z]$", "", ref) if cite == "verse" else ref
+        last = units[-1] if units else None
+        if last and last["book"] == book and (last["key"] == key or not named):  # (one that can't be named goes with the one before)
+            last.update(last=ref, words=last["words"] + len(content.split()), close=named)
+        else:
+            units.append({"book": book, "key": key, "first": ref, "last": ref, "words": len(content.split()),
+                          "open": named or not last or last["book"] != book, "close": named})
+    return units
+
+
+def split_plan(con, target, days):
+    """A plan's readings: [{label, words, parts: [{text, book, v, label}]}], one a day."""
+    found = plan_target(con, target)
+    if not found:
+        return None
+    title, texts, one = found
+    units = []
+    for slug, text_title, cite, books in texts:
+        labels = dict(con.execute("SELECT n, label FROM divisions WHERE text = ?", (slug,)).fetchall())
+        for u in plan_units(con, slug, cite):
+            if not books or books[0] <= u["book"] <= books[1]:
+                units.append({**u, "text": slug, "title": text_title, "cite": cite, "label": labels.get(u["book"]),
+                              "multi": len(labels) > 1})
+    if not units:
+        return None
+    days = max(1, min(days, len(units)))
+    total = sum(u["words"] for u in units)
+    before = [0]  # words before each unit
+    for u in units:
+        before.append(before[-1] + u["words"])
+    # Each reading's end: near where its share of the words ends, at the end of a book
+    # (or a text) if one is within half a day's reading, else of a chapter within a third.
+    share = total / days
+    cuts = [0]
+    for k in range(1, days):
+        ideal, best = k * share, None
+        lo = max(cuts[-1] + 1, 1)
+        hi = len(units) - (days - k)  # (room for the readings after)
+        for i in range(lo, hi + 1):
+            if before[i] < ideal - share / 2:
+                continue
+            if before[i] > ideal + share / 2:
+                break
+            a, b = units[i - 1], units[i]
+            if not (b["open"] and (a["close"] or a["book"] != b["book"] or a["text"] != b["text"])):
+                continue
+            bonus = 0.5 if a["text"] != b["text"] else 0.3 if a["book"] != b["book"] else 0
+            score = abs(before[i] - ideal) / share - bonus
+            if best is None or score < best[0]:
+                best = (score, i)
+        cuts.append(best[1] if best else min(max(lo, round(ideal / share)), hi))
+    cuts.append(len(units))
+    first_of, last_of = {}, {}  # (text, book) -> index of its first and last unit
+    for i, u in enumerate(units):
+        first_of.setdefault((u["text"], u["book"]), i)
+        last_of[u["text"], u["book"]] = i
+    portions = []
+    for a, b in zip(cuts, cuts[1:]):
+        parts, i = [], a
+        names, i = [], a
+        while i < b:  # a part: a page of the reader (a chapter of the Bible; a book of Homer; a dialogue)
+            u = units[i]
+            j = i
+            while j + 1 < b and units[j + 1]["text"] == u["text"] and units[j + 1]["book"] == u["book"]:
+                j += 1
+            parts.append(plan_part(units, i, j, first_of, last_of))
+            # The day's name: a text's chapters as one span ("Γένεσις 2:10–4:7"); a text's
+            # name once ("Ἰλιάς Α 448–611 · Β 1–299").
+            if u["cite"] == "verse" and names and names[-1][0] == u["text"]:
+                names[-1][2] = j
+            else:
+                names.append([u["text"], i, j])
+            i = j + 1
+        labels = []
+        for k, (text, i, j) in enumerate(names):
+            if units[i]["cite"] == "verse":
+                name = plan_part(units, i, j, first_of, last_of)["label"]
+            else:
+                name = next(p["label"] for p in parts if p["text"] == text and p["book"] == units[i]["book"])
+            if k and names[k - 1][0] == text:
+                name = name[len(units[i]["title"]) + 1:]
+            labels.append(name)
+        label = " · ".join(labels)
+        portions.append({"label": label, "words": before[b] - before[a], "parts": parts})
+    return {"title": title, "portions": portions, **({"text": one} if one else {})}
+
+
+def plan_part(units, i, j, first_of, last_of):
+    """A reading's part, units[i..j] of one text: where the reader shows it (?v=) and its name."""
+    u, w = units[i], units[j]
+    whole_from = first_of[u["text"], u["book"]] == i
+    whole_to = last_of[w["text"], w["book"]] == j
+    if u["cite"] == "verse":  # a selection, across chapters: 3.start-5.12 (start, end: of the chapter)
+        v = f"{u['book']}.{'start' if whole_from else u['first']}-{w['book']}.{'end' if whole_to else w['last']}"
+        if whole_from and whole_to:
+            span = str(u["book"]) if u["book"] == w["book"] else f"{u['book']}–{w['book']}"
+        else:
+            p = f"{u['book']}:{u['key']}" if VERSE_REF.fullmatch(u["first"]) else str(u["book"])
+            q = w["key"] if u["book"] == w["book"] else f"{w['book']}:{w['key']}"
+            span = f"{p}–{q}" if (u["book"], u["key"]) != (w["book"], w["key"]) else p
+        label = f"{u['title']} {span}"
+    else:  # a range in a book: 40-60, 17a-18c
+        v = f"{u['first']}-{w['last']}"
+        book = shortLabel(u["label"], u["book"]) if u["multi"] else None
+        name = " ".join(x for x in (u["title"], book) if x)
+        label = name if whole_from and whole_to else f"{name} {u['first']}–{w['last']}"
+    return {"text": u["text"], "book": u["book"], "v": v, "label": label}
+
+
+def shortLabel(label, n):
+    """A book's short name, as shared.js has it: the numeral letter of "Ῥαψῳδία Α", else its number."""
+    m = re.search(r"\s(\w{1,2})$", label or "")
+    return m[1] if m and not m[1].isdigit() else str(n)
+
+
+def load_plans():
+    try:
+        return json.loads(PLANS.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return []
+
+
+def save_plans(items):
+    tmp = PLANS.with_suffix(".tmp")
+    tmp.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(PLANS)
+
+
+def plan_request(data):
+    """(target, days, start) from a request, or None."""
+    if not isinstance(data, dict):
+        return None
+    target, days, start = data.get("target"), data.get("days"), data.get("start")
+    if not isinstance(target, str) or not isinstance(days, int) or not 1 <= days <= 3660:
+        return None
+    try:
+        datetime.date.fromisoformat(start)
+    except (TypeError, ValueError):
+        return None
+    return target, days, start
+
+
+def plan_preview(query):
+    q = urllib.parse.parse_qs(query)
+    try:
+        target, days = q["target"][0], int(q["days"][0])
+    except (KeyError, ValueError):
+        return None
+    if not LIBRARY.exists() or not 1 <= days <= 3660:
+        return None
+    con = sqlite3.connect(LIBRARY)
+    split = split_plan(con, target, days)
+    con.close()
+    return split and {**split, "days": len(split["portions"])}
+
+
+def add_plan(data):
+    request = plan_request(data)
+    if not request or not LIBRARY.exists():
+        return None
+    target, days, start = request
+    con = sqlite3.connect(LIBRARY)
+    split = split_plan(con, target, days)
+    con.close()
+    if not split:
+        return None
+    plan = {"id": f"{int(time.time() * 1000):x}", "target": target, "title": split["title"],
+            "start": start, "days": len(split["portions"]), "created": int(time.time()),
+            "portions": split["portions"], "done": [], **({"text": split["text"]} if "text" in split else {})}
+    with plans_lock:
+        items = load_plans()
+        items.append(plan)
+        save_plans(items)
+    return plan
+
+
+def mark_plan(plan_id, data):
+    """Mark a day of a plan read ({day: 1…, done: true}) or not; the plan, or None."""
+    if not isinstance(data, dict) or not isinstance(data.get("day"), int):
+        return None
+    with plans_lock:
+        items = load_plans()
+        plan = next((p for p in items if p["id"] == plan_id), None)
+        if not plan or not 1 <= data["day"] <= plan["days"]:
+            return None
+        done = set(plan["done"])
+        (done.add if data.get("done", True) else done.discard)(data["day"])
+        plan["done"] = sorted(done)
+        save_plans(items)
+    return plan
+
+
+def delete_plan(plan_id):
+    with plans_lock:
+        items = load_plans()
+        kept = [p for p in items if p["id"] != plan_id]
+        if len(kept) == len(items):
+            return False
+        save_plans(kept)
     return True
 
 
@@ -985,6 +1260,10 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(lectionary_json(m[1]))
         elif self.path == "/api/bookmarks":
             self.send_json({"bookmarks": load_bookmarks()})
+        elif self.path == "/api/plans":
+            self.send_json({"plans": load_plans()})
+        elif self.path.startswith("/api/plans/preview?"):
+            self.send_json(plan_preview(self.path.split("?", 1)[1]))
         elif self.path.startswith("/audio/"):
             # Any file under recordings/ (a library text's recordings stay in their folders),
             # never above it.
@@ -996,21 +1275,28 @@ class Handler(SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_POST(self):
-        if self.path != "/api/bookmarks":
+        m = re.fullmatch(r"/api/plans/([0-9a-f]+)", self.path)
+        if self.path == "/api/bookmarks":
+            add = add_bookmark
+        elif self.path == "/api/plans":
+            add = add_plan
+        elif m:
+            add = lambda data: mark_plan(m[1], data)  # noqa: E731
+        else:
             return self.send_error(HTTPStatus.NOT_FOUND)
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(min(length, 1 << 16)))
         except ValueError:
             data = None
-        mark = add_bookmark(data)
-        if mark is None:
+        item = add(data)
+        if item is None:
             return self.send_error(HTTPStatus.BAD_REQUEST)
-        self.send_json(mark)
+        self.send_json(item)
 
     def do_DELETE(self):
-        m = re.fullmatch(r"/api/bookmarks/([0-9a-f]+)", self.path)
-        if not m or not delete_bookmark(m[1]):
+        m = re.fullmatch(r"/api/(bookmarks|plans)/([0-9a-f]+)", self.path)
+        if not m or not (delete_bookmark if m[1] == "bookmarks" else delete_plan)(m[2]):
             return self.send_error(HTTPStatus.NOT_FOUND)
         self.send_response(HTTPStatus.NO_CONTENT)
         self.end_headers()

@@ -1511,7 +1511,7 @@ body.focused .verse.bookmarked:not(.f-cur)::before { display: none; }
 /* Showing a range of the book (?v=40-60): which, and the way back to all of it. */
 .range-note { text-align: center; margin: 0 0 1rem; font: 13px system-ui, sans-serif; color: var(--muted); }
 .range-note a { color: var(--current-bar); text-decoration: none; }
-body.focused .range-note { display: none; }
+body.focused .range-note, body.focused .plan-note-top { display: none; }
 
 /* While a book loads: grey lines in place of the verses, shown only if it takes a moment. */
 #verses.loading { animation: skel-in 250ms ease 180ms both; }
@@ -1558,3 +1558,215 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
   #player { view-transition-name: player; }
   ::view-transition-group(*) { animation-duration: 200ms; }
 }
+
+/* Reading plans, at the top of the library: each with its progress (the days read, and a
+   mark where the days gone reach), the next day's reading, and every day folded out. */
+#plans[hidden] { display: none; }
+.plans-head { display: flex; align-items: flex-end; gap: 0.5rem; border-bottom: 1px solid var(--rule); margin: 0 0 0.6rem; }
+.plans-head h2 {
+  flex: 1;
+  font: 600 12px system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-bottom: 0.35rem;
+  margin: 0;
+}
+.plan-new {
+  margin-bottom: 0.3rem;
+  padding: 0.2rem 0.65rem;
+  font: 12px system-ui, sans-serif;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+}
+@media (hover: hover) { .plan-new:hover { color: var(--text); border-color: var(--current-bar); } }
+.plan { display: grid; gap: 0.35rem; }
+.plan-top { display: flex; align-items: baseline; gap: 0.6rem; }
+.plan-length { flex: 1; color: var(--muted); font: 12px system-ui, sans-serif; }
+.plan-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--current-bar) var(--done), color-mix(in srgb, var(--rule) 80%, transparent) var(--done));
+}
+.plan-bar::after {  /* where the plan should have got to by today */
+  content: "";
+  position: absolute;
+  left: clamp(0px, calc(var(--due) - 1px), calc(100% - 2px));
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--muted);
+  opacity: 0.6;
+}
+.plan-status { display: flex; justify-content: space-between; gap: 0.5rem; color: var(--muted); font: 12px system-ui, sans-serif; }
+.plan-count { font-variant-numeric: tabular-nums; }
+.plan-next {
+  display: flex;
+  align-items: baseline;  /* (the Greek's tall line box sets it low when centred) */
+  gap: 0.75rem;
+  margin-top: 0.15rem;
+  padding: 0.55rem 0.8rem;
+  color: var(--text);
+  text-decoration: none;
+  background: var(--pause-bg);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+.plan-day { flex: none; color: var(--muted); font: 13px/1.3 system-ui, sans-serif; }
+.plan-reading {  /* (a long day, many short books in it: two lines, then …) */
+  flex: 1; min-width: 0; font-size: 0.85em; line-height: 1.3;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.plan-go { flex: none; color: var(--current-bar); font: 600 13px/1.3 system-ui, sans-serif; }
+@media (hover: hover) { .plan-next:hover { border-color: var(--current-bar); } }
+.plan-fold { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); font: 12px system-ui, sans-serif; padding: 0.2rem 0; }
+.plan-days {
+  position: relative;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid color-mix(in srgb, var(--rule) 60%, transparent);
+}
+.plan-days[hidden] { display: none; }
+.plan-row { display: flex; align-items: center; gap: 0.55rem; padding: 0.25rem 0; }
+.plan-row + .plan-row { border-top: 1px solid color-mix(in srgb, var(--rule) 45%, transparent); }
+.plan-row.today .plan-row-day { color: var(--current-bar); font-weight: 600; }
+.plan-tick {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: transparent;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.plan-tick[aria-pressed="true"] { color: var(--bg); background: var(--current-bar); border-color: var(--current-bar); }
+@media (hover: hover) { .plan-tick:hover { border-color: var(--current-bar); } }
+.plan-row-link { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 0.6rem; color: var(--text); text-decoration: none; }
+.plan-row-day { flex: none; min-width: 4.6rem; color: var(--muted); font: 12px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.plan-row-label { min-width: 0; font-size: 0.92em; }
+@media (hover: hover) { .plan-row-link:hover .plan-row-label { color: var(--current-bar); } }
+.plan-delete {
+  flex: none;
+  align-self: center;
+  min-width: 1.9rem;
+  height: 1.9rem;
+  display: grid;
+  place-items: center;
+  padding: 0 0.5rem;
+  font: 12px system-ui, sans-serif;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+@media (hover: hover) { .plan-delete:hover { color: #c0392b; border-color: var(--rule); } }
+.plan-delete.armed { color: #fff; background: #c0392b; border-color: #c0392b; }
+
+/* The new plan dialog (as the downloads panel). */
+#plan-dialog {
+  width: min(28rem, calc(100vw - 32px));
+  max-height: min(85vh, 40rem);
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  font: 14px system-ui, sans-serif;
+}
+#plan-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.plan-form { display: grid; gap: 0.5rem; padding: 0.9rem 0 0; }
+.plan-field { display: grid; grid-template-columns: 4.3rem 1fr; align-items: center; gap: 0.5rem; padding: 0 0.9rem; }
+.plan-label { color: var(--muted); }
+.plan-inputs { display: flex; gap: 0.4rem; min-width: 0; }
+.plan-form select, .plan-form input {
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  font: 15px system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+.plan-form .plan-pick { flex: 1; font-family: var(--greek); font-size: 16px; }
+.plan-field[hidden] { display: none; }
+.plan-to { align-self: center; color: var(--muted); }
+.plan-form input[name="count"] { width: 5rem; }
+.plan-form select:focus, .plan-form input:focus { outline: none; border-color: var(--current-bar); }
+.plan-preview { padding: 0 0.9rem; min-height: 8.5rem; transition: opacity 120ms ease; }
+.plan-preview.stale { opacity: 0.5; }
+.plan-note { margin: 0.2rem 0 0.4rem; color: var(--muted); font-size: 13px; }
+.plan-sample { margin: 0; padding: 0; list-style: none; }
+.plan-sample li { display: flex; align-items: baseline; gap: 0.6rem; padding: 0.15rem 0; font-family: var(--greek); font-size: 15px; }
+.plan-sample .plan-gap { color: var(--muted); padding-left: 0.5rem; }
+.plan-create {
+  font: inherit; padding: 0.45rem 1rem; color: var(--bg) !important; background: var(--current-bar) !important;
+  border-color: var(--current-bar) !important;
+}
+.plan-create:disabled { opacity: 0.5; cursor: default; }
+
+/* In the reader, a reading plan's day: what it is, above the verses; at their end, its next
+   part, or marking it read and the next day. */
+.plan-note-top { margin: 0 0 0.4rem; color: var(--muted); font: 12px system-ui, sans-serif; text-align: center; }
+.plan-note-top a { color: inherit; }
+.plan-end { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.6rem; margin: 2rem 0 1rem; font: 14px system-ui, sans-serif; }
+.plan-end .plan-msg { color: var(--muted); }
+.plan-end a, .plan-end button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  color: var(--text);
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.plan-end .primary { color: var(--bg); background: var(--current-bar); border-color: var(--current-bar); }
+.plan-end .done-mark { color: var(--current-bar); border-color: transparent; cursor: default; }
+
+/* At the foot of a chapter or book: the one before and the one after. */
+.chapter-nav { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin: 2rem 0 1rem; font: 14px system-ui, sans-serif; }
+.chapter-nav a {
+  min-width: 0;
+  padding: 0.5rem 1rem;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chapter-nav .next { margin-left: auto; }
+@media (hover: hover) { .chapter-nav a:hover, .plan-end a:hover { border-color: var(--current-bar); } }
+/* A bookmark made in a reading plan's day not yet read: it opens the plan there. */
+.mark-plan { display: block; color: var(--current-bar); font: 11px system-ui, sans-serif; letter-spacing: 0.02em; margin-top: 0.1rem; }
+.plan-note-top .plan-readings { font-family: var(--greek); font-size: 1.15em; margin-left: 0.35em; }
+.plan-note-top a .plan-readings { margin-left: 0.15em; }
+.range-note .greek-name { font-family: var(--greek); font-size: 1.12em; }
+/* No plans yet: just a button to make one, at the right. */
+#plans.no-plans { text-align: right; margin: -1rem 0 -0.9rem; }  /* (closer to the heading, and the list) */
+.plan-start {  /* (where "+ New plan" is, once there are plans) */
+  margin-bottom: 0.3rem;
+  padding: 0.2rem 0.65rem;
+  font: 12px system-ui, sans-serif;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+}
+@media (hover: hover) { .plan-start:hover { color: var(--text); border-color: var(--current-bar); } }
