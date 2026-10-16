@@ -5,6 +5,8 @@ links.csv
 # Rebuilt by scripts/ (see data/README.md)
 data/raw/
 data/*.sqlite
+# (and their backups: data/library.sqlite.before-…)
+data/*.sqlite.*
 # A copy of vasilestancu.ro's text, which states no licence: kept local
 data/iliad.tsv
 

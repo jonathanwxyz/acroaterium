@@ -14,18 +14,18 @@ Routes:
                        is aligned (data/library_audio.sqlite, scripts/align_library.py),
                        its URL, and timings per line (verse) or per sentence (prose:
                        a segment's "parts")
+                       (the Iliad, text iliad, is one of them: with Gaza's paraphrase, its
+                       verses' "paraphrase" and per-word equivalents, "glosses", Homeric
+                       words sharing a paraphrase word, e.g. a verb in tmesis, sharing a
+                       "groups" id)
   /api/notes/<slug>/<n>/<a>-<b>  JSON: a library text's notes on its segments a..b (seq),
                        shaped like /api/scholia
-  /api/book/<n>        JSON: an Iliad book: title, audio URL and verses (text, paraphrase, timings,
-                       and per-word paraphrase equivalents where aligned; Homeric words
-                       sharing a paraphrase word, e.g. a verb in tmesis, share a group id;
-                       Murray's English per line where split, else as ~5-line passages;
-                       the number of scholia and commentary notes per line)
-  /api/word/<b>/<l>/<i>  JSON: treebank parse of word i (whitespace chunk) of verse b.l
-  /api/lexword/<slug>/<n>/<seq>/<i>  JSON: the same for a library text with parsed words
-                       (the New Testament: Robinson's parsing, Dodson's lexicon)
-  /api/scholia/<b>/<l>   JSON: the ancient scholia on verse b.l, grouped by manuscript, and
-                         the English commentaries (Leaf, Seymour, Benner)
+  /api/lexword/<slug>/<n>/<seq>/<i>  JSON: the parsing of word i (whitespace chunk) of a
+                       segment, for the word card (the Iliad's treebank, with Gaza's word;
+                       the New Testament: Robinson's parsing, Dodson's lexicon; ...)
+  /api/book/<n>, /api/word/<b>/<l>/<i>, /api/scholia/<b>/<l>  the Iliad's, as they were
+                       before it joined the library (/api/text/iliad, /api/lexword/iliad,
+                       /api/notes/iliad), for clients that still ask for them
   /audio/<path>        a file under recordings/ (subfolders too), with HTTP Range support for seeking
   (/api/text and /api/book give the download each book is in: "download": {n, size, books})
   /api/words/<slug>/<n>  JSON: every word card of a book (or chapter), {"line/index": card},
@@ -68,13 +68,10 @@ from import_treebank import POSTAG
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 RECORDINGS = ROOT / "recordings"
-DB = ROOT / "data" / "iliad.sqlite"
 LIBRARY = ROOT / "data" / "library.sqlite"
 LIBRARY_AUDIO = ROOT / "data" / "library_audio.sqlite"
 BOOKMARKS = ROOT / "data" / "bookmarks.json"
 PLANS = ROOT / "data" / "plans.json"
-GREEK_NUMERALS = " ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"
-MODEL = "mms"
 
 mimetypes.add_type("audio/ogg", ".opus")
 mimetypes.add_type("audio/webm", ".webm")
@@ -84,68 +81,43 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 EDGE_PUNCT = re.compile(r"^[^\w’']+|[^\w’']+$")
 
 
-def book_json(book):
-    con = sqlite3.connect(DB)
-    title = con.execute("SELECT title FROM books WHERE book = ?", (book,)).fetchone()
-    # One recording per book; prefer the AAC (.m4a) files over older formats.
-    rec = con.execute("SELECT recording FROM verse_timings WHERE book = ? AND model = ? "
-                      "GROUP BY recording ORDER BY recording LIKE '%.m4a' DESC LIMIT 1",
-                      (book, MODEL)).fetchone()
-    timing = {line: (start, speech_end, end) for line, start, speech_end, end in con.execute(
-        "SELECT line, start, speech_end, end FROM verse_timings WHERE book = ? AND model = ? AND recording = ?",
-        (book, MODEL, rec[0] if rec else None))}
-    rows = ([(0, title[0], None)] if title else []) + con.execute(
-        "SELECT line, homer, paraphrase FROM verses WHERE book = ? ORDER BY line", (book,)).fetchall()
-    # Homeric word -> its paraphrase words, keyed by the word's whitespace-chunk index.
-    glosses, sharers = {}, {}
-    for line, wi, para_line, para_index, word in con.execute(
-            "SELECT line, word_index, para_line, para_index, para_word FROM paraphrase_links "
-            "WHERE book = ? ORDER BY line, word_index, para_line, para_index", (book,)):
-        glosses.setdefault(line, {}).setdefault(wi, []).append(EDGE_PUNCT.sub("", word))
-        sharers.setdefault((para_line, para_index), set()).add((line, wi))
-    english = dict(con.execute(
-        "SELECT line, text FROM translation_lines WHERE translation = 'murray' AND book = ?", (book,)))
-    modern = dict(con.execute(
-        "SELECT line, text FROM translation_lines WHERE translation = 'polylas' AND book = ?", (book,)))
-    # How many scholia and commentary notes each line has (one covering several lines
-    # counts for each).
-    scholia = {}
-    for first, last in con.execute("SELECT line, line_to FROM scholia WHERE book = ? UNION ALL "
-                                   "SELECT line, line_to FROM commentaries WHERE book = ?", (book, book)):
-        for line in range(first, last + 1):
-            scholia[line] = scholia.get(line, 0) + 1
-    # Passages only where the lines aren't split yet.
-    translation = [{"from": a, "to": b, "text": t} for a, b, t in con.execute(
-        "SELECT line_from, line_to, text FROM translation_passages "
-        "WHERE translation = 'murray' AND book = ? ORDER BY line_from", (book,))
-        if not all(line in english for line in range(a, b + 1))]
-    con.close()
-    groups = word_groups(sharers.values())
-    if not rows:
-        return None
-    verses = [{"line": line, "text": text, "paraphrase": paraphrase, "english": english.get(line),
-               "modern": modern.get(line),
-               **({"scholia": scholia[line]} if line in scholia else {}),
-               **(dict(zip(("start", "speechEnd", "end"), timing[line])) if line in timing else {}),
-               **({"glosses": {i: " ".join(w) for i, w in glosses[line].items()}} if line in glosses else {}),
-               **({"groups": groups[line]} if line in groups else {})}
-              for line, text, paraphrase in rows]
-    return {"book": book, "audio": f"/audio/{urllib.parse.quote(rec[0])}" if rec else None, "verses": verses,
-            "translation": translation, "text": "iliad", "title": "Ἰλιάς", "author": "Ὅμηρος",
-            "eyebrow": "Ὁμήρου Ἰλιάς", "form": "verse", "cite": "line", "features": ILIAD_FEATURES,
-            "books": [{"n": b, "label": f"Ῥαψῳδία {GREEK_NUMERALS[b]}"} for b in range(1, 25)],
-            "credits": ILIAD_CREDITS, "notesCredit": ILIAD_NOTES_CREDIT, **download_of("iliad", book)}
-
-
-# What the Iliad reader has on top of a plain text, and its credits (the scholia panel
-# carries its own).
+# The Iliad's routes from before it joined the library (/api/book, /api/word,
+# /api/scholia): its JSON as those gave it, made from the library's.
 ILIAD_FEATURES = ["audio", "paraphrase", "modern", "translation", "scholia", "words"]
-ILIAD_NOTES_CREDIT = ("Scholia: Dindorf & Maass, Scholia Graeca in Homeri Iliadem (1875–88), via "
-                      "First1KGreek, CC BY-SA 4.0 · Leaf, Seymour, Benner: via Perseus, CC BY-SA 3.0")
-ILIAD_CREDITS = [
-    {"id": "translation-credit", "text": "English: A. T. Murray (Loeb, 1924), via Perseus"},
-    {"id": "modern-credit", "text": "Μετάφραση: Ἰάκωβος Πολυλάς (1923), via Βικιθήκη"},
-]
+
+
+def book_json(book):
+    d = text_json("iliad", book)
+    if not d:
+        return None
+    con = sqlite3.connect(LIBRARY)
+    credits = dict(con.execute("SELECT lang, credit FROM translation_credits WHERE text = 'iliad'"))
+    con.close()
+    verses = [{"line": v["line"], "text": v["text"], "paraphrase": v.get("paraphrase"), "english": v.get("english"),
+               "modern": v.get("modern"), **{k: v[k] for k in ("scholia", "start", "speechEnd", "end", "glosses", "groups")
+                                             if k in v}}
+              for v in d["verses"]]
+    return {"book": book, "audio": d["audio"], "verses": verses, "translation": d["translation"], "text": "iliad",
+            "title": d["title"], "author": d["author"], "eyebrow": d["eyebrow"], "form": d["form"], "cite": d["cite"],
+            "features": ILIAD_FEATURES, "books": d["books"],
+            "credits": [{"id": "translation-credit", "text": credits.get("en")},
+                        {"id": "modern-credit", "text": credits.get("el")}],
+            "notesCredit": d["notesCredit"], **({"download": d["download"]} if "download" in d else {})}
+
+
+def word_json(book, line, index):
+    return lexword_json("iliad", book, line, index)
+
+
+def scholia_json(book, line):
+    d = notes_json("iliad", book, line, line)
+    if d is None:
+        return None
+    for src in d["sources"]:  # (lines as numbers)
+        for n in src["notes"]:
+            if "from" in n:
+                n["from"], n["to"] = int(n["from"]), int(n["to"])
+    return {"book": book, "line": line, **d}
 
 
 def collection_of(con, column="collection"):
@@ -194,15 +166,6 @@ def downloads_of(slug=None):
         rows += con.execute("SELECT text, div, file FROM recordings WHERE ? IS NULL OR text = ? "
                             "ORDER BY text, div", (slug, slug)).fetchall()
         con.close()
-    if DB.exists() and slug in (None, "iliad"):
-        con = sqlite3.connect(DB)  # the Iliad: a recording per book, as book_json picks it
-        for (book,) in con.execute("SELECT DISTINCT book FROM verse_timings WHERE model = ? ORDER BY book",
-                                   (MODEL,)).fetchall():
-            rec = con.execute("SELECT recording FROM verse_timings WHERE book = ? AND model = ? "
-                              "GROUP BY recording ORDER BY recording LIKE '%.m4a' DESC LIMIT 1",
-                              (book, MODEL)).fetchone()
-            rows.append(("iliad", book, rec[0]))
-        con.close()
     out, sizes = {}, {}
     for text, div, file in rows:
         if file not in sizes:
@@ -226,19 +189,9 @@ def download_of(slug, n):
 
 
 def words_json(slug, n):
-    """{"line/index": word card}: every word card of a book (or chapter), as /api/lexword (a
-    library text: line, its segment) or /api/word (the Iliad) gives each, for a download to
-    keep: the cards then open offline."""
+    """{"line/index": word card}: every word card of a book (or chapter), as /api/lexword
+    gives each (line: its segment), for a download to keep: the cards then open offline."""
     out = {}
-    if slug == "iliad":
-        con = sqlite3.connect(DB)
-        lines = con.execute("SELECT line, homer FROM verses WHERE book = ? AND line > 0", (n,)).fetchall()
-        con.close()
-        for line, text in lines:
-            for i in range(len(text.split(" "))):
-                if card := word_json(n, line, i):
-                    out[f"{line}/{i}"] = card
-        return out
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
@@ -247,7 +200,7 @@ def words_json(slug, n):
     for seq, content in segs:
         for i in range(len(content.split())):
             card = lexword_json(slug, n, seq, i)
-            if card and card.get("tokens"):
+            if card and (card.get("tokens") or "gloss" in card):  # (the Iliad's, with Gaza's word, all)
                 out[f"{seq}/{i}"] = card
     return out
 
@@ -258,14 +211,13 @@ def offline_json(slug, n):
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
-    row = con.execute("SELECT reader FROM texts WHERE slug = ?", (slug,)).fetchone()
+    row = con.execute("SELECT 1 FROM texts WHERE slug = ?", (slug,)).fetchone()
     con.close()
     item = next((i for i in downloads_of(slug).get(slug, []) if i["n"] == n), None)
     if not row or not item:
         return None
-    page = (lambda d: f"/api/book/{d}") if row[0] == "iliad" else (lambda d: f"/api/text/{urllib.parse.quote(slug)}/{d}")
-    words = (lambda d: f"/api/words/iliad/{d}") if row[0] == "iliad" else (lambda d: f"/api/words/{urllib.parse.quote(slug)}/{d}")
-    return {"slug": slug, "n": n, "pages": [page(d) for d in item["divs"]] + [words(d) for d in item["divs"]],
+    q = urllib.parse.quote(slug)
+    return {"slug": slug, "n": n, "pages": [f"/api/text/{q}/{d}" for d in item["divs"]] + [f"/api/words/{q}/{d}" for d in item["divs"]],
             "audio": [{"url": f"/audio/{urllib.parse.quote(item['file'])}", "size": item["size"]}],
             "size": item["size"]}
 
@@ -447,7 +399,8 @@ def notes_json(slug, n, a, b):
     con.close()
     notes = {}
     for first, last, source, body, parts in rows:
-        span = {"from": ref[first], "to": ref[last]} if ref[first] != ref[last] else {}
+        a, b = ref.get(first, str(first)), ref.get(last, str(last))  # (a note's lines may run past the book's)
+        span = {"from": a, "to": b} if a != b else {}
         if parts:
             notes.setdefault(source, []).append({"parts": json.loads(parts), **span})
         else:
@@ -463,7 +416,8 @@ def text_json(slug, n):
         return None
     con = sqlite3.connect(LIBRARY)
     t = con.execute(f"SELECT title, author, form, cite, credit, notes_credit, {collection_of(con)}, "
-                    f"{collection_of(con, 'short')} FROM texts WHERE slug = ? AND reader = 'text'", (slug,)).fetchone()
+                    f"{collection_of(con, 'short')}, {collection_of(con, 'eyebrow')} FROM texts "
+                    "WHERE slug = ? AND reader = 'text'", (slug,)).fetchone()
     rows = con.execute("SELECT seq, ref, content, speaker, para FROM segments WHERE text = ? AND div = ? "
                        "ORDER BY seq", (slug, n)).fetchall() if t else []
     books = [{"n": b, "label": label} for b, label in con.execute(
@@ -483,7 +437,7 @@ def text_json(slug, n):
             pass
     except sqlite3.OperationalError:  # a library built before there were any
         has_words = None
-    translated, translation_credits = {"en": {}, "el": {}}, {}
+    translated, translation_credits = {"en": {}, "el": {}, "paraphrase": {}}, {}
     try:  # a translated verse under each verse: English, modern Greek
         for seq, lang, content in con.execute("SELECT seq, lang, content FROM translations WHERE text = ? AND div = ?",
                                               (slug, n)):
@@ -497,11 +451,12 @@ def text_json(slug, n):
             "ORDER BY seq_from", (slug, n))]
     except sqlite3.OperationalError:
         passages = []
-    english, modern = translated["en"], translated["el"]
+    english, modern, paraphrase = translated["en"], translated["el"], translated["paraphrase"]
+    glosses, groups = paraphrase_glosses(con, slug, n)
     con.close()
     if not rows:
         return None
-    title, author, form, cite, credit, notes_credit, collection, short = t
+    title, author, form, cite, credit, notes_credit, collection, short, eyebrow = t
     recording, timed = library_audio(slug, n)
     verses = []
     for seq, ref, content, speaker, para in rows:
@@ -512,6 +467,12 @@ def text_json(slug, n):
             v["english"] = english[seq]
         if seq in modern:
             v["modern"] = modern[seq]
+        if seq in paraphrase:  # a paraphrase under the verse (Gaza's), and its word for each word
+            v["paraphrase"] = paraphrase[seq]
+        if seq in glosses:
+            v["glosses"] = glosses[seq]
+        if seq in groups:
+            v["groups"] = groups[seq]
         pieces = timed.get(seq)
         if pieces and form == "verse":
             v.update(pieces[0][1])
@@ -545,8 +506,9 @@ def text_json(slug, n):
     return {"book": n, "text": slug, "title": title, "author": author, "form": form, "cite": cite,
             **({"collection": collection, "collectionTexts": members} if collection else {}),
             **({"next": n + 1} if goes_on else {}),
-            "eyebrow": f"{author} · {title}" if author else title, **({"short": short} if short else {}),
+            "eyebrow": eyebrow or (f"{author} · {title}" if author else title), **({"short": short} if short else {}),
             "features": (["scholia"] if has_notes else []) + (["audio"] if recording else [])
+                        + (["paraphrase"] if paraphrase else [])
                         + (["words"] if has_words else []) + (["translation"] if english or passages else [])
                         + (["modern"] if modern else []),
             "notesCredit": notes_credit, "books": books if len(books) > 1 else [],
@@ -556,6 +518,22 @@ def text_json(slug, n):
             **({"clip": True} if recording and recording[2] > 1 else {}),
             **download_of(slug, n),
             "verses": verses, "translation": passages, "credits": credits}
+
+
+def paraphrase_glosses(con, slug, n):
+    """A book's words as its paraphrase renders them: {seq: {word_index: "words"}}, and the
+    words that share a word of the paraphrase: {seq: {word_index: group id}} (word_groups)."""
+    glosses, sharers = {}, {}
+    try:
+        rows = con.execute("SELECT seq, word_index, para_seq, para_index, para_word FROM paraphrase_links "
+                           "WHERE text = ? AND div = ? ORDER BY seq, word_index, para_seq, para_index", (slug, n)).fetchall()
+    except sqlite3.OperationalError:  # a library built before paraphrases
+        return {}, {}
+    for seq, wi, para_seq, para_index, word in rows:
+        glosses.setdefault(seq, {}).setdefault(wi, []).append(EDGE_PUNCT.sub("", word))
+        sharers.setdefault((para_seq, para_index), set()).add((seq, wi))
+    return ({seq: {i: " ".join(w) for i, w in ws.items()} for seq, ws in glosses.items()},
+            word_groups(sharers.values()))
 
 
 def cut_of(con):
@@ -588,40 +566,8 @@ def library_audio(slug, n):
         con.close()
 
 
-# Sources shown in the scholia panel, in order: (id, siglum, name, language). The
-# manuscripts of the ancient scholia (scholia.source), then the English commentaries
-# (commentaries.source).
-SCHOLIA_SOURCES = [
-    ("A", "A", "Venetus A", "grc"), ("A-int", "A", "Venetus A, interlinear", "grc"),
-    ("B", "B", "Venetus B", "grc"), ("B-rec", "B", "Venetus B, later hand", "grc"),
-    ("T", "T", "Townleianus", "grc"), ("T-rec", "T", "Townleianus, later hand", "grc"),
-    ("Leaf", "Leaf", "Commentary on the Iliad (1900)", "en"),
-    ("Seymour", "Seymour", "Commentary, Books I–VI (1891)", "en"),
-    ("Benner", "Benner", "Selections from the Iliad (1903)", "en"),
-]
 # "μῆνιν] παρὰ τὸ μένω …": the lemma (the words commented on) and the note.
 LEMMA = re.compile(r"([^\]]{1,90})\]\s*(.*)", re.S)
-
-
-def scholia_json(book, line):
-    con = sqlite3.connect(DB)
-    rows = con.execute("SELECT line, line_to, source, text FROM scholia "
-                       "WHERE book = ? AND line <= ? AND line_to >= ? ORDER BY seq", (book, line, line)).fetchall()
-    comm = con.execute("SELECT line, line_to, source, parts FROM commentaries "
-                       "WHERE book = ? AND line <= ? AND line_to >= ? ORDER BY seq", (book, line, line)).fetchall()
-    con.close()
-    notes = {}
-    for first, last, source, text in rows:
-        m = LEMMA.fullmatch(text)
-        notes.setdefault(source, []).append({
-            "lemma": m[1].strip() if m else None, "text": m[2] if m else text,
-            **({"from": first, "to": last} if first != last else {})})
-    for first, last, source, parts in comm:  # styled runs: l = lemma, i = italic, t = text
-        notes.setdefault(source, []).append({
-            "parts": json.loads(parts), **({"from": first, "to": last} if first != last else {})})
-    return {"book": book, "line": line,
-            "sources": [{"id": sid, "siglum": siglum, "name": name, "lang": lang, "notes": notes[sid]}
-                        for sid, siglum, name, lang in SCHOLIA_SOURCES if sid in notes]}
 
 
 # AGDT dependency labels; suffixes _CO (coordinated) and _AP (in apposition).
@@ -645,39 +591,6 @@ def relation_label(rel):
     if "CO" in suffixes:
         label += ", coordinated"
     return label
-
-
-def word_json(book, line, index):
-    con = sqlite3.connect(DB)
-    verse = con.execute("SELECT homer FROM verses WHERE book = ? AND line = ?", (book, line)).fetchone()
-    if not verse or not 0 <= index < len(verse[0].split(" ")):
-        return None
-    gloss = [w for (w,) in con.execute(
-        "SELECT para_word FROM paraphrase_links WHERE book = ? AND line = ? AND word_index = ? "
-        "ORDER BY para_line, para_index", (book, line, index))]
-    tokens = []
-    for (form, lemma, definition, pos, person, number, tense, mood, voice, gender, case, degree,
-         relation, head, sentence_id, match) in con.execute(
-            "SELECT t.form, t.lemma, d.definition, t.pos, t.person, t.number, t.tense, t.mood, t.voice, "
-            "t.gender, t.gram_case, t.degree, t.relation, t.head, t.sentence_id, w.match "
-            "FROM word_links w JOIN tokens t ON t.seq = w.token_seq "
-            "LEFT JOIN lemma_defs d ON d.lemma = t.lemma "
-            "WHERE w.book = ? AND w.line = ? AND w.word_index = ? ORDER BY t.seq", (book, line, index)):
-        head_word = con.execute("SELECT form, artificial FROM tokens WHERE sentence_id = ? AND word_id = ?",
-                                (sentence_id, head)).fetchone() if head else None
-        tokens.append({
-            "form": form, "lemma": lemma, "definition": definition, "match": match,
-            # Verbs read "3rd singular aorist indicative active", nominals "feminine singular accusative".
-            "morph": [m for m in ((pos, person, number, tense, mood, voice, gender, case, degree) if person
-                                  else (pos, tense, mood, voice, gender, number, case, degree)) if m],
-            "relation": relation, "role": relation_label(relation),
-            "head": None if not head else "(implied word)" if head_word and head_word[1] else
-                    head_word[0] if head_word else None,
-            "root": head == 0,
-        })
-    con.close()
-    return {"word": verse[0].split(" ")[index], "gloss": " ".join(EDGE_PUNCT.sub("", w) for w in gloss) or None,
-            "tokens": tokens}
 
 
 # Robinson's morphology codes (the New Testament's parsing): part of speech, then for
@@ -842,10 +755,27 @@ def automatic_parsing(slug, n, seq, index):
             "morph": morpheus_morph(pos, json.loads(morph or "[]")), "note": note}
 
 
+def treebank_match(con):
+    """SQL for treebank.match, or NULL in a library built before it."""
+    return "t.match" if "match" in {r[1] for r in con.execute("PRAGMA table_info(treebank)")} else "NULL"
+
+
+def paraphrase_word(con, slug, n, seq, index):
+    """The words of a text's paraphrase rendering a word ([] if none), or None where the
+    text has no paraphrase."""
+    try:
+        if not con.execute("SELECT 1 FROM paraphrase_links WHERE text = ? LIMIT 1", (slug,)).fetchone():
+            return None
+    except sqlite3.OperationalError:  # a library built before paraphrases
+        return None
+    return [w for (w,) in con.execute("SELECT para_word FROM paraphrase_links WHERE text = ? AND div = ? AND seq = ? "
+                                       "AND word_index = ? ORDER BY para_seq, para_index", (slug, n, seq, index))]
+
+
 def lexword_json(slug, n, seq, index):
-    """A library text's word, as /api/word gives an Iliad word: its parsing (the New
-    Testament: Robinson's, with Dodson's lexicon; the Septuagint: CATSS's, with its own
-    lemmas and glosses; others: a hand-made treebank's) for the reader's card."""
+    """A library text's word: its parsing (the Iliad's and others': a hand-made treebank's;
+    the New Testament: Robinson's, with Dodson's lexicon; the Septuagint: CATSS's, with its
+    own lemmas and glosses) for the reader's card."""
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
@@ -860,20 +790,27 @@ def lexword_json(slug, n, seq, index):
                           "WHERE w.text = ? AND w.div = ? AND w.seq = ? AND w.word_index = ?",
                           (slug, n, seq, index)).fetchone()
         parts = [] if row else con.execute(
-            "SELECT t.form, t.lemma, t.postag, t.relation, t.head, d.definition FROM treebank t "
+            f"SELECT t.form, t.lemma, t.postag, t.relation, t.head, d.definition, {treebank_match(con)} FROM treebank t "
             "LEFT JOIN lemma_defs d ON d.lemma = t.lemma "
             "WHERE t.text = ? AND t.div = ? AND t.seq = ? AND t.word_index = ? ORDER BY t.part",
             (slug, n, seq, index)).fetchall()
+        gloss = paraphrase_word(con, slug, n, seq, index)
     except sqlite3.OperationalError:  # a library built before texts had parsed words
         return None
     finally:
         con.close()
-    if parts:  # a hand-made treebank's analysis, shown as the Iliad's
-        return {"word": word, "tokens": [{
-            "form": form if len(parts) > 1 else word, "lemma": lemma, "definition": definition,
+    # The word in the paraphrase (Gaza's), where the text has one.
+    extra = {"gloss": " ".join(EDGE_PUNCT.sub("", w) for w in gloss) or None} if gloss is not None else {}
+    if parts:  # a hand-made treebank's analysis
+        # (as the treebank spells it where it's several, or matched to its text: the Iliad's)
+        return {"word": word, **extra, "tokens": [{
+            "form": form if len(parts) > 1 or match else word, "lemma": lemma, "definition": definition,
+            **({"match": match} if match else {}),
             "morph": postag_morph(postag), "relation": relation, "role": relation_label(relation),
             "head": head or None, "root": head == ""}
-            for form, lemma, postag, relation, head, definition in parts]}
+            for form, lemma, postag, relation, head, definition, match in parts]}
+    if extra:  # (the Iliad: a word the treebank leaves out)
+        return {"word": word, **extra, "tokens": []}
     if not row:
         auto = automatic_parsing(slug, n, seq, index)
         if auto:
@@ -1018,13 +955,8 @@ def plan_units(con, slug, cite):
     (with its additions, 12a, 12b), a line of Homer, a Stephanus section. Each
     {book, first, last (refs), words, open, close}: whether a reading may begin with it (its
     first ref can be named, or it begins its chapter) and end with it."""
-    if slug == "iliad":
-        icon = sqlite3.connect(DB)
-        rows = [(b, str(n), homer) for b, n, homer in icon.execute("SELECT book, line, homer FROM verses ORDER BY book, line")]
-        icon.close()
-    else:
-        rows = con.execute("SELECT div, ref, content FROM segments WHERE text = ? AND seq > 0 ORDER BY div, seq",
-                           (slug,)).fetchall()
+    rows = con.execute("SELECT div, ref, content FROM segments WHERE text = ? AND seq > 0 ORDER BY div, seq",
+                       (slug,)).fetchall()
     units, section = [], None
     for book, ref, content in rows:
         ref = ref or ""

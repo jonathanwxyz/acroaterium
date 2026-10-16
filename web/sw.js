@@ -11,7 +11,7 @@
 // kept in caches of their own that a new version leaves alone. A recording saved whole is
 // played from there, the byte ranges the player asks for read out of its pieces; any other
 // audio is left to the browser.
-const VERSION = "v71";
+const VERSION = "v72";
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 const FONTS = "fonts";  // kept across versions
@@ -47,6 +47,11 @@ async function networkFirst(request, cacheName, cacheKey = request) {
   } catch (err) {
     const cached = await cache.match(cacheKey) ?? (cacheName === DATA ? await caches.match(cacheKey) : undefined);
     if (cached) return cached;
+    // A book of the Iliad downloaded (or seen) before it joined the library: kept as
+    // /api/book/N, which the reader can read as well.
+    const m = cacheName === DATA && new URL(request.url).pathname.match(/^\/api\/text\/iliad\/(\d+)$/);
+    const old = m && await caches.match(new URL(`/api/book/${m[1]}`, request.url).href);
+    if (old) return old;
     throw err;
   }
 }

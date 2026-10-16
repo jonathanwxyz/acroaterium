@@ -50,7 +50,7 @@
   // Start fetching the book now, while the scripts load (app.js picks this up).
   {
     const q = new URLSearchParams(location.search), text = q.get("text") || "iliad", book = Number(q.get("book") || 1);
-    window.bookRequest = fetch(text === "iliad" ? `/api/book/${book}` : `/api/text/${encodeURIComponent(text)}/${book}`);
+    window.bookRequest = fetch(`/api/text/${encodeURIComponent(text)}/${book}`);
   }
 </script>
 <script defer src="native.js"></script>

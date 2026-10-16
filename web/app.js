@@ -1,8 +1,7 @@
 // Reader: shows one book of a text and, where there is a recording, highlights the verse
-// being recited. read.html?text=<slug>&book=<n>; the Iliad (text=iliad, the default) comes from
-// its own API, with Gaza's paraphrase, translations, scholia and parsing. Library texts
-// have only what their data offers (data.features); prose (Plato) is set as paragraphs
-// with its sections (Stephanus) marked.
+// being recited. read.html?text=<slug>&book=<n> (the Iliad, text=iliad, by default). Each text
+// has what its data offers (data.features: the Iliad, Gaza's paraphrase, translations,
+// scholia and parsing); prose (Plato) is set as paragraphs with its sections (Stephanus) marked.
 //
 // &v= opens the book at a verse, a line ("40", or "1.40") or a section ("17a"; "17" is its
 // first), or shows a range of them alone ("40-60", "17a-18c": "18" ends after all of 18).
@@ -26,7 +25,7 @@ function setSpec(spec) {
   SELECTION = selectionOf(spec);
 }
 function selectionOf(spec) {
-  if (TEXT === "iliad" || !/[,;:]|[-–]\s*\d+\.\d|\.(start|end)\b/.test(spec)) return null;
+  if (!/[,;:]|[-–]\s*\d+\.\d|\.(start|end)\b/.test(spec)) return null;
   let ch = BOOK;
   const end = (s) => {
     const cv = s.trim().match(/^(\d+):(\d+[a-z]?)$/);  // chapter:verse, as chapter.verse
@@ -50,9 +49,9 @@ setSpec(PARAMS.get("v") ?? "");
 if (!PARAMS.has("text") || CARRY_AT) {
   history.replaceState(null, "", `?${new URLSearchParams({ text: TEXT, book: BOOK, ...(V_FROM ? { v: PARAMS.get("v") } : {}) })}${location.hash}`);
 }
-const apiFor = (n, text = TEXT) => (text === "iliad" ? `/api/book/${n}` : `/api/text/${encodeURIComponent(text)}/${n}`);
+const apiFor = (n, text = TEXT) => `/api/text/${encodeURIComponent(text)}/${n}`;
 const API = apiFor(BOOK);
-let hasScholia = TEXT === "iliad";  // known for sure once the book has loaded
+let hasScholia = false;  // known once the book has loaded
 const FEATURES = ["audio", "paraphrase", "modern", "translation", "scholia", "words"];
 // Speaker icon shown beside a verse on hover: clicking the row (not a word) goes to it.
 const SEEK_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">' +
@@ -841,9 +840,7 @@ try { scholiaFolded = new Set(JSON.parse(localStorage.getItem("scholiaFolded")) 
 function fetchScholia(key) {
   const id = `${key.from}-${key.to}`;
   if (!scholiaCache.has(id)) {
-    const url = TEXT === "iliad" ? `/api/scholia/${BOOK}/${key.from}`
-      : `/api/notes/${encodeURIComponent(TEXT)}/${BOOK}/${id}`;
-    scholiaCache.set(id, fetch(url)
+    scholiaCache.set(id, fetch(`/api/notes/${encodeURIComponent(TEXT)}/${BOOK}/${id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data) => { scholiaLoaded.set(id, data); return data; })
       .catch((err) => { scholiaCache.delete(id); throw err; }));
@@ -854,7 +851,7 @@ function fetchScholia(key) {
 function renderScholia(data) {
   scholiaBody.replaceChildren();
   scholiaBody.scrollTop = 0;
-  if (!data.sources.length) scholiaBody.append(el("p", "note", TEXT === "iliad" ? tr("No scholia on this line.") : tr("No notes here.")));
+  if (!data.sources.length) scholiaBody.append(el("p", "note", tr("No notes here.")));
   for (const src of data.sources) {
     const box = el("details", "sch-src");
     box.open = !scholiaFolded.has(src.id);
@@ -897,8 +894,8 @@ function loadScholia(key) {
   notedRow = DATA && !DATA.audio ? key.li : null;
   notedRow?.classList.add("noted");
   scholiaLine.textContent = key.label;
-  if (TEXT === "iliad" && !key.from) {  // the spoken title
-    scholiaBody.replaceChildren(el("p", "note", tr("The scholia begin at line 1.")));
+  if (!(key.to > 0)) {  // a title, read before the text
+    scholiaBody.replaceChildren(el("p", "note", tr("No notes here.")));
     return;
   }
   // Already here: shown at once. Otherwise grey lines until it comes, never the notes of
@@ -1081,7 +1078,8 @@ function renderCard(data) {
   }
   for (const t of data.tokens) {
     const box = el("div", "token");
-    if (data.tokens.length > 1 || t.match === "variant") box.append(el("div", "form", TEXT === "iliad" ? `Perseus: ${t.form}` : t.form));
+    // (The Iliad's words are matched to the Perseus treebank's text: its spelling, where it differs.)
+    if (data.tokens.length > 1 || t.match === "variant") box.append(el("div", "form", t.match ? `Perseus: ${t.form}` : t.form));
     const lemma = el("div", "lemma", t.lemma ?? tr("(no lemma)"));
     if (t.lemma) {
       const a = el("a", null, "Logeion ↗");
@@ -1135,9 +1133,7 @@ function savedWord(id) {
 function fetchWord(w) {
   const id = wordId(w);
   if (!wordCache.has(id)) {
-    // The Iliad's words come from its treebank; a library text's from its own parsing.
-    const url = TEXT === "iliad" ? `/api/word/${id}` : `/api/lexword/${encodeURIComponent(TEXT)}/${id}`;
-    wordCache.set(id, fetch(url)
+    wordCache.set(id, fetch(`/api/lexword/${encodeURIComponent(TEXT)}/${id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .catch((err) => (err instanceof TypeError ? savedWord(id) : Promise.reject(err)))  // (offline)
       .then((data) => { wordLoaded.set(id, data); return data; })
@@ -1619,7 +1615,7 @@ document.addEventListener("keydown", (e) => {
 // Remember where you were: the audio position per book, saved while listening and on
 // leaving, restored (paused) on the next visit; without a recording, the scroll position.
 // Storage may be unavailable.
-const placeKey = () => (TEXT === "iliad" ? `place:book${BOOK}` : `place:${TEXT}:${BOOK}`);
+const placeKey = () => `place:${TEXT}:${BOOK}`;
 let restored = false;  // don't overwrite the saved place before it has been restored
 let lastSaved = 0;
 

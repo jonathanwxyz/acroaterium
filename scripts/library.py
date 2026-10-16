@@ -10,7 +10,7 @@ the repository shows the format. It is JSON:
     {"categories": ["Epic", "Philosophy"],          -- shown in this order
      "texts": [
        {"slug": "iliad", "title": "Ἰλιάς", "author": "Ὅμηρος", "category": "Epic",
-        "reader": "iliad"},                         -- the Iliad reader (data/iliad.sqlite)
+        "reader": "iliad"},                         -- the Iliad, from data/iliad.sqlite (below)
        {"slug": "...", "title": "...", "author": "...", "category": "Epic",
         "credit": "...",                            -- shown under the text
         "label": "Ῥαψῳδία {N}",                     -- optional: name the books ({n}: number,
@@ -67,8 +67,17 @@ plus where to find them, and "notes_credit" (a line under the panel):
               each scholion a paragraph opening with its line number ("5. lemma] …") or
               continuing the line before; the books' hypotheses go with line 1
 
+The Iliad ("reader": "iliad") is built separately, in data/iliad.sqlite (see
+data/README.md), and copied in here as a text like the others (iliad_into_library): its
+verses, Gaza's paraphrase (translations, lang "paraphrase", and paraphrase_links: which
+words of the paraphrase render each Homeric word), Murray's and Polylas's translations,
+the scholia and commentaries (notes), the treebank (treebank, with each word's match to
+the treebank's text) and short definitions; its timings go into data/library_audio.sqlite
+(recordings, units) beside the other texts'.
+
 Tables: categories (name, sort), texts (slug, title, author, category, sort, form:
-verse|prose, cite: line|section, reader: text|iliad, credit, notes_credit, collection), divisions (text, n, label:
+verse|prose, cite: line|section, reader: text, credit, notes_credit, collection, short,
+hidden, eyebrow), divisions (text, n, label:
 a book, or the whole work), segments (text, div, seq, ref: line number or section,
 content, speaker, para: 1 where a paragraph or speech begins), note_sources (text, id,
 siglum, name, lang, sort), notes (text, div, pos_from, pos_to: the segments (seq) a note
@@ -95,6 +104,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # import_commentaries
 DB = ROOT / "data" / "library.sqlite"
 ILIAD_DB = ROOT / "data" / "iliad.sqlite"
+AUDIO_DB = ROOT / "data" / "library_audio.sqlite"
 CACHE = ROOT / "data" / "raw" / "library"
 UA = {"User-Agent": "Mozilla/5.0 (scrolling-reader library builder; personal study tool)"}
 TEI = "{http://www.tei-c.org/ns/1.0}"
@@ -1111,9 +1121,11 @@ def perseus(src, verbose, title):
     return "prose", "section", [(1, title)], segments
 
 
-# ---------------------------------------------------------------- Iliad (its own reader)
+# ---------------------------------------------------------------- the Iliad
 
 def iliad(verbose):
+    """The Iliad's books (data/iliad.sqlite); its contents are copied in after the build
+    (iliad_into_library)."""
     if not ILIAD_DB.exists():
         print("  (data/iliad.sqlite not built: no books listed)")
         return "verse", "line", [], []
@@ -1121,6 +1133,167 @@ def iliad(verbose):
     books = [b for (b,) in con.execute("SELECT DISTINCT book FROM verses ORDER BY book")]
     con.close()
     return "verse", "line", [(b, f"Ῥαψῳδία {GREEK_NUMERALS[b]}") for b in books], []
+
+
+ILIAD_EYEBROW = "Ὁμήρου Ἰλιάς"
+ILIAD_NOTES_CREDIT = ("Scholia: Dindorf & Maass, Scholia Graeca in Homeri Iliadem (1875–88), via "
+                      "First1KGreek, CC BY-SA 4.0 · Leaf, Seymour, Benner: via Perseus, CC BY-SA 3.0")
+ILIAD_TRANSLATION_CREDITS = {"en": "English: A. T. Murray (Loeb, 1924), via Perseus",
+                             "el": "Μετάφραση: Ἰάκωβος Πολυλάς (1923), via Βικιθήκη"}
+# Sources of the notes, in the order shown: the manuscripts of the ancient scholia
+# (scholia.source), then the English commentaries (commentaries.source).
+ILIAD_NOTE_SOURCES = [
+    ("A", "A", "Venetus A", "grc"), ("A-int", "A", "Venetus A, interlinear", "grc"),
+    ("B", "B", "Venetus B", "grc"), ("B-rec", "B", "Venetus B, later hand", "grc"),
+    ("T", "T", "Townleianus", "grc"), ("T-rec", "T", "Townleianus, later hand", "grc"),
+    ("Leaf", "Leaf", "Commentary on the Iliad (1900)", "en"),
+    ("Seymour", "Seymour", "Commentary, Books I–VI (1891)", "en"),
+    ("Benner", "Benner", "Selections from the Iliad (1903)", "en"),
+]
+ILIAD_MODEL = "mms"  # the aligner whose timings the reader uses
+
+# Tables (and columns) the Iliad brings beyond the other texts': added to a library built
+# before them, so the Iliad can be copied into it without a rebuild.
+ILIAD_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS paraphrase_links (  -- the words of a paraphrase (translations,
+        text       TEXT NOT NULL,                 --   lang "paraphrase") rendering each word
+        div        INTEGER NOT NULL,              --   of the text: Gaza's of the Iliad
+        seq        INTEGER NOT NULL,
+        word_index INTEGER NOT NULL,              -- 0-based whitespace chunk of the segment
+        para_seq   INTEGER NOT NULL,              -- the paraphrase's segment (usually seq)
+        para_index INTEGER NOT NULL,              -- 0-based whitespace chunk of its paraphrase
+        para_word  TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS paraphrase_links_place ON paraphrase_links (text, div, seq);
+"""
+
+
+# data/library_audio.sqlite's tables, as scripts/align_library.py makes them.
+AUDIO_SCHEMA = """
+CREATE TABLE IF NOT EXISTS recordings (
+    text   TEXT NOT NULL,
+    div    INTEGER NOT NULL,
+    file   TEXT NOT NULL,     -- under recordings/
+    credit TEXT,
+    frames INTEGER,           -- length of the aligned audio, 20 ms frames
+    PRIMARY KEY (text, div));
+CREATE TABLE IF NOT EXISTS units (
+    text       TEXT NOT NULL,
+    div        INTEGER NOT NULL,
+    seq        INTEGER NOT NULL,   -- segments.seq in library.sqlite
+    piece      INTEGER NOT NULL,   -- sentence within the segment (0 for verse)
+    content    TEXT NOT NULL,
+    start      REAL NOT NULL,
+    speech_end REAL NOT NULL,
+    end        REAL NOT NULL,
+    score      REAL,
+    cut        INTEGER,            -- 1: the gap after it is speech that isn't text (an
+                                   -- announcement), to be skipped at once, not as a pause
+    PRIMARY KEY (text, div, seq, piece));
+"""
+
+
+def upgrade_schema(con):
+    """Add the Iliad's columns and tables to a library built before them."""
+    con.executescript(ILIAD_SCHEMA)
+    for table, column in (("texts", "eyebrow TEXT"), ("treebank", "match TEXT")):
+        if column.split()[0] not in {r[1] for r in con.execute(f"PRAGMA table_info({table})")}:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+
+
+def iliad_into_library(con, slug="iliad", audio_db=AUDIO_DB, verbose=False):
+    """Copy the Iliad from data/iliad.sqlite into the library (con) as the text slug, in the
+    tables every text uses, replacing what it had there; and its timings (the mms aligner's,
+    a recording per book, the AAC one where there are several) into audio_db."""
+    upgrade_schema(con)
+    il = sqlite3.connect(ILIAD_DB)
+    for table in ("segments", "translations", "translation_passages", "translation_credits", "note_sources",
+                  "notes", "treebank", "paraphrase_links"):
+        con.execute(f"DELETE FROM {table} WHERE text = ?", (slug,))
+    books = dict(il.execute("SELECT book, title FROM books"))
+    con.execute("DELETE FROM divisions WHERE text = ?", (slug,))
+    con.executemany("INSERT INTO divisions VALUES (?, ?, ?)",
+                    [(slug, b, f"Ῥαψῳδία {GREEK_NUMERALS[b]}")
+                     for (b,) in il.execute("SELECT DISTINCT book FROM verses ORDER BY book")])
+    con.execute("UPDATE texts SET reader = 'text', form = 'verse', cite = 'line', notes_credit = ?, "
+                "eyebrow = coalesce(eyebrow, ?) WHERE slug = ?", (ILIAD_NOTES_CREDIT, ILIAD_EYEBROW, slug))
+
+    # The verses (line 0: the book's title, as the recording reads it), and Gaza's paraphrase.
+    verses = il.execute("SELECT book, line, homer, paraphrase FROM verses ORDER BY book, line").fetchall()
+    con.executemany("INSERT INTO segments VALUES (?, ?, 0, '', ?, NULL, 1)",
+                    [(slug, b, title) for b, title in books.items() if title])
+    con.executemany("INSERT INTO segments VALUES (?, ?, ?, ?, ?, NULL, 1)",
+                    [(slug, b, line, str(line), homer) for b, line, homer, _ in verses])
+    con.executemany("INSERT INTO translations VALUES (?, ?, ?, 'paraphrase', ?)",
+                    [(slug, b, line, para) for b, line, _, para in verses if para])
+    con.executemany("INSERT INTO paraphrase_links VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [(slug, *row) for row in il.execute(
+                        "SELECT book, line, word_index, para_line, para_index, para_word FROM paraphrase_links "
+                        "ORDER BY book, line, word_index, para_line, para_index")])
+
+    # Translations: Murray's English line by line where it's been split, else in passages
+    # (only those not split); Polylas's modern Greek line by line.
+    split = set(il.execute("SELECT book, line FROM translation_lines WHERE translation = 'murray'"))
+    con.executemany("INSERT INTO translations VALUES (?, ?, ?, ?, ?)",
+                    [(slug, b, line, {"murray": "en", "polylas": "el"}[tr], text) for tr, b, line, text in il.execute(
+                        "SELECT translation, book, line, text FROM translation_lines "
+                        "WHERE translation IN ('murray', 'polylas') AND text IS NOT NULL")])
+    con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, 'en', ?)",
+                    [(slug, b, a, z, text) for b, a, z, text in il.execute(
+                        "SELECT book, line_from, line_to, text FROM translation_passages WHERE translation = 'murray' "
+                        "ORDER BY book, line_from")
+                     if not all((b, line) in split for line in range(a, z + 1))])
+    con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)",
+                    [(slug, lang, credit) for lang, credit in ILIAD_TRANSLATION_CREDITS.items()])
+
+    # Notes: the scholia, then the commentaries, each in its own order.
+    con.executemany("INSERT INTO note_sources VALUES (?, ?, ?, ?, ?, ?)",
+                    [(slug, *src, k) for k, src in enumerate(ILIAD_NOTE_SOURCES)])
+    rows = [(b, a, z, src, text, None) for b, a, z, src, text in il.execute(
+        "SELECT book, line, line_to, source, text FROM scholia ORDER BY seq")]
+    rows += il.execute("SELECT book, line, line_to, source, text, parts FROM commentaries ORDER BY seq").fetchall()
+    con.executemany("INSERT INTO notes VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [(slug, b, a, z, src, k, text, parts) for k, (b, a, z, src, text, parts) in enumerate(rows)])
+
+    # The treebank, word by word as the verses split (a word may be several of its
+    # tokens: μηδέ, μη + δέ), with how each matched the treebank's text; the head of
+    # each token as a word ('' for the sentence's root).
+    form_of = {(sid, wid): "(implied word)" if artificial else form for sid, wid, form, artificial in il.execute(
+        "SELECT sentence_id, word_id, form, artificial FROM tokens")}
+    tb, part = [], {}
+    for b, line, wi, form, lemma, postag, relation, head, sid, match in il.execute(
+            "SELECT w.book, w.line, w.word_index, t.form, t.lemma, t.postag, t.relation, t.head, t.sentence_id, "
+            "w.match FROM word_links w JOIN tokens t ON t.seq = w.token_seq ORDER BY w.book, w.line, w.word_index, t.seq"):
+        k = part[b, line, wi] = part.get((b, line, wi), -1) + 1
+        tb.append((slug, b, line, wi, k, lemma, postag, relation,
+                   None if head is None else "" if head == 0 else form_of.get((sid, head)), form, match))
+    con.executemany("INSERT INTO treebank (text, div, seq, word_index, part, lemma, postag, relation, head, form, match) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tb)
+    con.executemany("INSERT OR IGNORE INTO lemma_defs VALUES (?, ?)", il.execute("SELECT lemma, definition FROM lemma_defs"))
+
+    # The timings, a recording per book.
+    timed = 0
+    audio = sqlite3.connect(audio_db)
+    try:
+        audio.executescript(AUDIO_SCHEMA)
+        audio.execute("DELETE FROM units WHERE text = ?", (slug,))
+        audio.execute("DELETE FROM recordings WHERE text = ?", (slug,))
+        content = {(b, line): homer for b, line, homer, _ in verses} | {(b, 0): t for b, t in books.items() if t}
+        for (b,) in il.execute("SELECT DISTINCT book FROM verse_timings WHERE model = ? ORDER BY book", (ILIAD_MODEL,)).fetchall():
+            (rec,) = il.execute("SELECT recording FROM verse_timings WHERE book = ? AND model = ? GROUP BY recording "
+                                "ORDER BY recording LIKE '%.m4a' DESC LIMIT 1", (b, ILIAD_MODEL)).fetchone()
+            audio.execute("INSERT INTO recordings (text, div, file) VALUES (?, ?, ?)", (slug, b, rec))
+            units = [(slug, b, line, 0, content.get((b, line), ""), start, speech_end, end, score, 0)
+                     for line, start, speech_end, end, score in il.execute(
+                         "SELECT line, start, speech_end, end, score FROM verse_timings "
+                         "WHERE book = ? AND model = ? AND recording = ?", (b, ILIAD_MODEL, rec))]
+            audio.executemany("INSERT INTO units (text, div, seq, piece, content, start, speech_end, end, score, cut) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", units)
+            timed += len(units)
+        audio.commit()
+    finally:
+        audio.close()
+    il.close()
+    print(f"  the Iliad: {len(verses)} lines, {len(rows)} notes, {len(tb)} treebank words, {timed} timed lines")
 
 
 # ---------------------------------------------------------------- notes
@@ -1336,8 +1509,9 @@ def main():
         rows_aw += found
         if found:
             print(f"  automatic parsing: {len(found)} words")
-        rows_t.append((t["slug"], t["title"], t.get("author"), t["category"], sort, form, cite, reader,
-                       t.get("credit"), t.get("notes_credit"), t.get("collection"), t.get("short"), int(bool(t.get("hidden")))))
+        rows_t.append((t["slug"], t["title"], t.get("author"), t["category"], sort, form, cite, "text",
+                       t.get("credit"), t.get("notes_credit"), t.get("collection"), t.get("short"), int(bool(t.get("hidden"))),
+                       t.get("eyebrow")))
         rows_d += [(t["slug"], n, label) for n, label in divs]
         rows_s += [(t["slug"], *s) for s in segs]
 
@@ -1350,6 +1524,7 @@ def main():
         DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS lexicon; DROP TABLE IF EXISTS translations; DROP TABLE IF EXISTS translation_passages;
         DROP TABLE IF EXISTS translation_credits;
         DROP TABLE IF EXISTS treebank; DROP TABLE IF EXISTS auto_words; DROP TABLE IF EXISTS lemma_defs;
+        DROP TABLE IF EXISTS paraphrase_links;
         CREATE TABLE categories (name TEXT PRIMARY KEY, sort INTEGER NOT NULL);
         CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- JSON: "lectionary", "church_text"
         CREATE TABLE texts (
@@ -1365,7 +1540,8 @@ def main():
             notes_credit TEXT,           -- under the σχόλια panel
             collection TEXT,             -- listed with the other texts of this name (a Testament)
             short    TEXT,               -- a short title, for narrow screens (Ματθ.)
-            hidden   INTEGER NOT NULL DEFAULT 0);  -- 1: kept, and readable by link, but not listed
+            hidden   INTEGER NOT NULL DEFAULT 0,   -- 1: kept, and readable by link, but not listed
+            eyebrow  TEXT);              -- the reader's title over the text, if not "author · title"
         CREATE TABLE divisions (
             text  TEXT NOT NULL REFERENCES texts,
             n     INTEGER NOT NULL,      -- book number (1 for an undivided work)
@@ -1414,6 +1590,7 @@ def main():
             relation   TEXT,             -- SBJ, OBJ, ATR, ... (_CO, _AP)
             head       TEXT,             -- the word it depends on ('' for the sentence's root)
             form       TEXT,             -- as the treebank spells it (a part: τὰ of τἀληθῆ)
+            match      TEXT,             -- the Iliad's: how the word matched the treebank's (exact, variant, ...)
             PRIMARY KEY (text, div, seq, word_index, part));
         CREATE TABLE auto_words (        -- the lemmatiser's parsing, for words without gold parsing
             text       TEXT NOT NULL,      --   (scripts/lemmatise_library.py)
@@ -1462,11 +1639,11 @@ def main():
         con.execute("INSERT INTO settings VALUES ('lectionary', ?)", (json.dumps(cat["lectionary"], ensure_ascii=False),))
     if CHURCH_TEXT.exists():  # (scripts/church_text.py compares with Rahlfs's text: not with this)
         con.execute("INSERT INTO settings VALUES ('church_text', ?)", (json.dumps(True),))
-    con.executemany("INSERT INTO texts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_t)
+    con.executemany("INSERT INTO texts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_t)
     con.executemany("INSERT INTO translations VALUES (?, ?, ?, ?, ?)", rows_tr)
     con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, ?, ?)", rows_tp)
     con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)", rows_tc)
-    con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_tb)
+    con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)", rows_tb)
     con.executemany("INSERT INTO auto_words VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_aw)
     if rows_tb or rows_w:  # definitions, as for the Iliad (import_shortdefs.py)
         from import_shortdefs import matcher
@@ -1481,6 +1658,10 @@ def main():
     con.executemany("INSERT OR IGNORE INTO words VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows_w)
     if rows_w:
         con.executemany("INSERT OR IGNORE INTO lexicon VALUES (?, ?, ?, ?)", dodson())
+    con.executescript(ILIAD_SCHEMA)
+    for t in cat["texts"]:  # the Iliad: its contents, from data/iliad.sqlite
+        if t.get("reader") == "iliad" and ILIAD_DB.exists():
+            iliad_into_library(con, t["slug"], verbose=args.v)
     con.commit()
     con.close()
     print(f"{len(rows_t)} texts, {len(rows_d)} divisions, {len(rows_s)} segments, {len(rows_n)} notes, "

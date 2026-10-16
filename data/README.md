@@ -1,24 +1,38 @@
 # Iliad data
 
-`iliad.sqlite` holds the Iliad with Theodorus Gaza's paraphrase, line by line, and the
-Perseus treebank (lemma, morphology, dependency parse) word by word. `iliad.tsv` is a
-plain-text copy of the `verses` table. Both are rebuilt by the scripts below and stay out
-of git; `iliad.tsv` because its source states no licence.
+The reader (`scripts/serve.py`) reads two databases: `library.sqlite`, the texts, and
+`library_audio.sqlite`, their recordings. The Iliad is built first, on its own, in
+`iliad.sqlite`, and `scripts/library.py` copies it into both.
 
-`library.sqlite` holds the library's other texts (tables `categories`, `texts`,
-`divisions`, `segments`), built by `scripts/library.py` from the local catalogue
-(`library/catalogue.json`); its downloads are cached in `raw/library/`. It stays out of
-git, like the catalogue.
+`iliad.sqlite` holds the Iliad with Theodorus Gaza's paraphrase, line by line, and the
+Perseus treebank (lemma, morphology, dependency parse) word by word, its translations,
+scholia and commentaries, and its timings. `iliad.tsv` is a plain-text copy of the
+`verses` table. Both are rebuilt by the scripts below and stay out of git; `iliad.tsv`
+because its source states no licence. The reader doesn't read it: it's where the Iliad is
+made.
+
+`library.sqlite` holds the library's texts (tables `categories`, `texts`, `divisions`,
+`segments`, …), built by `scripts/library.py` from the local catalogue
+(`library/catalogue.json`); its downloads are cached in `raw/library/`. A catalogue entry
+with `"reader": "iliad"` is the Iliad: `library.py` copies it in from `iliad.sqlite`
+(`iliad_into_library`) as a text like the others, slug `iliad`, with Gaza's paraphrase
+(`translations`, lang `paraphrase`, and `paraphrase_links`), its treebank (`treebank`, with
+each word's `match`), notes and translations. It stays out of git, like the catalogue.
 
 `library_audio.sqlite` holds the library texts' recordings: which file each book plays
 and when each line (verse) or sentence (prose) is spoken, built by
 `scripts/align_library.py` from the catalogue's `"audio"` entries and the emissions in
-`recordings/`. It is kept apart so that rebuilding `library.sqlite` leaves it alone
-(realign after a rebuild that changes a text). It stays out of git.
+`recordings/`, and for the Iliad copied from `iliad.sqlite`'s `verse_timings` by
+`library.py`. It is kept apart so that rebuilding `library.sqlite` leaves the other
+texts' timings alone (realign after a rebuild that changes a text). It stays out of git.
 
 ## Rebuilding
 
-Run in this order; each script replaces only its own tables. Pages are cached in `raw/`.
+Build the Iliad (`iliad.sqlite`) with the scripts below, in this order; each replaces
+only its own tables. Pages are cached in `raw/`. Then run `scripts/library.py`, which
+builds `library.sqlite` and copies the Iliad (and its timings, into
+`library_audio.sqlite`) in: after changing anything in `iliad.sqlite`, run it again for
+the reader to see it.
 
 1. `scripts/parse_iliad.py` → `verses` (+ `iliad.tsv`), from vasilestancu.ro, and `books`
    from `book_titles.tsv`

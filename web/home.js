@@ -15,7 +15,7 @@ function el(tag, cls, text) {
 const CHEVRON = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" ' +
   'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>';
 
-const slugOf = (t) => (t.reader === "iliad" ? "iliad" : t.slug);
+const slugOf = (t) => t.slug;
 // The book to open a text at: the one last opened, if it still has it, else its first.
 function bookFor(t) {
   const n = lastBook(slugOf(t));

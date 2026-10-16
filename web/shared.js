@@ -24,6 +24,17 @@ function readerHref(slug, book, v) {
   return `read.html?${q}`;
 }
 
+// Where reading got to in each book of the Iliad was kept as place:book<N> before the Iliad
+// joined the library: now place:iliad:<N>, as every text's. Moved over once.
+try {
+  for (let i = localStorage.length; i--;) {
+    const key = localStorage.key(i), m = key?.match(/^place:book(\d+)$/);
+    if (!m) continue;
+    if (localStorage.getItem(`place:iliad:${m[1]}`) == null) localStorage.setItem(`place:iliad:${m[1]}`, localStorage.getItem(key));
+    localStorage.removeItem(key);
+  }
+} catch {}
+
 // The book last opened in each text, and the text last opened in each collection (a
 // Testament): the library's titles go back there. Kept per browser.
 function lastBook(slug) {
