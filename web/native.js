@@ -208,47 +208,8 @@ window.nativeApp = (() => {
   if (document.readyState === "loading") addEventListener("DOMContentLoaded", scrollbar);
   else scrollbar();
 
-  // Pulling past the top or the bottom: the text gives a little and springs back, the bars
-  // staying where they are (the app turns off the WebView's own stretch, which takes the
-  // whole screen, bars and all). The pull is the finger's travel past the edge, with
-  // resistance; moving back takes it up first, before the page scrolls again.
-  function bounce() {
-    const content = document.querySelector("main");
-    if (!content) return;
-    document.documentElement.classList.add("app-bounce");
-    let lastY = null, pull = 0;  // the finger's last place; how far it has gone past the edge
-    const end = () => document.documentElement.scrollHeight - innerHeight;
-    const shown = (p) => {  // (rubber-band: ever less, as it goes)
-      const d = innerHeight, x = Math.abs(p);
-      return Math.sign(p) * (x * d * 0.55) / (d + 0.55 * x) * 0.6;
-    };
-    const set = (p, animate) => {
-      pull = p;
-      content.style.transition = animate ? "transform 380ms cubic-bezier(0.2, 0.9, 0.3, 1)" : "none";
-      content.style.transform = p ? `translateY(${shown(p)}px)` : "";
-    };
-    addEventListener("touchstart", (e) => {
-      lastY = e.touches.length === 1 ? e.touches[0].clientY : null;
-    }, { passive: true });
-    addEventListener("touchmove", (e) => {
-      if (lastY === null || e.touches.length !== 1) return;
-      const y = e.touches[0].clientY, dy = y - lastY;
-      lastY = y;
-      if (e.target.closest?.(".app-scrollbar, input[type=range], #card, #scholia, .dl-menu, dialog")) return;
-      const atTop = scrollY <= 0, atEnd = scrollY >= end() - 1;
-      let next = pull;
-      if (pull > 0 || (atTop && dy > 0)) next = Math.max(0, pull + dy);
-      else if (pull < 0 || (atEnd && dy < 0)) next = Math.min(0, pull + dy);
-      if (next === pull && !pull) return;
-      if (e.cancelable && (pull || next)) e.preventDefault();  // (the pull, not a scroll)
-      set(next, false);
-    }, { passive: false });
-    const release = () => { lastY = null; if (pull) set(0, true); };
-    addEventListener("touchend", release, { passive: true });
-    addEventListener("touchcancel", release, { passive: true });
-  }
-  if (document.readyState === "loading") addEventListener("DOMContentLoaded", bounce);
-  else bounce();
+  // No overscroll effect at the ends (style.css; the app also turns off the WebView's own).
+  document.documentElement.classList.add("app-no-overscroll");
 
   // The status and navigation bars: the page's colour behind them, icons to suit.
   const systemBars = (dark) => call("setSystemBars", { dark, color: dark ? "#1d1a16" : "#fdf6e3" }).catch(() => {});
