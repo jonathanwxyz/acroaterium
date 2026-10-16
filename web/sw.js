@@ -1,15 +1,17 @@
 // Service worker: lets the reader be installed and open offline.
 //
-// The app's files and the API are fetched from the network first (revalidated, so a
-// change shows on the next load) and fall back to the cache when offline: books, words
-// and scholia already seen stay readable. Fonts (fonts/) never change, so they come from
-// the cache once fetched.
+// The app's files (the pages, scripts and styles) come from the cache at once, and are
+// fetched again behind it, so a page opens without waiting on the network and a change
+// shows on the load after (a new version, which precaches them all, on the next). The API
+// is fetched from the network first and falls back to the cache when offline: books,
+// words and scholia already seen stay readable. Fonts (fonts/) never change, so they come
+// from the cache once fetched.
 //
 // Downloads (offline.js, from the library): a text's books, and its recordings in pieces,
 // kept in caches of their own that a new version leaves alone. A recording saved whole is
 // played from there, the byte ranges the player asks for read out of its pieces; any other
 // audio is left to the browser.
-const VERSION = "v63";
+const VERSION = "v64";
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 const FONTS = "fonts";  // kept across versions
@@ -47,6 +49,19 @@ async function networkFirst(request, cacheName, cacheKey = request) {
     if (cached) return cached;
     throw err;
   }
+}
+
+// From the cache if it's there, fetched again behind it for next time; else from the network.
+function cachedThenRevalidated(e, cacheName, cacheKey = e.request) {
+  const fresh = caches.open(cacheName).then(async (cache) => {
+    const response = await fetch(e.request, { cache: "no-cache" });
+    if (response.ok) await cache.put(cacheKey, response.clone());
+    return response;
+  });
+  e.waitUntil(fresh.catch(() => {}));
+  return caches.open(cacheName)
+    .then((cache) => cache.match(cacheKey))
+    .then((cached) => cached ?? fresh);
 }
 
 async function cacheFirst(request) {
@@ -117,13 +132,13 @@ self.addEventListener("fetch", (e) => {
   } else if (url.pathname.startsWith("/audio/")) {
     e.respondWith(audio(request));
   } else if (request.mode === "navigate" && (url.pathname === "/" || url.pathname === "/index.html")) {
-    e.respondWith(networkFirst(request, SHELL, new URL("index.html", self.registration.scope).href));
+    e.respondWith(cachedThenRevalidated(e, SHELL, new URL("index.html", self.registration.scope).href));
   } else if (request.mode === "navigate" && url.pathname === "/read.html") {
     // The reader is one page whatever the text and book (?text=…&book=N): one cache key.
-    e.respondWith(networkFirst(request, SHELL, new URL("read.html", self.registration.scope).href));
+    e.respondWith(cachedThenRevalidated(e, SHELL, new URL("read.html", self.registration.scope).href));
   } else if (url.pathname.startsWith("/api/")) {
     e.respondWith(networkFirst(request, DATA));
   } else {
-    e.respondWith(networkFirst(request, SHELL));
+    e.respondWith(cachedThenRevalidated(e, SHELL));
   }
 });
