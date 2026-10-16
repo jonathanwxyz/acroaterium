@@ -10,5 +10,7 @@ public class MainActivity extends BridgeActivity {
         // (Before the bridge starts, so the pages see it.)
         registerPlugin(ReaderAudioPlugin.class);
         super.onCreate(savedInstanceState);
+        // (The pages draw their own, between the reader's bars: web/native.js.)
+        getBridge().getWebView().setVerticalScrollBarEnabled(false);
     }
 }

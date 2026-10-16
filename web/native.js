@@ -141,6 +141,44 @@ window.nativeApp = (() => {
     remove: (url) => call("removeDownload", { url }),
   };
 
+  // The scrollbar (the app turns off the WebView's own, which runs the screen's height): a
+  // thin one that runs only where the page scrolls, between the reader's bars (or, in the
+  // library, below the status bar), shown while scrolling as Android's is.
+  function scrollbar() {
+    const track = document.createElement("div");
+    track.className = "app-scrollbar";
+    track.setAttribute("aria-hidden", "true");
+    const thumb = document.createElement("div");
+    track.append(thumb);
+    document.body.append(track);
+    let hideTimer = 0, queued = false;
+    const place = () => {
+      queued = false;
+      const top = document.getElementById("topbar")?.getBoundingClientRect().bottom
+        ?? (parseFloat(getComputedStyle(document.body, "::before").height) || 0);
+      const bar = document.getElementById("player")?.getBoundingClientRect();
+      const bottom = bar?.height ? innerHeight - bar.top : 0;
+      const length = Math.max(0, innerHeight - top - bottom);
+      const range = document.documentElement.scrollHeight - innerHeight;
+      if (range <= 0 || length < 48) { track.hidden = true; return; }
+      track.hidden = false;
+      const size = Math.max(36, length * innerHeight / document.documentElement.scrollHeight);
+      Object.assign(track.style, { top: `${top}px`, height: `${length}px` });
+      Object.assign(thumb.style, { height: `${size}px`,
+                                   transform: `translateY(${(length - size) * Math.min(1, Math.max(0, scrollY / range))}px)` });
+    };
+    addEventListener("scroll", () => {
+      if (!queued) { queued = true; requestAnimationFrame(place); }
+      track.classList.add("shown");
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => track.classList.remove("shown"), 900);
+    }, { passive: true });
+    addEventListener("resize", place);
+    place();
+  }
+  if (document.readyState === "loading") addEventListener("DOMContentLoaded", scrollbar);
+  else scrollbar();
+
   // The status and navigation bars: the page's colour behind them, icons to suit.
   const systemBars = (dark) => call("setSystemBars", { dark, color: dark ? "#1d1a16" : "#fdf6e3" }).catch(() => {});
 

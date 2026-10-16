@@ -1793,3 +1793,10 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
    stays still; the dialog's own list scrolls without carrying the page on. */
 html:has(dialog[open]), html:has(dialog[open]) body { overflow: hidden; }
 dialog, .dl-list, .plan-days { overscroll-behavior: contain; }
+
+/* The app's scrollbar (native.js): where the page scrolls, between the bars. */
+.app-scrollbar { position: fixed; right: 2px; width: 4px; z-index: 25; pointer-events: none;
+                 opacity: 0; transition: opacity 300ms ease 200ms; }
+.app-scrollbar.shown { opacity: 1; transition-delay: 0s; transition-duration: 100ms; }
+.app-scrollbar[hidden] { display: none; }
+.app-scrollbar > div { width: 100%; border-radius: 2px; background: var(--muted); opacity: 0.7; }
