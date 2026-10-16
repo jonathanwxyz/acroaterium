@@ -11,7 +11,7 @@
 // kept in caches of their own that a new version leaves alone. A recording saved whole is
 // played from there, the byte ranges the player asks for read out of its pieces; any other
 // audio is left to the browser.
-const VERSION = "v64";
+const VERSION = "v65";
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 const FONTS = "fonts";  // kept across versions

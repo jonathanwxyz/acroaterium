@@ -36,6 +36,17 @@
       document.head.append(link);
     }
   }
+  // Moving between pages (style.css): the bars stay where they are only from one page of
+  // the reader to another. To or from the library, which hasn't them, they're part of the
+  // page and fade with it, rather than fading on their own over it (a flicker).
+  {
+    const reader = (url) => !!url && new URL(url).pathname.endsWith("/read.html");
+    const unname = () => { for (const id of ["topbar", "player"]) document.getElementById(id)?.style.setProperty("view-transition-name", "none"); };
+    addEventListener("pageswap", (e) => { if (e.viewTransition && !reader(e.activation?.entry?.url)) unname(); });
+    addEventListener("pagereveal", (e) => {
+      if (e.viewTransition && !reader(window.navigation?.activation?.from?.url)) unname();
+    });
+  }
   // Start fetching the book now, while the scripts load (app.js picks this up).
   {
     const q = new URLSearchParams(location.search), text = q.get("text") || "iliad", book = Number(q.get("book") || 1);
