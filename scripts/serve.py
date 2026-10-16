@@ -28,6 +28,8 @@ Routes:
                          the English commentaries (Leaf, Seymour, Benner)
   /audio/<path>        a file under recordings/ (subfolders too), with HTTP Range support for seeking
   (/api/text and /api/book give the download each book is in: "download": {n, size, books})
+  /api/words/<slug>/<n>  JSON: every word card of a book (or chapter), {"line/index": card},
+                       for a download to keep (the cards then open offline)
   /api/offline/<slug>/<n>  JSON: what to save to read and hear part of a text offline,
                        a recording at a time (n: the first book it's for): those books' API
                        URLs ("pages") and the recording ("audio": [{url, size}]); /api/library
@@ -216,6 +218,33 @@ def download_of(slug, n):
     return {"download": {"n": item["n"], "size": item["size"], "books": len(item["divs"])}} if item else {}
 
 
+def words_json(slug, n):
+    """{"line/index": word card}: every word card of a book (or chapter), as /api/lexword (a
+    library text: line, its segment) or /api/word (the Iliad) gives each, for a download to
+    keep: the cards then open offline."""
+    out = {}
+    if slug == "iliad":
+        con = sqlite3.connect(DB)
+        lines = con.execute("SELECT line, homer FROM verses WHERE book = ? AND line > 0", (n,)).fetchall()
+        con.close()
+        for line, text in lines:
+            for i in range(len(text.split(" "))):
+                if card := word_json(n, line, i):
+                    out[f"{line}/{i}"] = card
+        return out
+    if not LIBRARY.exists():
+        return None
+    con = sqlite3.connect(LIBRARY)
+    segs = con.execute("SELECT seq, content FROM segments WHERE text = ? AND div = ? AND seq > 0", (slug, n)).fetchall()
+    con.close()
+    for seq, content in segs:
+        for i in range(len(content.split())):
+            card = lexword_json(slug, n, seq, i)
+            if card and card.get("tokens"):
+                out[f"{seq}/{i}"] = card
+    return out
+
+
 def offline_json(slug, n):
     """What a text's download n (named by its first book) needs offline: its books (the
     reader's API for each) and its recording."""
@@ -228,7 +257,8 @@ def offline_json(slug, n):
     if not row or not item:
         return None
     page = (lambda d: f"/api/book/{d}") if row[0] == "iliad" else (lambda d: f"/api/text/{urllib.parse.quote(slug)}/{d}")
-    return {"slug": slug, "n": n, "pages": [page(d) for d in item["divs"]],
+    words = (lambda d: f"/api/words/iliad/{d}") if row[0] == "iliad" else (lambda d: f"/api/words/{urllib.parse.quote(slug)}/{d}")
+    return {"slug": slug, "n": n, "pages": [page(d) for d in item["divs"]] + [words(d) for d in item["divs"]],
             "audio": [{"url": f"/audio/{urllib.parse.quote(item['file'])}", "size": item["size"]}],
             "size": item["size"]}
 
@@ -947,6 +977,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(word_json(*map(int, m.groups())))
         elif m := re.fullmatch(r"/api/scholia/(\d+)/(\d+)", self.path):
             self.send_json(scholia_json(*map(int, m.groups())))
+        elif m := re.fullmatch(r"/api/words/([\w-]+)/(\d+)", self.path):
+            self.send_json(words_json(m[1], int(m[2])))
         elif m := re.fullmatch(r"/api/offline/([\w-]+)/(\d+)", self.path):
             self.send_json(offline_json(m[1], int(m[2])))
         elif m := re.fullmatch(r"/api/lectionary/(\d{4}-\d\d-\d\d)", self.path):

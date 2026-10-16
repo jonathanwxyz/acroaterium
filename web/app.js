@@ -93,7 +93,7 @@ function render(data) {
   verses = []; refs = []; passages = [];
   current = -1; focusIdx = -1; activePassage = null;
   hovered = heldBy = released = null;
-  scholiaCache.clear(); scholiaLoaded.clear();
+  scholiaCache.clear(); scholiaLoaded.clear(); wordCache.clear(); wordLoaded.clear();
   if (selected) closeCard();
   list.replaceChildren();  // the loading skeleton
   list.classList.remove("loading");
@@ -1010,6 +1010,19 @@ const wordCache = new Map();   // "book/line/index" -> response promise
 const wordLoaded = new Map();  // "book/line/index" -> response, once it has arrived
 // (the book: a selection's verse from another chapter carries its own)
 const wordId = (w) => `${w.dataset.div ?? BOOK}/${w.dataset.line}/${w.dataset.index}`;
+// Offline (or the server out of reach), a downloaded book's cards: all of a chapter's, as
+// the download kept them (/api/words, answered from the cache by sw.js).
+const chapterWords = new Map();  // "text/div" -> promise of {"line/index": card}
+function savedWord(id) {
+  const [div, line, index] = id.split("/");
+  const key = `${TEXT}/${div}`;
+  if (!chapterWords.has(key)) {
+    chapterWords.set(key, fetch(`/api/words/${encodeURIComponent(TEXT)}/${div}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .catch((err) => { chapterWords.delete(key); throw err; }));
+  }
+  return chapterWords.get(key).then((all) => all[`${line}/${index}`] ?? Promise.reject(new Error("not saved")));
+}
 function fetchWord(w) {
   const id = wordId(w);
   if (!wordCache.has(id)) {
@@ -1017,6 +1030,7 @@ function fetchWord(w) {
     const url = TEXT === "iliad" ? `/api/word/${id}` : `/api/lexword/${encodeURIComponent(TEXT)}/${id}`;
     wordCache.set(id, fetch(url)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .catch((err) => (err instanceof TypeError ? savedWord(id) : Promise.reject(err)))  // (offline)
       .then((data) => { wordLoaded.set(id, data); return data; })
       .catch((err) => { wordCache.delete(id); throw err; }));
   }
