@@ -1317,24 +1317,23 @@ body.prose-text .toggle:has(#focused) { display: none; }
 @media (hover: hover) { .library .chapters a:hover { color: var(--text); border-color: var(--current-bar); } }
 .library .chapters a[aria-current="true"] { color: var(--current-bar); border-color: var(--current-bar); }
 
-/* A text's download button, at the end of its row: the size, the progress (filling in
-   while it runs), then a tick. */
+/* A text's download button, at the end of its row: an arrow with the size, a ring filling
+   with the progress, a dashed ring while queued, a ring with an arrow when paused, a tick. */
 .work-line, .member-line { display: flex; align-items: center; gap: 0.5rem; }
 .work-line > :first-child, .member-line > :first-child { flex: 1; min-width: 0; }
 .member-line > .download { margin-right: 0.6rem; }
-/* A book's own download, beside its link in the grid: just the icon (or progress). */
+/* A book's own download, beside its link in the grid: just the icon. */
 .library .book-list li { display: flex; align-items: center; gap: 0.25rem; }
 .library .book-list li > a { flex: 1; min-width: 0; }
-.download.compact { min-width: 2.1rem; padding: 0.1rem 0.2rem; font-size: 11px; }
 .download {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
+  gap: 0.3rem;
   min-width: 5.4rem;  /* (all one width, so the chevrons before them line up) */
-  min-height: 1.6rem;
-  padding: 0.1rem 0.5rem;
+  min-height: 1.75rem;
+  padding: 0.1rem 0.55rem;
   font: 12px system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1344,32 +1343,100 @@ body.prose-text .toggle:has(#focused) { display: none; }
   border-radius: 999px;
   cursor: pointer;
 }
-.download[data-state="running"], .download[data-state="queued"] {
-  color: var(--text);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--current-bar) 22%, transparent) var(--done, 0%), transparent var(--done, 0%));
-}
+.download svg { flex: none; }
+.download[data-state="running"], .download[data-state="queued"] { color: var(--text); }
 .download[data-state="done"] { color: var(--current-bar); border-color: transparent; }
 @media (hover: hover) { .download:hover { color: var(--text); border-color: var(--current-bar); } }
-/* The book's own, in the reader's top bar: round, as the bookmark beside it (the progress
-   fills it while it runs). */
+.download.compact { min-width: 2.1rem; width: 2.1rem; height: 2rem; padding: 0; border-radius: 50%; }
+/* The book's own, in the reader's top bar: round, as the bookmark beside it. */
 #download-slot { flex: none; display: flex; }
 #download-slot[hidden] { display: none; }
-#download-slot .download {
-  width: 1.85rem;
-  min-width: 0;
-  height: 1.85rem;
-  min-height: 0;
-  padding: 0;
-  font-size: 9.5px;
-  letter-spacing: -0.02em;
-  border-radius: 50%;
-}
-#download-slot .download[data-state="running"] {
-  background: conic-gradient(color-mix(in srgb, var(--current-bar) 28%, transparent) var(--done, 0%), transparent var(--done, 0%));
-}
+#download-slot .download { width: 1.85rem; min-width: 0; height: 1.85rem; min-height: 0; }
 #download-slot .download[data-state="done"] { border-color: var(--rule); }
+
+/* A download button's menu (pause, resume, remove), by the button. */
+.dl-menu {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  min-width: 12rem;
+  max-width: calc(100vw - 16px);
+  padding: 0.3rem;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  font: 14px system-ui, sans-serif;
+}
+.dl-menu-title { padding: 0.35rem 0.6rem 0.25rem; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-menu-item {
+  padding: 0.55rem 0.6rem;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.dl-menu-item.danger { color: #c0392b; }
+@media (hover: hover) { .dl-menu-item:hover { background: var(--current-bg); } }
+.dl-menu-item:focus-visible { outline: 2px solid var(--current-bar); outline-offset: -2px; }
+
+/* What's downloaded, under the library's heading: a button opening the downloads panel. */
 #downloads { text-align: center; color: var(--muted); font: 12px system-ui, sans-serif; margin: -1rem 0 1.5rem; }
 #downloads[hidden] { display: none; }
+#downloads .dl-open {
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+}
+@media (hover: hover) { #downloads .dl-open:hover { border-color: var(--current-bar); } }
+#downloads .dl-note { margin-top: 0.5rem; }
+/* The downloads panel: everything saved or on its way, each with its own control, and all
+   of them removed at once. */
+#dl-panel {
+  width: min(28rem, calc(100vw - 32px));
+  max-height: min(80vh, 40rem);
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  font: 14px system-ui, sans-serif;
+}
+#dl-panel::backdrop { background: rgba(0, 0, 0, 0.35); }
+#dl-panel[open] { display: flex; flex-direction: column; }
+.dl-head { display: flex; align-items: center; gap: 0.5rem; padding: 0.8rem 0.9rem 0.6rem; border-bottom: 1px solid var(--rule); }
+.dl-head h2 { margin: 0; font: 600 15px system-ui, sans-serif; flex: 1; }
+.dl-head .dl-total { color: var(--muted); font-size: 12px; }
+.dl-close { width: 2rem; height: 2rem; padding: 0; font: 20px system-ui, sans-serif; color: var(--muted); background: transparent; border: 0; border-radius: 50%; cursor: pointer; }
+.dl-list { list-style: none; margin: 0; padding: 0.3rem 0; overflow-y: auto; }
+.dl-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.9rem; }
+.dl-row + .dl-row { border-top: 1px solid color-mix(in srgb, var(--rule) 60%, transparent); }
+.dl-name { flex: 1; min-width: 0; font-family: var(--greek); font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-state { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dl-row .icon-btn {
+  flex: none; width: 2rem; height: 2rem; display: grid; place-items: center; padding: 0;
+  color: var(--muted); background: transparent; border: 1px solid var(--rule); border-radius: 50%; cursor: pointer;
+}
+.dl-row .icon-btn.remove { color: #c0392b; }
+@media (hover: hover) { .dl-row .icon-btn:hover { border-color: var(--current-bar); color: var(--text); } }
+.dl-foot { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.7rem 0.9rem; border-top: 1px solid var(--rule); }
+.dl-foot button {
+  font: inherit; padding: 0.45rem 0.9rem; color: var(--text); background: transparent;
+  border: 1px solid var(--rule); border-radius: 999px; cursor: pointer;
+}
+.dl-foot .remove-queued { color: #c0392b; }
+.dl-foot { flex-wrap: wrap; }
+.dl-foot .remove-all { color: #c0392b; border-color: color-mix(in srgb, #c0392b 50%, var(--rule)); }
+.dl-foot .remove-all.armed { color: #fff; background: #c0392b; border-color: #c0392b; }
+.dl-empty { padding: 1.2rem 0.9rem; color: var(--muted); text-align: center; }
 
 /* Bookmarks, at the top of the library. */
 #bookmarks[hidden] { display: none; }

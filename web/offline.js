@@ -22,7 +22,14 @@ const offline = (() => {
   let current = null;  // {key, controller, have, size}: the download running in this page
   let working = false;  // this page is working through the queue
   const listeners = new Set();
-  const tell = (key, status) => listeners.forEach((f) => f(key, status));
+  // Changes are told in batches ({key: status}, "none" for gone): a hundred books paused or
+  // removed is one change for the page to show, not a hundred.
+  const tellAll = (changes) => { if (changes.size) listeners.forEach((f) => f(changes)); };
+  const tell = (key, status) => tellAll(new Map([[key, status]]));
+  async function tellNow(keys) {  // (each key's status as it now stands)
+    const now = await statuses();
+    tellAll(new Map(keys.map((k) => [k, now.get(k) ?? { state: "none" }])));
+  }
   const supported = "caches" in window && "serviceWorker" in navigator;
 
   async function records() {
@@ -123,10 +130,6 @@ const offline = (() => {
     if (now && !now.paused) await saveRecord({ ...info, done: true });
   }
 
-  async function statusOf(key) {
-    return (await statuses()).get(key) ?? { state: "none" };
-  }
-
   // Work through the queue, while this page holds the lock (another page of the reader may
   // be at it: this one waits its turn).
   async function work() {
@@ -149,7 +152,7 @@ const offline = (() => {
           const info = await record(key);
           if (info) await saveRecord({ ...info, paused: true });
         }
-        const status = await statusOf(key);
+        const status = (await statuses()).get(key) ?? { state: "none" };
         tell(key, error ? { ...status, state: "failed", error } : status);
         if (error && navigator.onLine === false) break;  // offline: the rest wait for the next visit
       }
@@ -162,49 +165,59 @@ const offline = (() => {
   }
 
   // Queue downloads (keys "<slug>/<n>"), after those already queued; those done are left.
+  // (Shown queued at once; the records are written together.)
   async function download(keys) {
     const have = new Map((await records()).map((r) => [keyOf(r), r]));
     let at = Date.now();
-    for (const key of keys) {
+    // (Those resumed, in the order they were first asked for.)
+    const todo = keys.filter((key) => !have.get(key)?.done)
+      .sort((a, b) => (have.get(a)?.queued ?? Infinity) - (have.get(b)?.queued ?? Infinity));
+    tellAll(new Map(todo.map((k) => [k, { state: "queued", have: 0, size: have.get(k)?.size ?? 0 }])));
+    await Promise.all(todo.map((key) => {
       const info = have.get(key);
-      if (info?.done) continue;
       const [slug, n] = key.split("/");
-      await saveRecord(info ? { ...info, paused: false, queued: info.paused ? at++ : info.queued }
-                            : { slug, n: +n, pages: [], audio: [], size: 0, done: false, queued: at++ });
-      tell(key, await statusOf(key));
-    }
+      return saveRecord(info ? { ...info, paused: false, queued: info.paused ? at++ : info.queued }
+                             : { slug, n: +n, pages: [], audio: [], size: 0, done: false, queued: at++ });
+    }));
+    await tellNow(todo);
     work();
   }
 
-  // Pause downloads: out of the queue (and stopped, if running in this page).
-  async function pause(keys) {
-    for (const key of keys) {
-      const info = await record(key);
-      if (info && !info.done) await saveRecord({ ...info, paused: true });
-    }
+  // Pause downloads: out of the queue, kept to be resumed (and stopped, if running in this page).
+  async function pause(keys, { quiet = false } = {}) {
+    const have = new Map((await records()).map((r) => [keyOf(r), r]));
+    await Promise.all(keys.map((key) => {
+      const info = have.get(key);
+      return info && !info.done ? saveRecord({ ...info, paused: true }) : null;
+    }));
     if (current && keys.includes(current.key)) current.controller.abort();
-    for (const key of keys) tell(key, await statusOf(key));
+    if (!quiet) await tellNow(keys);
   }
 
-  // Remove downloads: their books and recordings (a recording another download uses is kept).
+  // Remove downloads: their books and recordings (a recording another download uses is
+  // kept). Shown gone at once; the storage is cleared after, all at the same time.
   async function remove(keys) {
-    await pause(keys);
+    tellAll(new Map(keys.map((k) => [k, { state: "none" }])));
+    await pause(keys, { quiet: true });
     while (current && keys.includes(current.key)) await new Promise((r) => setTimeout(r, 50));
     const books = await caches.open(OFFLINE), audio = await caches.open(AUDIO);
     const all = await records();
     const gone = new Set(keys);
     const kept = new Set(all.filter((r) => !gone.has(keyOf(r))).flatMap((r) => r.audio.map((a) => abs(a.url))));
+    const deletions = [];
     for (const info of all.filter((r) => gone.has(keyOf(r)))) {
-      for (const page of info.pages) await books.delete(abs(page));
+      for (const page of info.pages) deletions.push(books.delete(abs(page)));
       for (const a of info.audio) {
         const url = abs(a.url);
         if (kept.has(url)) continue;
-        await audio.delete(`${url}?offline`);
-        for (let k = 0; k < pieces(a.size); k++) await audio.delete(`${url}?piece=${k}`);
+        deletions.push(audio.delete(`${url}?offline`));
+        for (let k = 0; k < pieces(a.size); k++) deletions.push(audio.delete(`${url}?piece=${k}`));
       }
-      await books.delete(recordKey(keyOf(info)));
+      deletions.push(books.delete(recordKey(keyOf(info))));
     }
-    for (const key of keys) tell(key, { state: "none" });
+    await Promise.all(deletions);
+    // (Again: a download stopped part-way meanwhile has told itself paused.)
+    tellAll(new Map(keys.map((k) => [k, { state: "none" }])));
   }
 
   // iPhones and iPads keep a site's data only while it's used, unless it's on the Home Screen.
@@ -228,18 +241,27 @@ function formatSize(bytes) {
 }
 
 // Download buttons, the library's and the reader's: one for some downloads ([key, size]
-// pairs: a book's, or all of a work's or a Testament's, which it queues). It shows the
-// size, then the progress (tap to pause, and again to go on), then a tick (tap to remove).
-// downloadStatuses is what the device has; a "downloadschange" event on document says
-// it has changed. While another page of the reader is downloading, it's looked at again
-// every few seconds.
+// pairs: a book's, or all of a work's or a Testament's). As a music app's: an arrow (not
+// downloaded: a tap downloads it), a ring filling as it downloads, a dashed ring while it
+// waits its turn, a ring with an arrow when paused part-way, a tick when it's done. A tap
+// on any but the arrow opens a small menu by the button: pause, resume, remove (no system
+// dialog). downloadStatuses is what the device has; a "downloadschange" event on document
+// says it has changed. While another page of the reader is downloading, it's looked at
+// again every few seconds.
 const downloadStatuses = new Map();  // "<slug>/<n>" -> {state, have, size}
-const downloadButtons = [];  // {b, items, name, compact, labelled}
+const downloadButtons = [];  // {b, items, name, compact}
 {
-  const ARROW = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" ' +
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg>';
-  const TICK = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" ' +
-    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const svg = (body, size = 18) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${body}</svg>`;
+  const ARROW = svg('<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v11M7 10.5l5 5 5-5M5.5 19.5h13"/>', 16);
+  const TICK = svg('<path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/>', 16);
+  const R = 9, C = 2 * Math.PI * R;
+  const ring = (frac, inner, dashed = false) => svg(
+    `<circle cx="12" cy="12" r="${R}" fill="none" stroke="currentColor" stroke-opacity="0.25" stroke-width="2"${dashed ? ' stroke-dasharray="2.5 3"' : ""}/>` +
+    (frac > 0 ? `<circle cx="12" cy="12" r="${R}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ` +
+      `stroke-dasharray="${(Math.min(frac, 1) * C).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 12 12)"/>` : "") + inner, 20);
+  const STOP = '<rect x="9.2" y="9.2" width="5.6" height="5.6" rx="1" fill="currentColor"/>';
+  const RESUME = '<path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M12 8.2v7M9.2 12.6l2.8 2.8 2.8-2.8"/>';
+  const BANG = '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 7.8v5M12 16.2v.1"/>';
 
   // Some downloads together: running (or queued) if any is, done if all are.
   const together = (items) => {
@@ -257,27 +279,28 @@ const downloadButtons = [];  // {b, items, name, compact, labelled}
     const state = running ? "running" : queued ? "queued" : done ? "done" : failed ? "failed" : started ? "partial" : "none";
     return { state, have, size };
   };
+  window.downloadsTogether = together;
 
   const show = (d) => {
-    const { b, items, name, compact, labelled } = d;
+    const { b, items, name, compact } = d;
     const s = together(items);
-    const pct = s.size ? `${Math.floor((100 * s.have) / s.size)}%` : "";
+    const frac = s.size ? s.have / s.size : 0;
+    const pct = `${Math.floor(100 * frac)}%`;
     const size = formatSize(s.size);
     const many = items.length > 1;
     b.dataset.state = s.state;
     const [icon, label, title] = {
-      none: [ARROW, compact ? "" : size, `Download ${name} to read and hear offline (${size})`],
-      queued: ["", compact ? "…" : "queued", `${name} is waiting to download: tap to cancel`],
-      running: ["", pct, `Downloading ${name} (${pct} of ${size}): tap to pause`],
-      partial: [ARROW, pct, `${name} is ${pct} downloaded: tap to go on`],
-      failed: [ARROW, compact ? "!" : "retry", `The download of ${name} stopped: tap to try again`],
-      done: [TICK, labelled ? "downloaded" : "", `${name} ${many ? "are" : "is"} downloaded (${size}): tap to remove`],
+      none: [ARROW, size, `Download ${name} to read and hear offline (${size})`],
+      queued: [ring(frac, STOP, true), "queued", `${name}: waiting to download`],
+      running: [ring(frac, STOP), pct, `${name}: downloading, ${pct} of ${size}`],
+      partial: [ring(frac, RESUME), s.have ? pct : "paused", s.have ? `${name}: paused at ${pct} of ${size}` : `${name}: paused`],
+      failed: [ring(frac, BANG), "stopped", `${name}: the download stopped`],
+      done: [TICK, "", `${name} ${many ? "are" : "is"} downloaded (${size})`],
     }[s.state];
     b.innerHTML = icon;
-    if (label) b.append(Object.assign(document.createElement("span"), { textContent: label }));
+    if (label && !compact) b.append(Object.assign(document.createElement("span"), { textContent: label }));
     b.title = title;
     b.setAttribute("aria-label", title);
-    b.style.setProperty("--done", s.state === "running" || s.state === "queued" ? pct || "0%" : "0%");
   };
   const showAll = () => {
     downloadButtons.forEach(show);
@@ -296,25 +319,86 @@ const downloadButtons = [];  // {b, items, name, compact, labelled}
     if (ok) try { localStorage.setItem("downloadWarned", "1"); } catch {}
     return ok;
   };
+  window.startDownload = (keys) => { if (homeScreenFirst()) offline.download(keys); };
+
+  // What can be done with some downloads, as the menu offers it: [label, action, danger].
+  window.downloadActions = (items, name) => {
+    const keys = items.map(([key]) => key);
+    const st = (k) => downloadStatuses.get(k)?.state ?? "none";
+    const many = items.length > 1;
+    const waiting = keys.filter((k) => ["running", "queued"].includes(st(k)));
+    const todo = keys.filter((k) => st(k) !== "done" && !waiting.includes(k));
+    const kept = items.filter(([k]) => st(k) !== "none");
+    const keptSize = kept.reduce((n, [k, bytes]) => n + (st(k) === "done" ? bytes : downloadStatuses.get(k)?.have ?? 0), 0);
+    const todoSize = items.filter(([k]) => todo.includes(k)).reduce((n, [, bytes]) => n + bytes, 0);
+    const out = [];
+    if (todo.length) {
+      const resume = todo.every((k) => st(k) !== "none");
+      out.push([many ? (resume ? "Resume all" : `Download all (${formatSize(todoSize)})`)
+                     : resume ? "Resume download" : `Download (${formatSize(todoSize)})`,
+                () => window.startDownload(todo)]);
+    }
+    const paused = todo.filter((k) => st(k) !== "none");
+    if (many && paused.length && paused.length < todo.length) {  // (some paused, some not begun)
+      out.push([`Resume paused (${paused.length})`, () => window.startDownload(paused)]);
+    }
+    if (waiting.length) out.push([many ? "Pause all" : "Pause", () => offline.pause(waiting)]);
+    const unfinished = kept.map(([k]) => k).filter((k) => st(k) !== "done");
+    if (many && unfinished.length && unfinished.length < kept.length) {  // (with some finished)
+      out.push([`Remove queued (${unfinished.length})`, () => offline.remove(unfinished), true]);
+    }
+    if (kept.length) {
+      const all = kept.every(([k]) => st(k) === "done");
+      out.push([many ? `Remove all (${formatSize(keptSize)})` : all ? `Remove download (${formatSize(keptSize)})` : "Cancel and remove",
+                () => offline.remove(kept.map(([k]) => k)), true]);
+    }
+    return out;
+  };
+
+  // The menu by a button: its actions as buttons; it closes on any tap outside, a scroll or
+  // Escape.
+  let menu = null;
+  const closeMenu = () => { menu?.remove(); menu = null; };
+  window.openDownloadMenu = (anchor, actions, title) => {
+    closeMenu();
+    if (!actions.length) return;
+    menu = document.createElement("div");
+    menu.className = "dl-menu";
+    menu.setAttribute("role", "menu");
+    if (title) menu.append(Object.assign(document.createElement("div"), { className: "dl-menu-title", textContent: title }));
+    for (const [label, run, danger] of actions) {
+      const item = document.createElement("button");
+      item.className = "dl-menu-item" + (danger ? " danger" : "");
+      item.setAttribute("role", "menuitem");
+      item.textContent = label;
+      item.addEventListener("click", (e) => { e.stopPropagation(); closeMenu(); run(); });
+      menu.append(item);
+    }
+    document.body.append(menu);
+    const r = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect();
+    const below = r.bottom + 6 + m.height < innerHeight - 8;
+    menu.style.top = `${below ? r.bottom + 6 : Math.max(8, r.top - 6 - m.height)}px`;
+    menu.style.left = `${Math.min(Math.max(8, r.right - m.width), innerWidth - 8 - m.width)}px`;
+    menu.querySelector("button")?.focus({ preventScroll: true });
+  };
+  document.addEventListener("pointerdown", (e) => { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
+  addEventListener("scroll", closeMenu, { passive: true });
+  addEventListener("resize", closeMenu);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
 
   // A button for some downloads (null where there are none, or downloads can't be kept):
-  // compact, just the icon or progress (a book in the library's grid); labelled, "downloaded"
-  // by the tick (the reader's, on its own).
-  window.downloadButton = (items, name, { compact = false, labelled = false } = {}) => {
+  // compact, just the icon (a book in the library's grid, the reader's top bar).
+  window.downloadButton = (items, name, { compact = false } = {}) => {
     if (!items.length || !offline.supported) return null;
     const b = document.createElement("button");
     b.className = compact ? "download compact" : "download";
-    const d = { b, items, name, compact, labelled };
+    const d = { b, items, name, compact };
     b.addEventListener("click", (e) => {
       e.stopPropagation();
+      const { state } = together(items);
       const keys = items.map(([key]) => key);
-      const { state, size } = together(items);
-      if (state === "running" || state === "queued") offline.pause(keys);
-      else if (state === "done") {
-        if (confirm(`Remove ${name} (${formatSize(size)}) from this device?`)) offline.remove(keys);
-      } else if (homeScreenFirst()) {
-        offline.download(keys.filter((k) => downloadStatuses.get(k)?.state !== "done"));
-      }
+      if (state === "none") window.startDownload(keys);  // (the one thing to do: done at once)
+      else window.openDownloadMenu(b, window.downloadActions(items, name), name);
     });
     downloadButtons.push(d);
     show(d);
@@ -332,9 +416,11 @@ const downloadButtons = [];  // {b, items, name, compact, labelled}
   };
 
   if (offline.supported) {
-    offline.onChange((key, status) => {
-      if (status.state === "none") downloadStatuses.delete(key);
-      else downloadStatuses.set(key, status);
+    offline.onChange((changes) => {
+      for (const [key, status] of changes) {
+        if (status.state === "none") downloadStatuses.delete(key);
+        else downloadStatuses.set(key, status);
+      }
       showAll();
     });
     // Downloads running in another page (another tab): their progress, every few seconds.

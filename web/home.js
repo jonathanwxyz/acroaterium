@@ -106,13 +106,113 @@ function showDownloads() {
   const all = [...downloadStatuses.values()];
   box.hidden = !all.length;
   box.replaceChildren();
-  if (!all.length) return;
-  const waiting = all.filter((s) => s.state === "running" || s.state === "queued").length;
-  box.append(`Downloaded: ${formatSize(all.reduce((n, s) => n + (s.have ?? 0), 0))}`
-             + (waiting ? ` · ${waiting} to go` : ""));
-  if (offline.needsHomeScreen) {
-    box.append(el("br"), "To keep downloads, add the reader to your Home Screen (Share → Add to Home Screen) and open it from there.");
+  if (all.length) {
+    const waiting = all.filter((s) => s.state === "running" || s.state === "queued").length;
+    const open = el("button", "dl-open", `Downloaded: ${formatSize(all.reduce((n, s) => n + (s.have ?? 0), 0))}`
+                    + (waiting ? ` · ${waiting} to go` : "") + " ›");
+    open.title = "Your downloads: see, pause or remove them";
+    open.addEventListener("click", openPanel);
+    box.append(open);
+    if (offline.needsHomeScreen) {
+      box.append(el("div", "dl-note", "To keep downloads, add the reader to your Home Screen (Share → Add to Home Screen) and open it from there."));
+    }
   }
+  if (panel?.open) fillPanel();
+}
+
+// The downloads panel: every download saved or on its way, by name (the library's books),
+// each with its state, a pause or resume button and a remove button; "Resume all", "Pause all",
+// "Remove queued" (every download not finished) and "Remove all" at the foot (a second tap to confirm removing all, no
+// system dialog).
+const downloadNames = new Map();  // "<slug>/<n>" -> [name, size]
+let panel = null;
+const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
+const RESUME_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v11M7 10.5l5 5 5-5M5.5 19.5h13"/></svg>';
+const BIN_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13h9l1-13M10 10v6M14 10v6"/></svg>';
+function openPanel() {
+  if (!panel) {
+    panel = el("dialog");
+    panel.id = "dl-panel";
+    panel.addEventListener("click", (e) => { if (e.target === panel) panel.close(); });  // (the backdrop)
+    document.body.append(panel);
+  }
+  fillPanel();
+  panel.showModal();
+}
+function fillPanel() {
+  const ORDER = { running: 0, queued: 1, failed: 2, partial: 3, done: 4 };
+  const keys = [...downloadStatuses.keys()].sort((a, b) =>
+    (ORDER[downloadStatuses.get(a).state] ?? 5) - (ORDER[downloadStatuses.get(b).state] ?? 5)
+    || (downloadNames.get(a)?.[0] ?? a).localeCompare(downloadNames.get(b)?.[0] ?? b));
+  const total = [...downloadStatuses.values()].reduce((n, s) => n + (s.have ?? 0), 0);
+  const head = el("div", "dl-head");
+  const close = el("button", "dl-close", "×");
+  close.setAttribute("aria-label", "Close");
+  close.addEventListener("click", () => panel.close());
+  head.append(el("h2", null, "Downloads"), el("span", "dl-total", keys.length ? formatSize(total) : ""), close);
+  const list = el("ul", "dl-list");
+  for (const key of keys) {
+    const s = downloadStatuses.get(key);
+    const [name, size] = downloadNames.get(key) ?? [key, s.size];
+    const pct = size ? `${Math.floor((100 * (s.state === "done" ? size : s.have)) / size)}%` : "";
+    const text = { running: `${pct} of ${formatSize(size)}`, queued: "queued", failed: "stopped",
+                   partial: s.have ? `paused at ${pct}` : "paused", done: formatSize(size) }[s.state] ?? "";
+    const row = el("li", "dl-row");
+    row.append(el("span", "dl-name", name), el("span", "dl-state", text));
+    if (s.state !== "done") {
+      const go = el("button", "icon-btn");
+      const waiting = s.state === "running" || s.state === "queued";
+      go.innerHTML = waiting ? PAUSE_ICON : RESUME_ICON;
+      go.title = waiting ? `Pause ${name}` : `Resume ${name}`;
+      go.setAttribute("aria-label", go.title);
+      go.addEventListener("click", () => (waiting ? offline.pause([key]) : startDownload([key])));
+      row.append(go);
+    }
+    const bin = el("button", "icon-btn remove");
+    bin.innerHTML = BIN_ICON;
+    bin.title = `Remove ${name}`;
+    bin.setAttribute("aria-label", bin.title);
+    bin.addEventListener("click", () => offline.remove([key]));
+    row.append(bin);
+    list.append(row);
+  }
+  if (!keys.length) list.append(el("li", "dl-empty", "Nothing downloaded."));
+  const foot = el("div", "dl-foot");
+  const waiting = keys.filter((k) => ["running", "queued"].includes(downloadStatuses.get(k).state));
+  const paused = keys.filter((k) => ["partial", "failed"].includes(downloadStatuses.get(k).state));
+  if (paused.length) {
+    const resume = el("button", null, "Resume all");
+    resume.addEventListener("click", () => startDownload(paused));
+    foot.append(resume);
+  }
+  if (waiting.length) {
+    const pause = el("button", null, "Pause all");
+    pause.addEventListener("click", () => offline.pause(waiting));
+    foot.append(pause);
+  }
+  const unfinished = keys.filter((k) => downloadStatuses.get(k).state !== "done");
+  if (unfinished.length && unfinished.length < keys.length) {  // (with some finished: else it's "Remove all")
+    const clear = el("button", "remove-queued", "Remove queued");
+    clear.title = "Cancel every download not finished (running, waiting or paused), and what it had saved";
+    clear.addEventListener("click", () => offline.remove(unfinished));
+    foot.append(clear);
+  }
+  if (keys.length) {
+    const all = el("button", "remove-all", "Remove all");
+    let armed = null;
+    all.addEventListener("click", () => {
+      if (!armed) {  // (a second tap, within a few seconds, to be sure)
+        all.classList.add("armed");
+        all.textContent = `Tap again to remove ${formatSize(total)}`;
+        armed = setTimeout(() => { armed = null; all.classList.remove("armed"); all.textContent = "Remove all"; }, 4000);
+        return;
+      }
+      clearTimeout(armed);
+      offline.remove(keys);
+    });
+    foot.append(all);
+  }
+  panel.replaceChildren(head, list, foot);
 }
 
 document.addEventListener("downloadschange", showDownloads);
@@ -200,6 +300,13 @@ function capitals(text) {
 }
 
 function render(data) {
+  downloadNames.clear();
+  for (const t of data.categories.flatMap((c) => c.texts.flatMap((x) => (x.texts ? x.texts : [x])))) {
+    for (const d of t.downloads ?? []) {
+      const label = t.downloads.length > 1 ? t.books.find((b) => b.n === d.n)?.label : null;
+      downloadNames.set(`${slugOf(t)}/${d.n}`, [label ? `${t.title} ${longLabel(label, d.n)}` : t.title, d.size]);
+    }
+  }
   root.replaceChildren();
   downloadButtons.length = 0;
   if (data.missing) {
