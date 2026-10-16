@@ -664,10 +664,16 @@ function renderMarks(marks) {
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
-// The bookmarks and the library are shown together, so the bookmarks don't push the
-// list down when they arrive after it.
+// The bookmarks, the plans and the library are shown together, so none pushes the others
+// about when it arrives after them. What was shown last is kept on the device and shown at
+// once next time (no blank page while the server is asked, coming back from a text), then
+// shown again only if the server's has changed.
+const SHOWN = "libraryShown";
 const marksReady = bookmarksApi.list().catch(() => []);
 const plansReady = plansApi.list().catch(() => null);
+// What's downloaded, asked for now: the buttons are drawn as they are, not changed after
+// (but for those drawn at once from what was shown last).
+const downloadsKnown = Promise.race([refreshDownloads(), new Promise((r) => setTimeout(r, 250))]);
 // Grey rows until the list comes (they fade in only if it takes a moment).
 const dropSkeleton = () => document.querySelector(".lib-skel")?.remove();
 {
@@ -680,17 +686,46 @@ const dropSkeleton = () => document.querySelector(".lib-skel")?.remove();
   }
   plansBox.before(skel);  // above the plans, the bookmarks and the list; removed when they come
 }
-(window.libraryRequest ?? fetch("/api/library"))
-  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-  .then(async (data) => {
-    const [marks, planList] = await Promise.all([marksReady, plansReady]);
-    dropSkeleton();
-    renderMarks(marks);
-    if (planList) renderPlans(planList);
-    render(data);
-    refreshDownloads();  // what's downloaded, once the device says (the list doesn't wait for it)
-  })
+
+let shownNow = {};  // {data, marks, plans}: as JSON, what's on the page
+function show(next) {
+  const json = { data: JSON.stringify(next.data), marks: JSON.stringify(next.marks), plans: JSON.stringify(next.plans) };
+  dropSkeleton();
+  // (Plans before bookmarks: a bookmark made in a plan is shown with it.)
+  if (next.plans && json.plans !== shownNow.plans) renderPlans(next.plans);
+  if (json.marks !== shownNow.marks || json.plans !== shownNow.plans) renderMarks(next.marks);
+  if (json.data !== shownNow.data) render(next.data);
+  shownNow = json;
+}
+// (Kept as the page is left: with a bookmark deleted or a day ticked off here since.)
+addEventListener("pagehide", () => {
+  if (!library?.categories) return;  // (before the list: the #library element)
+  try {
+    localStorage.setItem(SHOWN, JSON.stringify({ data: library, marks: shownMarks ?? [], plans,
+                                                 downloads: [...downloadStatuses] }));
+  } catch {}
+});
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(SHOWN)); } catch {}
+if (saved?.data?.categories) {
+  // (With what was downloaded then, for the buttons: what the device says now follows.)
+  for (const [key, status] of saved.downloads ?? []) if (!downloadStatuses.has(key)) downloadStatuses.set(key, status);
+  show(saved);
+  showDownloads();  // (the line under the heading, likewise: so it doesn't push the list down after)
+}
+
+function fetchAll(request = fetch("/api/library")) {
+  return request
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    .then(async (data) => {
+      const [marks, plans] = await Promise.all([marksReady, plansReady, downloadsKnown]);
+      return { data, marks, plans };
+    });
+}
+fetchAll(window.libraryRequest ?? undefined)
+  .then(show)
   .catch(async (err) => {
+    if (shownNow.data) return;  // (what was shown last stands)
     const [marks, planList] = await Promise.all([marksReady, plansReady]);
     dropSkeleton();
     renderMarks(marks);
@@ -700,11 +735,12 @@ const dropSkeleton = () => document.querySelector(".lib-skel")?.remove();
       : tr("Could not load the library: {error}", { error: err.message })));
   });
 
-// Coming back with the back button (a page kept in memory): the places last opened, and
-// the bookmarks, may have changed.
+// Coming back with the back button (a page kept in memory): the places last opened, the
+// bookmarks and the plans may have changed. Asked again, and shown where they have.
 window.addEventListener("pageshow", (e) => {
   if (!e.persisted) return;
-  bookmarksApi.list().then(renderMarks).catch(() => {});
-  plansApi.list().then(renderPlans).catch(() => {});
-  fetch("/api/library").then((r) => r.json()).then(render).catch(() => {});
+  Promise.all([fetch("/api/library").then((r) => r.json()), bookmarksApi.list(), plansApi.list().catch(() => null)])
+    .then(([data, marks, plans]) => show({ data, marks, plans: plans ?? undefined }))
+    .catch(() => {});
+  refreshDownloads();
 });
