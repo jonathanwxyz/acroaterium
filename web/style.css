@@ -634,7 +634,7 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
 
 #card {
   position: fixed;
-  z-index: 5;
+  z-index: 3;  /* (under the bars, 4: scrolled with its word, it goes behind them) */
   background: var(--bg);
   border: 1px solid var(--rule);
   border-radius: 10px;
