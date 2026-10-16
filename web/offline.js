@@ -290,12 +290,13 @@ const downloadButtons = [];  // {b, items, name, compact}
     const many = items.length > 1;
     b.dataset.state = s.state;
     const [icon, label, title] = {
-      none: [ARROW, size, `Download ${name} to read and hear offline (${size})`],
-      queued: [ring(frac, STOP, true), "queued", `${name}: waiting to download`],
-      running: [ring(frac, STOP), pct, `${name}: downloading, ${pct} of ${size}`],
-      partial: [ring(frac, RESUME), s.have ? pct : "paused", s.have ? `${name}: paused at ${pct} of ${size}` : `${name}: paused`],
-      failed: [ring(frac, BANG), "stopped", `${name}: the download stopped`],
-      done: [TICK, "", `${name} ${many ? "are" : "is"} downloaded (${size})`],
+      none: [ARROW, size, tr("Download {name} to read and hear offline ({size})", { name, size })],
+      queued: [ring(frac, STOP, true), tr("queued"), tr("{name}: waiting to download", { name })],
+      running: [ring(frac, STOP), pct, tr("{name}: downloading, {pct} of {size}", { name, pct, size })],
+      partial: [ring(frac, RESUME), s.have ? pct : tr("paused"),
+                s.have ? tr("{name}: paused at {pct} of {size}", { name, pct, size }) : tr("{name}: paused", { name })],
+      failed: [ring(frac, BANG), tr("stopped"), tr("{name}: the download stopped", { name })],
+      done: [TICK, "", tr(many ? "{name} are downloaded ({size})" : "{name} is downloaded ({size})", { name, size })],
     }[s.state];
     b.innerHTML = icon;
     if (label && !compact) b.append(Object.assign(document.createElement("span"), { textContent: label }));
@@ -313,9 +314,9 @@ const downloadButtons = [];  // {b, items, name, compact}
   const homeScreenFirst = () => {
     if (!offline.needsHomeScreen) return true;
     try { if (localStorage.getItem("downloadWarned")) return true; } catch {}
-    const ok = confirm("Downloads made in Safari are deleted after a week without a visit, and the Home Screen " +
-                       "app keeps its own separate copy. To keep them, tap Share → Add to Home Screen, open the " +
-                       "reader from there, and download in it.\n\nDownload here anyway?");
+    const ok = confirm(tr("Downloads made in Safari are deleted after a week without a visit, and the Home Screen " +
+                         "app keeps its own separate copy. To keep them, tap Share → Add to Home Screen, open the " +
+                         "reader from there, and download in it.") + "\n\n" + tr("Download here anyway?"));
     if (ok) try { localStorage.setItem("downloadWarned", "1"); } catch {}
     return ok;
   };
@@ -334,22 +335,24 @@ const downloadButtons = [];  // {b, items, name, compact}
     const out = [];
     if (todo.length) {
       const resume = todo.every((k) => st(k) !== "none");
-      out.push([many ? (resume ? "Resume all" : `Download all (${formatSize(todoSize)})`)
-                     : resume ? "Resume download" : `Download (${formatSize(todoSize)})`,
+      const size = formatSize(todoSize);
+      out.push([many ? (resume ? tr("Resume all") : tr("Download all ({size})", { size }))
+                     : resume ? tr("Resume download") : tr("Download ({size})", { size }),
                 () => window.startDownload(todo)]);
     }
     const paused = todo.filter((k) => st(k) !== "none");
     if (many && paused.length && paused.length < todo.length) {  // (some paused, some not begun)
-      out.push([`Resume paused (${paused.length})`, () => window.startDownload(paused)]);
+      out.push([tr("Resume paused ({n})", { n: paused.length }), () => window.startDownload(paused)]);
     }
-    if (waiting.length) out.push([many ? "Pause all" : "Pause", () => offline.pause(waiting)]);
+    if (waiting.length) out.push([many ? tr("Pause all") : tr("Pause"), () => offline.pause(waiting)]);
     const unfinished = kept.map(([k]) => k).filter((k) => st(k) !== "done");
     if (many && unfinished.length && unfinished.length < kept.length) {  // (with some finished)
-      out.push([`Remove queued (${unfinished.length})`, () => offline.remove(unfinished), true]);
+      out.push([tr("Remove queued ({n})", { n: unfinished.length }), () => offline.remove(unfinished), true]);
     }
     if (kept.length) {
       const all = kept.every(([k]) => st(k) === "done");
-      out.push([many ? `Remove all (${formatSize(keptSize)})` : all ? `Remove download (${formatSize(keptSize)})` : "Cancel and remove",
+      const size = formatSize(keptSize);
+      out.push([many ? tr("Remove all ({size})", { size }) : all ? tr("Remove download ({size})", { size }) : tr("Cancel and remove"),
                 () => offline.remove(kept.map(([k]) => k)), true]);
     }
     return out;

@@ -118,7 +118,7 @@ function render(data) {
   showTitle(data.eyebrow ?? data.title, data.short ?? data.title);
   fillTitles(data.collectionTexts);
   const bookLabel = data.books.find((b) => b.n === data.book)?.label;
-  document.title = `${data.title}${bookLabel ? ` · ${bookLabel}` : ""} — Reader`;
+  document.title = `${data.title}${bookLabel ? ` · ${bookLabel}` : ""} — ${tr("Reader")}`;
   fillBooks(data.books);
   document.getElementById("credits").replaceChildren(...(data.credits ?? []).map((c) => {
     const p = el("p", "credit", c.text);
@@ -134,8 +134,8 @@ function render(data) {
   else renderVerse(data, has);
   applyScholia();
   const first = refs.find((r) => r.ref && r.ref !== "0")?.ref;
-  if (!data.audio) position.placeholder = data.cite === "section" ? `go to ${first}` : "go to line";
-  if (data.cite === "section") position.title = `Type a section (e.g. ${first}) and press Enter`;
+  if (!data.audio) position.placeholder = data.cite === "section" ? tr("go to {ref}", { ref: first }) : tr("go to line");
+  if (data.cite === "section") position.title = tr("Type a section (e.g. {ref}) and press Enter", { ref: first });
   showEndMode();  // (continue, only where there's a next)
   showChapterNav();
 }
@@ -165,7 +165,7 @@ function showChapterNav() {
   const prev = prevPlace(), next = nextPlace();
   if (!prev && !next) return;
   const nav = el("nav", "chapter-nav");
-  nav.setAttribute("aria-label", "Chapters");
+  nav.setAttribute("aria-label", tr("Chapters"));
   for (const [p, cls, text] of [[prev, "prev", (n) => `‹ ${n}`], [next, "next", (n) => `${n} ›`]]) {
     if (!p) { nav.append(el("span", cls)); continue; }
     const a = el("a", cls, text(placeName(p)));
@@ -182,7 +182,7 @@ function showDownloadButton(data, bookLabel) {
   const slot = document.getElementById("download-slot");
   if (!slot || typeof downloadButton !== "function") return;
   const d = data.download;
-  const name = !d ? "" : d.books > 1 ? `${data.title} (all ${d.books} chapters)`
+  const name = !d ? "" : d.books > 1 ? tr("{title} (all {n} chapters)", { title: data.title, n: d.books })
     : bookLabel ? `${data.title} ${longLabel(bookLabel, data.book)}` : data.title;
   const b = d && downloadButton([[`${data.text}/${d.n}`, d.size]], name, { compact: true });
   slot.replaceChildren(...(b ? [b] : []));
@@ -226,7 +226,7 @@ function applyRange(data) {
   const where = fromStart && toEnd ? book : verse ? `${BOOK}:${span}` : `${book} ${span}`.trim();
   const note = el("p", "range-note");
   note.append(greekName(`${data.title} ${where}`.trim()), " · ");
-  const whole = el("a", null, verse ? "whole chapter" : "whole book");
+  const whole = el("a", null, verse ? tr("whole chapter") : tr("whole book"));
   whole.href = readerHref(TEXT, BOOK);
   note.append(whole);
   document.getElementById("verses").before(note);
@@ -296,7 +296,7 @@ async function select(data) {
   }).join(", ");
   const note = el("p", "range-note");
   note.append(greekName(`${data.title} ${shown}`), " · ");
-  const whole = el("a", null, "whole chapter");
+  const whole = el("a", null, tr("whole chapter"));
   whole.href = readerHref(TEXT, BOOK);
   note.append(whole);
   document.getElementById("verses").before(note);
@@ -343,7 +343,7 @@ function renderVerse(data, has) {
     if (v.line > 0) li.dataset.ref = ref;
     if (v.div) li.dataset.div = v.div;  // a selection's verse from another chapter
     setNoteKey(li, v.line, v.line, v.line <= 0 ? "" : data.books.length > 1 ? `${v.div ?? BOOK}.${ref}` : ref);
-    if (v.scholia) li.append(scholiaButton(li, `line ${ref}`, v.scholia));
+    if (v.scholia) li.append(scholiaButton(li, tr("line {ref}", { ref }), v.scholia));
     if (v.paraphrase) {
       const para = document.createElement("span");
       para.className = "para";
@@ -485,7 +485,7 @@ function noteKey(li) {
 function scholiaButton(li, what, count) {
   const b = el("button", "sch-btn");
   b.innerHTML = SCHOLIA_ICON;
-  b.title = `Notes on ${what} (${count})`;
+  b.title = tr("Notes on {what} ({n})", { what, n: count });
   b.setAttribute("aria-label", b.title);
   b.addEventListener("click", (e) => { e.stopPropagation(); openScholiaPopup(noteKey(li)); });
   // Start fetching as the finger or button goes down: often there by the click.
@@ -639,7 +639,7 @@ function update() {
     const v = verses[i];
     v.el.classList.toggle("pausing", t >= v.speechEnd);
     const r = v.ref ?? v.line;
-    showPosition((v.line <= 0 ? "title" : DATA.books.length > 1 ? `${v.div ?? BOOK}${DATA.cite === "verse" ? ":" : "."}${r}` : r) + (heldBy === v ? " · held" : ""));
+    showPosition((v.line <= 0 ? tr("title") : DATA.books.length > 1 ? `${v.div ?? BOOK}${DATA.cite === "verse" ? ":" : "."}${r}` : r) + (heldBy === v ? ` · ${tr("held")}` : ""));
   } else {
     showPosition(verses.length ? "—" : "");  // no recording: the box is just for jumping
   }
@@ -846,7 +846,7 @@ function fetchScholia(key) {
 function renderScholia(data) {
   scholiaBody.replaceChildren();
   scholiaBody.scrollTop = 0;
-  if (!data.sources.length) scholiaBody.append(el("p", "note", TEXT === "iliad" ? "No scholia on this line." : "No notes here."));
+  if (!data.sources.length) scholiaBody.append(el("p", "note", TEXT === "iliad" ? tr("No scholia on this line.") : tr("No notes here.")));
   for (const src of data.sources) {
     const box = el("details", "sch-src");
     box.open = !scholiaFolded.has(src.id);
@@ -890,7 +890,7 @@ function loadScholia(key) {
   notedRow?.classList.add("noted");
   scholiaLine.textContent = key.label;
   if (TEXT === "iliad" && !key.from) {  // the spoken title
-    scholiaBody.replaceChildren(el("p", "note", "The scholia begin at line 1."));
+    scholiaBody.replaceChildren(el("p", "note", tr("The scholia begin at line 1.")));
     return;
   }
   // Already here: shown at once. Otherwise grey lines until it comes, never the notes of
@@ -903,7 +903,7 @@ function loadScholia(key) {
   fetchScholia(key)
     .then((data) => { if (scholiaShown === id) renderScholia(data); })
     .catch((err) => {
-      if (scholiaShown === id) scholiaBody.replaceChildren(el("p", "note", `Could not load: ${err.message}`));
+      if (scholiaShown === id) scholiaBody.replaceChildren(el("p", "note", tr("Could not load: {error}", { error: err.message })));
     });
 }
 
@@ -1047,21 +1047,34 @@ const MATCH_NOTES = {
   variant: "Perseus has a different reading here",
 };
 
+// The parsing's grammar terms (as the server spells them out, in English: "aorist", "3rd
+// person", "predicate, coordinated", "second aorist"), and its notes, translated.
+function trTerm(s) {
+  if (!s || I18N[UI_LANG]?.[s]) return tr(s);
+  if (s.includes(", ")) return s.split(", ").map(trTerm).join(", ");
+  const m = s.match(/^second (.+)$/);
+  return m ? tr("second {tense}", { tense: trTerm(m[1]) }) : tr(s);
+}
+function trNote(s) {
+  const m = s?.match(/^Automatic parsing, uncertain: perhaps (.+)\.$/);
+  return m ? tr("Automatic parsing, uncertain: perhaps {other}.", { other: m[1] }) : tr(s);
+}
+
 function renderCard(data) {
   cardBody.replaceChildren();
   cardBody.append(el("h2", null, data.word.replace(/^[^\p{L}]+|[^\p{L}’'᾽]+$/gu, "")));
   if (data.gloss) {
     const g = el("p", "gloss-line");
-    g.append(el("span", "label", "Gaza"), data.gloss);
+    g.append(el("span", "label", capitals(tr("Gaza"))), data.gloss);
     cardBody.append(g);
   }
   if (!data.tokens.length) {
-    cardBody.append(el("p", "note", data.note ?? "Not in the Perseus treebank (its text leaves this line out)."));
+    cardBody.append(el("p", "note", trNote(data.note ?? "Not in the Perseus treebank (its text leaves this line out).")));
   }
   for (const t of data.tokens) {
     const box = el("div", "token");
     if (data.tokens.length > 1 || t.match === "variant") box.append(el("div", "form", TEXT === "iliad" ? `Perseus: ${t.form}` : t.form));
-    const lemma = el("div", "lemma", t.lemma ?? "(no lemma)");
+    const lemma = el("div", "lemma", t.lemma ?? tr("(no lemma)"));
     if (t.lemma) {
       const a = el("a", null, "Logeion ↗");
       a.href = `https://logeion.uchicago.edu/${encodeURIComponent(t.lemma)}`;
@@ -1075,19 +1088,19 @@ function renderCard(data) {
     if (t.definition) box.append(el("div", "definition", t.definition));
     if (t.morph.length) {
       const m = el("div", "morph");
-      for (const f of t.morph) m.append(el("span", null, f));
+      for (const f of t.morph) m.append(el("span", null, trTerm(f)));
       if (t.code) m.append(el("code", null, t.code));
       box.append(m);
     }
     if (t.role) {
       const r = el("div", "role");
-      r.append(el("span", "label", "role"),
-               t.root ? `${t.role} (main clause)` : t.head ? `${t.role} → ${t.head}` : t.role,
+      r.append(el("span", "label", capitals(tr("role"))),
+               t.root ? tr("{role} (main clause)", { role: trTerm(t.role) }) : t.head ? `${trTerm(t.role)} → ${t.head}` : trTerm(t.role),
                el("code", null, t.relation));
       box.append(r);
     }
-    if (MATCH_NOTES[t.match]) box.append(el("div", "note", MATCH_NOTES[t.match]));
-    if (t.note) box.append(el("div", "note", t.note));  // (automatic parsing: says so)
+    if (MATCH_NOTES[t.match]) box.append(el("div", "note", tr(MATCH_NOTES[t.match])));
+    if (t.note) box.append(el("div", "note", trNote(t.note)));  // (automatic parsing: says so)
     cardBody.append(box);
   }
 }
@@ -1152,7 +1165,7 @@ async function openCard(w) {
   } catch (err) {
     if (selected === w) {
       cardBody.replaceChildren(el("p", "note", navigator.onLine === false
-        ? "This word isn't available offline yet." : `Could not load: ${err.message}`));
+        ? tr("This word isn't available offline yet.") : tr("Could not load: {error}", { error: err.message })));
     }
   }
 }
@@ -1624,6 +1637,7 @@ const END_MODES = {
   continue: "At the end: go on to the next chapter or book",
   repeat: "At the end: play this chapter again",
 };
+const END_NEXT = { stop: "stop", continue: "go on to the next chapter or book", repeat: "play this chapter again" };
 let endChoice = "stop";
 try { const m = localStorage.getItem("endMode"); if (m in END_MODES) endChoice = m; } catch {}
 const endModes = () => Object.keys(END_MODES).filter((m) => m !== "continue" || nextPlace());
@@ -1632,8 +1646,8 @@ function showEndMode() {
   const mode = modes.includes(endChoice) ? endChoice : "stop";
   const then = modes[(modes.indexOf(mode) + 1) % modes.length];
   endMode.dataset.mode = mode;
-  endMode.title = `${END_MODES[mode]} (click for: ${END_MODES[then].replace("At the end: ", "")})`;
-  endMode.setAttribute("aria-label", END_MODES[mode]);
+  endMode.title = tr("{mode} (click for: {then})", { mode: tr(END_MODES[mode]), then: tr(END_NEXT[then]) });
+  endMode.setAttribute("aria-label", tr(END_MODES[mode]));
 }
 showEndMode();
 endMode.addEventListener("click", () => {
@@ -1900,7 +1914,7 @@ function showMarkButton() {
   const t = DATA && markTarget();
   const on = !!(t && marks.has(t.ref));
   bookmarkButton.setAttribute("aria-pressed", String(on));
-  bookmarkButton.title = on ? "Remove the bookmark on this verse" : "Bookmark this verse";
+  bookmarkButton.title = on ? tr("Remove the bookmark on this verse") : tr("Bookmark this verse");
 }
 
 let toastTimer = 0;
@@ -1918,15 +1932,15 @@ function toast(text) {
 async function toggleBookmark() {
   if (!DATA) return;
   const t = markTarget();
-  if (!t) return toast("Scroll to a verse to bookmark it");
-  if (t.li.dataset.div) return toast("Open its chapter to bookmark this verse");
+  if (!t) return toast(tr("Scroll to a verse to bookmark it"));
+  if (t.li.dataset.div) return toast(tr("Open its chapter to bookmark this verse"));
   const label = `${DATA.title} ${placeLabel(t.ref)}`;
   const have = marks.get(t.ref);
   try {
     if (have) {
       await bookmarksApi.remove(have.id);
       marks.delete(t.ref);
-      toast(`Bookmark removed · ${label}`);
+      toast(`${tr("Bookmark removed")} · ${label}`);
     } else {
       const copy = (t.seg ?? t.li.querySelector(".text")).cloneNode(true);
       for (const m of copy.querySelectorAll(".ref-mark")) m.remove();  // the section numbers
@@ -1937,10 +1951,10 @@ async function toggleBookmark() {
         ...(PLAN && RANGE ? { plan: { id: PLAN.id, day: PLAN.day, part: PLAN.part } } : {}),
       });
       marks.set(t.ref, mark);
-      toast(`Bookmarked · ${label}`);
+      toast(`${tr("Bookmarked")} · ${label}`);
     }
   } catch {
-    return toast(navigator.onLine === false ? "Bookmarks need the connection" : "Couldn't save the bookmark");
+    return toast(navigator.onLine === false ? tr("Bookmarks need the connection") : tr("Couldn't save the bookmark"));
   }
   showMarks();
   t.li.classList.remove("located");
@@ -2007,17 +2021,17 @@ function planNotes() {
   if (!parts) return;
   const top = el("p", "plan-note-top");
   const home = el("a", null);
-  home.append(el("span", "plan-readings", plan.title), ` in ${plan.days} days`);
+  home.append(el("span", "plan-readings", plan.title), ` ${tr("in {n} days", { n: plan.days })}`);
   home.href = "./";
   // (the day's readings, then which of them this is)
   // (the Greek in its own font, a little apart: a breathing at its start crowds the colon)
-  top.append("Reading plan: ", home, ` · day ${PLAN.day}:`, el("span", "plan-readings", plan.portions[PLAN.day - 1].label));
+  top.append(`${tr("Reading plan")}: `, home, ` · ${tr("day {n}", { n: PLAN.day })}:`, el("span", "plan-readings", plan.portions[PLAN.day - 1].label));
   (document.querySelector(".range-note") ?? list).before(top);
   // (its link, to the whole chapter or book, leaves the plan: a part may be the whole chapter)
   const leave = document.querySelector(".range-note a");
-  if (leave) leave.textContent = "exit reading plan";
+  if (leave) leave.textContent = tr("exit reading plan");
   // (and which of the day's readings this page is, after its name)
-  if (parts.length > 1) document.querySelector(".range-note .greek-name")?.after(` (part ${PLAN.part + 1} of ${parts.length})`);
+  if (parts.length > 1) document.querySelector(".range-note .greek-name")?.after(` (${tr("part {n} of {total}", { n: PLAN.part + 1, total: parts.length })})`);
   showPlanEnd();
 }
 function showPlanEnd() {
@@ -2033,19 +2047,19 @@ function showPlanEnd() {
   const back = PLAN.part > 0 ? [PLAN.day, PLAN.part - 1] : PLAN.day > 1 ? [PLAN.day - 1, plan.portions[PLAN.day - 2].parts.length - 1] : null;
   if (back) {
     const p = plan.portions[back[0] - 1].parts[back[1]];
-    box.append(link(`‹ Back to: ${back[0] !== PLAN.day ? `Day ${back[0]}, ` : ""}${p.label}`, planHref(plan, ...back)));
+    box.append(link(`‹ ${tr("Back to")}: ${back[0] !== PLAN.day ? `${tr("Day {n}", { n: back[0] })}, ` : ""}${p.label}`, planHref(plan, ...back)));
   }
   if (PLAN.part + 1 < parts.length) {
-    box.append(link(`Continue reading plan: ${parts[PLAN.part + 1].label} ›`, planHref(plan, PLAN.day, PLAN.part + 1), "primary"));
+    box.append(link(`${tr("Continue reading plan")}: ${parts[PLAN.part + 1].label} ›`, planHref(plan, PLAN.day, PLAN.part + 1), "primary"));
   } else if (plan.done.includes(PLAN.day)) {
-    const read = el("button", "done-mark", `✓ Day ${PLAN.day} read`);
-    read.title = "Tap to unmark";
+    const read = el("button", "done-mark", `✓ ${tr("Day {n} read", { n: PLAN.day })}`);
+    read.title = tr("Tap to unmark");
     read.addEventListener("click", () => markPlanDay(false));
     const next = planNext(plan);
-    box.append(read, next ? link(`Day ${next}: ${planLabel(plan, next)} ›`, planHref(plan, next), "primary")
-      : el("span", "plan-msg", "Plan finished"), link("Library", "./"));
+    box.append(read, next ? link(`${tr("Day {n}", { n: next })}: ${planLabel(plan, next)} ›`, planHref(plan, next), "primary")
+      : el("span", "plan-msg", tr("Plan finished")), link(tr("Library"), "./"));
   } else {
-    const mark = el("button", "primary", `Mark day ${PLAN.day} read`);
+    const mark = el("button", "primary", tr("Mark day {n} read", { n: PLAN.day }));
     mark.addEventListener("click", () => markPlanDay(true));
     box.append(mark);
   }
@@ -2146,6 +2160,6 @@ async function planNextPart() {
   .catch((err) => {
     list.classList.remove("loading");
     list.textContent = navigator.onLine === false || err instanceof TypeError
-      ? "This isn't available offline yet: open it once while online, and it will be."
-      : `Could not load this text: ${err.message}`;
+      ? tr("This isn't available offline yet: open it once while online, and it will be.")
+      : tr("Could not load this text: {error}", { error: err.message });
   });

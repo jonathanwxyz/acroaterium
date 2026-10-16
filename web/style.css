@@ -470,7 +470,7 @@ main {
 /* The choices wrap among themselves, beside the label rather than under it. */
 .font-choices { display: flex; flex-wrap: wrap; gap: 0.3rem; min-width: 0; }
 .font-row .size-name { width: 5.2rem; flex: none; }
-.font-choice, .theme-choice {
+.font-choice, .theme-choice, .lang-choice {
   padding: 0.2rem 0.5rem;
   font-size: 17px;
   color: var(--muted);
@@ -484,8 +484,10 @@ main {
 .font-choice[data-font="didot"] { font-family: "GFS Didot", serif; font-size: 15.5px; }
 .theme-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }  /* an icon each */
 .theme-row .font-choices { flex-wrap: nowrap; }
-@media (hover: hover) { .font-choice:hover, .theme-choice:hover { color: var(--text); border-color: var(--current-bar); } }
-.font-choice[aria-pressed="true"], .theme-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
+.lang-choice:not([data-lang="en"]) { font-family: var(--greek); font-size: 15.5px; }
+.lang-choice[data-lang="en"] { font-size: 14px; }  /* (each language's name in its own script) */
+@media (hover: hover) { .font-choice:hover, .theme-choice:hover, .lang-choice:hover { color: var(--text); border-color: var(--current-bar); } }
+.font-choice[aria-pressed="true"], .theme-choice[aria-pressed="true"], .lang-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
 .size-value { text-align: center; font-variant-numeric: tabular-nums; color: var(--text); }
 .size-step {
   width: 2rem;
@@ -1199,6 +1201,7 @@ body.prose-text .toggle:has(#focused) { display: none; }
 }
 .library h1 { font-weight: 400; font-size: 1.6em; margin: 0.6rem 0 0.2rem; text-align: center; }
 .library .sub { text-align: center; color: var(--muted); font: 13px system-ui, sans-serif; margin: 0 0 1.5rem; }
+.library h1:has(+ .sub[hidden]) { margin-bottom: 1.7rem; }  /* (a Greek interface: no English under it) */
 .category { margin: 2rem 0 0; }
 .category > h2 {
   font: 600 12px system-ui, sans-serif;

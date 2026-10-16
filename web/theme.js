@@ -1,5 +1,5 @@
 // The text menu (Aa), shared by the library (index.html) and the reader (read.html): text
-// and interface sizes, the font, and the theme.
+// and interface sizes, the font, the theme and the interface's language.
 {
   const sizeMenu = document.getElementById("size-menu");
 
@@ -72,6 +72,18 @@
     document.dispatchEvent(new Event("sizechange"));
     // A web font is drawn once it has loaded: refit again then.
     document.fonts?.ready.then(() => document.dispatchEvent(new Event("sizechange")));
+  });
+  // The interface's language (i18n.js): English, Modern Greek or Ancient Greek, remembered
+  // per browser; the page is loaded again in it.
+  for (const b of sizeMenu.querySelectorAll(".lang-choice")) {
+    b.setAttribute("aria-pressed", String(b.dataset.lang === UI_LANG));
+    if (b.dataset.lang === "grc" && !GRC_READY) b.remove();  // (not yet: i18n.js)
+  }
+  sizeMenu.addEventListener("click", (e) => {
+    const choice = e.target.closest(".lang-choice");
+    if (!choice || choice.dataset.lang === UI_LANG) return;
+    try { localStorage.setItem("uiLang", choice.dataset.lang); } catch {}
+    location.reload();
   });
   function closeSizes() {
     if (sizeMenu.hidden) return;

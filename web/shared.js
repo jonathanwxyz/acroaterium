@@ -144,7 +144,7 @@ function planDayOf(plan, date = isoDate()) {
 // The date of a plan's day, as a short date ("16 Oct").
 function planDate(plan, day) {
   const [y, m, d] = plan.start.split("-").map(Number);
-  return new Date(y, m - 1, d + day - 1).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return new Date(y, m - 1, d + day - 1).toLocaleDateString(UI_LOCALE, { day: "numeric", month: "short" });
 }
 // The first day not yet read (null: all read).
 function planNext(plan) {

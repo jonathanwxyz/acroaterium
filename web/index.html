@@ -40,6 +40,7 @@
   window.libraryRequest = fetch("/api/library");
 </script>
 <link rel="stylesheet" href="style.css">
+<script defer src="i18n.js"></script>
 <script defer src="theme.js"></script>
 <script defer src="shared.js"></script>
 <script defer src="offline.js"></script>
@@ -78,12 +79,20 @@
           <button class="theme-choice" data-theme="dark" aria-pressed="false" title="Dark" aria-label="Dark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
         </span>
       </div>
+      <div class="font-row lang-row" role="group" aria-label="Language">
+        <span class="size-name">Language</span>
+        <span class="font-choices">
+          <button class="lang-choice" data-lang="en" aria-pressed="false" lang="en">English</button>
+          <button class="lang-choice" data-lang="el" aria-pressed="false" lang="el">Ελληνικά</button>
+          <button class="lang-choice" data-lang="grc" aria-pressed="false" lang="grc" title="Ἀρχαία ἑλληνική">Ἀρχαῖα</button>
+        </span>
+      </div>
     </div>
   </div>
 </div>
 <main>
   <h1>Βιβλιοθήκη</h1>
-  <p class="sub">Library</p>
+  <p class="sub" data-en-only>Library</p>
   <p id="downloads" hidden></p>
   <section id="plans" class="category" hidden></section>
   <section id="bookmarks" class="category" hidden></section>

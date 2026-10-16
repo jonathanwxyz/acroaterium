@@ -109,13 +109,13 @@ function showDownloads() {
   box.replaceChildren();
   if (all.length) {
     const waiting = all.filter((s) => s.state === "running" || s.state === "queued").length;
-    const open = el("button", "dl-open", `Downloaded: ${formatSize(all.reduce((n, s) => n + (s.have ?? 0), 0))}`
-                    + (waiting ? ` · ${waiting} to go` : "") + " ›");
-    open.title = "Your downloads: see, pause or remove them";
+    const open = el("button", "dl-open", tr("Downloaded: {size}", { size: formatSize(all.reduce((n, s) => n + (s.have ?? 0), 0)) })
+                    + (waiting ? ` · ${tr("{n} to go", { n: waiting })}` : "") + " ›");
+    open.title = tr("Your downloads: see, pause or remove them");
     open.addEventListener("click", openPanel);
     box.append(open);
     if (offline.needsHomeScreen) {
-      box.append(el("div", "dl-note", "To keep downloads, add the reader to your Home Screen (Share → Add to Home Screen) and open it from there."));
+      box.append(el("div", "dl-note", tr("To keep downloads, add the reader to your Home Screen (Share → Add to Home Screen) and open it from there.")));
     }
   }
   if (panel?.open) fillPanel();
@@ -148,64 +148,64 @@ function fillPanel() {
   const total = [...downloadStatuses.values()].reduce((n, s) => n + (s.have ?? 0), 0);
   const head = el("div", "dl-head");
   const close = el("button", "dl-close", "×");
-  close.setAttribute("aria-label", "Close");
+  close.setAttribute("aria-label", tr("Close"));
   close.addEventListener("click", () => panel.close());
-  head.append(el("h2", null, "Downloads"), el("span", "dl-total", keys.length ? formatSize(total) : ""), close);
+  head.append(el("h2", null, tr("Downloads")), el("span", "dl-total", keys.length ? formatSize(total) : ""), close);
   const list = el("ul", "dl-list");
   for (const key of keys) {
     const s = downloadStatuses.get(key);
     const [name, size] = downloadNames.get(key) ?? [key, s.size];
     const pct = size ? `${Math.floor((100 * (s.state === "done" ? size : s.have)) / size)}%` : "";
-    const text = { running: `${pct} of ${formatSize(size)}`, queued: "queued", failed: "stopped",
-                   partial: s.have ? `paused at ${pct}` : "paused", done: formatSize(size) }[s.state] ?? "";
+    const text = { running: tr("{pct} of {size}", { pct, size: formatSize(size) }), queued: tr("queued"), failed: tr("stopped"),
+                   partial: s.have ? tr("paused at {pct}", { pct }) : tr("paused"), done: formatSize(size) }[s.state] ?? "";
     const row = el("li", "dl-row");
     row.append(el("span", "dl-name", name), el("span", "dl-state", text));
     if (s.state !== "done") {
       const go = el("button", "icon-btn");
       const waiting = s.state === "running" || s.state === "queued";
       go.innerHTML = waiting ? PAUSE_ICON : RESUME_ICON;
-      go.title = waiting ? `Pause ${name}` : `Resume ${name}`;
+      go.title = waiting ? tr("Pause {name}", { name }) : tr("Resume {name}", { name });
       go.setAttribute("aria-label", go.title);
       go.addEventListener("click", () => (waiting ? offline.pause([key]) : startDownload([key])));
       row.append(go);
     }
     const bin = el("button", "icon-btn remove");
     bin.innerHTML = BIN_ICON;
-    bin.title = `Remove ${name}`;
+    bin.title = tr("Remove {name}", { name });
     bin.setAttribute("aria-label", bin.title);
     bin.addEventListener("click", () => offline.remove([key]));
     row.append(bin);
     list.append(row);
   }
-  if (!keys.length) list.append(el("li", "dl-empty", "Nothing downloaded."));
+  if (!keys.length) list.append(el("li", "dl-empty", tr("Nothing downloaded.")));
   const foot = el("div", "dl-foot");
   const waiting = keys.filter((k) => ["running", "queued"].includes(downloadStatuses.get(k).state));
   const paused = keys.filter((k) => ["partial", "failed"].includes(downloadStatuses.get(k).state));
   if (paused.length) {
-    const resume = el("button", null, "Resume all");
+    const resume = el("button", null, tr("Resume all"));
     resume.addEventListener("click", () => startDownload(paused));
     foot.append(resume);
   }
   if (waiting.length) {
-    const pause = el("button", null, "Pause all");
+    const pause = el("button", null, tr("Pause all"));
     pause.addEventListener("click", () => offline.pause(waiting));
     foot.append(pause);
   }
   const unfinished = keys.filter((k) => downloadStatuses.get(k).state !== "done");
   if (unfinished.length && unfinished.length < keys.length) {  // (with some finished: else it's "Remove all")
-    const clear = el("button", "remove-queued", "Remove queued");
-    clear.title = "Cancel every download not finished (running, waiting or paused), and what it had saved";
+    const clear = el("button", "remove-queued", tr("Remove queued"));
+    clear.title = tr("Cancel every download not finished (running, waiting or paused), and what it had saved");
     clear.addEventListener("click", () => offline.remove(unfinished));
     foot.append(clear);
   }
   if (keys.length) {
-    const all = el("button", "remove-all", "Remove all");
+    const all = el("button", "remove-all", tr("Remove all"));
     let armed = null;
     all.addEventListener("click", () => {
       if (!armed) {  // (a second tap, within a few seconds, to be sure)
         all.classList.add("armed");
-        all.textContent = `Tap again to remove ${formatSize(total)}`;
-        armed = setTimeout(() => { armed = null; all.classList.remove("armed"); all.textContent = "Remove all"; }, 4000);
+        all.textContent = tr("Tap again to remove {size}", { size: formatSize(total) });
+        armed = setTimeout(() => { armed = null; all.classList.remove("armed"); all.textContent = tr("Remove all"); }, 4000);
         return;
       }
       clearTimeout(armed);
@@ -225,7 +225,7 @@ function workEntry(t, showAuthor = true) {
   if (t.books.length > 1) {
     const list = bookLinks(t, "book-list");
     work.append(withDownload(foldRow(slugOf(t), "work-head fold-row", named, list), downloadsOf(t),
-                             `all of ${t.title}`, "work-line"), list);
+                             tr("all of {title}", { title: t.title }), "work-line"), list);
   } else {  // one book: the title opens it
     const head = el("a", "work-head");
     head.href = hrefFor(t);
@@ -259,7 +259,7 @@ function collectionEntry(c) {
   }
   work.append(withDownload(foldRow(`collection:${c.collection ?? c.title}`, "work-head fold-row",
                                    [el("span", "work-title", c.title)], books),
-                           c.texts.flatMap(downloadsOf), `all of ${c.title}`, "work-line"), books);
+                           c.texts.flatMap(downloadsOf), tr("all of {title}", { title: c.title }), "work-line"), books);
   return work;
 }
 
@@ -276,7 +276,7 @@ function lectionaryEntry(l) {
   fetch(`/api/lectionary/${today()}`)
     .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
     .then((data) => {
-      if (!data.readings.length) return note(data.error ?? "No readings today.");
+      if (!data.readings.length) return note(data.error ?? tr("No readings today."));
       list.replaceChildren();
       for (const r of data.readings) {
         const row = el(r.href ? "a" : "span", "member-row reading");
@@ -287,17 +287,13 @@ function lectionaryEntry(l) {
         list.append(li);
       }
     })
-    .catch(() => note(navigator.onLine === false ? "The readings need the connection." : "The readings couldn't be loaded."));
+    .catch(() => note(navigator.onLine === false ? tr("The readings need the connection.") : tr("The readings couldn't be loaded.")));
   return work;
 }
 
-// A heading in capitals, as Greek is written in capitals: without its accents, breathings
-// and iota subscript: Η ΑΓΙΑ ΓΡΑΦΗ.
-function capitals(text) {
-  return text.normalize("NFD").replace(/[\u0300\u0301\u0313\u0314\u0342\u0345]/g, "").normalize("NFC").toUpperCase();
-}
+// A category's name: in Greek and English ("Ὅμηρος · Homer"), just the Greek in a Greek interface.
+const categoryName = (name) => (UI_LANG === "en" ? name : name.split(" · ")[0]);
 
-let library = null;  // (what a new reading plan can be of)
 function render(data) {
   library = data;
   downloadNames.clear();
@@ -319,9 +315,9 @@ function render(data) {
   }
   for (const cat of data.categories) {
     const section = el("section", "category");
-    section.append(el("h2", null, capitals(cat.name)));
+    section.append(el("h2", null, capitals(categoryName(cat.name))));
     if (data.lectionary?.category === cat.name) section.append(lectionaryEntry(data.lectionary));
-    if (!cat.texts.length) section.append(el("p", "empty", "Nothing here yet."));
+    if (!cat.texts.length) section.append(el("p", "empty", tr("Nothing here yet.")));
     const oneAuthor = cat.texts.length > 1 && new Set(cat.texts.map((t) => t.author ?? null)).size === 1;
     for (const t of cat.texts) section.append(t.collection ? collectionEntry(t) : workEntry(t, !oneAuthor));
     root.append(section);
@@ -340,30 +336,31 @@ function renderPlans(list) {
   // None yet: just a button to make one, no section.
   plansBox.classList.toggle("no-plans", !list.length);
   if (!list.length) {
-    const start = el("button", "plan-start", "Create reading plan");
-    start.title = "Read a text in the time you choose: a reading a day";
+    const start = el("button", "plan-start", tr("Create reading plan"));
+    start.title = tr("Read a text in the time you choose: a reading a day");
     start.addEventListener("click", openPlanDialog);
     plansBox.replaceChildren(start);
     return;
   }
   const head = el("div", "plans-head");
-  const add = el("button", "plan-new", "+ New plan");
+  const add = el("button", "plan-new", tr("+ New plan"));
   add.addEventListener("click", openPlanDialog);
-  head.append(el("h2", null, "Reading plans"), add);
+  head.append(el("h2", null, capitals(tr("Reading plans"))), add);
   plansBox.replaceChildren(head);
   for (const plan of list) plansBox.append(planEntry(plan));
 }
 
 function planStatus(plan) {
   const today = planDayOf(plan), done = new Set(plan.done);
-  if (done.size >= plan.days) return "Finished";
-  if (today < 1) return `Starts ${planDate(plan, 1)}`;
+  if (done.size >= plan.days) return tr("Finished");
+  if (today < 1) return tr("Starts {date}", { date: planDate(plan, 1) });
   let behind = 0;
   for (let d = 1; d < Math.min(today, plan.days + 1); d++) if (!done.has(d)) behind++;  // (today's not yet)
   const ahead = [...done].filter((d) => d > today).length;
-  if (today > plan.days) return `Ended ${planDate(plan, plan.days)} · ${behind} to go`;
-  if (behind) return `Day ${today} of ${plan.days} · ${behind} behind`;
-  return `Day ${today} of ${plan.days} · ${ahead ? `${ahead} ahead` : "on schedule"}`;
+  if (today > plan.days) return `${tr("Ended {date}", { date: planDate(plan, plan.days) })} · ${tr("{n} to go", { n: behind })}`;
+  const day = tr("Day {n} of {days}", { n: today, days: plan.days });
+  if (behind) return `${day} · ${tr("{n} behind", { n: behind })}`;
+  return `${day} · ${ahead ? tr("{n} ahead", { n: ahead }) : tr("on schedule")}`;
 }
 
 function planEntry(plan) {
@@ -371,7 +368,7 @@ function planEntry(plan) {
   const next = planNext(plan);
   const top = el("div", "plan-top");
   const title = el("span", "work-title", plan.title);
-  top.append(title, el("span", "plan-length", `${plan.days} ${plan.days === 1 ? "day" : "days"}`), planDelete(plan));
+  top.append(title, el("span", "plan-length", tr(plan.days === 1 ? "{n} day" : "{n} days", { n: plan.days })), planDelete(plan));
   const bar = el("div", "plan-bar");
   bar.style.setProperty("--done", `${(100 * plan.done.length) / plan.days}%`);
   const expected = Math.min(Math.max(planDayOf(plan), 0), plan.days);
@@ -380,19 +377,19 @@ function planEntry(plan) {
   bar.setAttribute("aria-valuemin", "0");
   bar.setAttribute("aria-valuemax", String(plan.days));
   bar.setAttribute("aria-valuenow", String(plan.done.length));
-  bar.title = `${plan.done.length} of ${plan.days} days read`;
+  bar.title = tr("{n} of {days} days read", { n: plan.done.length, days: plan.days });
   const status = el("div", "plan-status");
   status.append(el("span", null, planStatus(plan)), el("span", "plan-count", `${plan.done.length}/${plan.days}`));
   box.append(top, bar, status);
   if (next) {
     const go = el("a", "plan-next");
     go.href = planHref(plan, next);
-    go.append(el("span", "plan-day", `Day ${next}`), el("span", "plan-reading", planLabel(plan, next)),
-              el("span", "plan-go", "Continue ›"));
+    go.append(el("span", "plan-day", tr("Day {n}", { n: next })), el("span", "plan-reading", planLabel(plan, next)),
+              el("span", "plan-go", tr("Continue ›")));
     box.append(go);
   }
   const days = el("ol", "plan-days");
-  const fold = foldRow(`plan:${plan.id}`, "plan-fold fold-row", [el("span", null, "All days")], days);
+  const fold = foldRow(`plan:${plan.id}`, "plan-fold fold-row", [el("span", null, tr("All days"))], days);
   box.append(fold, days);
   // (Opened at the next day to read, the list scrolled within itself.)
   const toNext = () => {
@@ -411,7 +408,7 @@ function planEntry(plan) {
       const tick = el("button", "plan-tick");
       tick.innerHTML = TICK;
       tick.setAttribute("aria-pressed", String(done.has(day)));
-      tick.title = done.has(day) ? `Day ${day}: read (tap to unmark)` : `Mark day ${day} read`;
+      tick.title = done.has(day) ? tr("Day {n}: read (tap to unmark)", { n: day }) : tr("Mark day {n} read", { n: day });
       tick.setAttribute("aria-label", tick.title);
       tick.addEventListener("click", async () => {
         const read = !done.has(day);
@@ -442,7 +439,7 @@ function planDelete(plan) {
   const idle = () => {
     b.classList.remove("armed");
     b.innerHTML = BIN_ICON;
-    b.title = `Delete the plan for ${plan.title}`;
+    b.title = tr("Delete the plan for {title}", { title: plan.title });
     b.setAttribute("aria-label", b.title);
   };
   idle();
@@ -450,8 +447,8 @@ function planDelete(plan) {
   b.addEventListener("click", async () => {
     if (!armed) {
       b.classList.add("armed");
-      b.textContent = "Delete?";
-      b.title = "Tap again to delete this plan";
+      b.textContent = tr("Delete?");
+      b.title = tr("Tap again to delete this plan");
       armed = setTimeout(() => { armed = null; idle(); }, 4000);
       return;
     }
@@ -462,7 +459,7 @@ function planDelete(plan) {
       renderPlans(plans.filter((p) => p !== plan));
     } catch {
       b.disabled = false;
-      b.textContent = "Offline?";
+      b.textContent = tr("Offline?");
     }
   });
   return b;
@@ -483,9 +480,9 @@ function buildPlanDialog() {
   d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
   const head = el("div", "dl-head");
   const close = el("button", "dl-close", "×");
-  close.setAttribute("aria-label", "Close");
+  close.setAttribute("aria-label", tr("Close"));
   close.addEventListener("click", () => d.close());
-  head.append(el("h2", null, "New reading plan"), close);
+  head.append(el("h2", null, tr("New reading plan")), close);
   const form = el("form", "plan-form");
   // What to read, narrowed a step at a time: a category (or all of it), a collection in it
   // (a Testament) or a text, a text in the collection, and of a text in several books (or
@@ -493,10 +490,10 @@ function buildPlanDialog() {
   const pick = () => el("select", "plan-pick");
   const cat = pick(), item = pick(), member = pick(), from = pick(), to = pick();
   const cats = library.categories.filter((c) => c.texts.length);
-  cats.forEach((c, i) => cat.append(new Option(c.name, i)));
+  cats.forEach((c, i) => cat.append(new Option(categoryName(c.name), i)));
   const fillItems = () => {
     const c = cats[cat.value];
-    item.replaceChildren(new Option("All", `category:${c.name}`),
+    item.replaceChildren(new Option(tr("All"), `category:${c.name}`),
                          ...c.texts.map((t) => new Option(t.title, t.collection ? `collection:${t.collection}` : slugOf(t))));
   };
   const chosenText = () => {  // the text chosen, if it's one (not a category or collection)
@@ -509,14 +506,14 @@ function buildPlanDialog() {
   const fillMembers = () => {
     const col = cats[cat.value].texts.find((x) => x.collection && `collection:${x.collection}` === item.value);
     memberRow.hidden = !col;
-    if (col) member.replaceChildren(new Option("All", item.value), ...col.texts.map((t) => new Option(t.title, slugOf(t))));
+    if (col) member.replaceChildren(new Option(tr("All"), item.value), ...col.texts.map((t) => new Option(t.title, slugOf(t))));
   };
   const fillBooks = () => {
     const t = chosenText();
     booksRow.hidden = !(t?.books.length > 1);
     if (booksRow.hidden) return;
     const chapters = t.books.every((b) => /\d$/.test(b.label ?? ""));
-    booksRow.querySelector(".plan-label").textContent = chapters ? "Chapters" : "Books";
+    booksRow.querySelector(".plan-label").textContent = chapters ? tr("Chapters") : tr("Books");
     for (const s of [from, to]) s.replaceChildren(...t.books.map((b) => new Option(chapters ? String(b.n) : shortLabel(b.label, b.n), b.n)));
     to.value = t.books.at(-1).n;
   };
@@ -530,7 +527,7 @@ function buildPlanDialog() {
   Object.assign(count, { type: "number", min: 1, max: 999, value: 30, name: "count", inputMode: "numeric" });
   const unit = el("select");
   unit.name = "unit";
-  for (const [v, label] of [["days", "days"], ["weeks", "weeks"], ["months", "months"], ["years", "years"]]) unit.append(new Option(label, v));
+  for (const v of ["days", "weeks", "months", "years"]) unit.append(new Option(tr(v), v));
   const start = el("input");
   Object.assign(start, { type: "date", name: "start", value: isoDate() });
   const field = (label, ...inputs) => {
@@ -541,10 +538,10 @@ function buildPlanDialog() {
     return l;
   };
   const preview = el("div", "plan-preview");
-  const create = el("button", "plan-create", "Start plan");
+  const create = el("button", "plan-create", tr("Start plan"));
   create.type = "submit";
-  const memberRow = field("", member), booksRow = field("Books", from, el("span", "plan-to", "to"), to);
-  form.append(field("Read", cat), field("", item), memberRow, booksRow, field("In", count, unit), field("Starting", start), preview);
+  const memberRow = field("", member), booksRow = field(tr("Books"), from, el("span", "plan-to", tr("to")), to);
+  form.append(field(tr("Read"), cat), field("", item), memberRow, booksRow, field(tr("In"), count, unit), field(tr("Starting"), start), preview);
   fillItems();
   fillMembers();
   fillBooks();
@@ -580,14 +577,14 @@ function buildPlanDialog() {
       shown = p;
       const words = Math.round(p.portions.reduce((s, q) => s + q.words, 0) / p.days);
       preview.classList.remove("stale");
-      preview.replaceChildren(el("p", "plan-note", `${p.days} days, about ${words.toLocaleString()} words a day`
-                                 + (p.days < n ? ` (it can't be split finer than ${p.days})` : "")));
+      preview.replaceChildren(el("p", "plan-note", tr("{days} days, about {words} words a day", { days: p.days, words: words.toLocaleString(UI_LOCALE) })
+                                 + (p.days < n ? ` ${tr("(it can't be split finer than {n})", { n: p.days })}` : "")));
       const ol = el("ol", "plan-sample");
       const shownDays = p.days <= 4 ? p.portions.map((q, i) => [i, q]) : [[0, p.portions[0]], [1, p.portions[1]], null, [p.days - 1, p.portions.at(-1)]];
       for (const entry of shownDays) {
         if (!entry) { ol.append(el("li", "plan-gap", "…")); continue; }
         const li = el("li");
-        li.append(el("span", "plan-row-day", `Day ${entry[0] + 1}`),
+        li.append(el("span", "plan-row-day", tr("Day {n}", { n: entry[0] + 1 })),
                   el("span", "plan-row-label", planLabel({ ...p, target: target() }, entry[0] + 1)));
         ol.append(li);
       }
@@ -595,7 +592,7 @@ function buildPlanDialog() {
       create.disabled = false;
     } catch {
       if (ask === asked) preview.classList.remove("stale");
-      if (ask === asked) preview.replaceChildren(el("p", "plan-note", navigator.onLine === false ? "Plans need the connection." : "Couldn't work out the days."));
+      if (ask === asked) preview.replaceChildren(el("p", "plan-note", navigator.onLine === false ? tr("Plans need the connection.") : tr("Couldn't work out the days.")));
     }
   };
   for (const input of [cat, item, member, from, to, unit, start]) input.addEventListener("change", d.update);
@@ -611,7 +608,7 @@ function buildPlanDialog() {
       renderPlans([...plans, plan]);
     } catch {
       create.disabled = false;
-      preview.append(el("p", "plan-note", "Couldn't start it (offline?)"));
+      preview.append(el("p", "plan-note", tr("Couldn't start it (offline?)")));
     }
   });
   d.append(head, form);
@@ -628,7 +625,7 @@ function renderMarks(marks) {
   marksBox.replaceChildren();
   marksBox.hidden = !marks.length;
   if (!marks.length) return;
-  marksBox.append(el("h2", null, "Bookmarks"));
+  marksBox.append(el("h2", null, capitals(tr("Bookmarks"))));
   const ul = el("ul", "marks");
   for (const m of marks) {
     const li = el("li");
@@ -640,13 +637,13 @@ function renderMarks(marks) {
     const label = el("span", "mark-label", m.label ?? `${m.title ?? m.text} ${m.ref}`);
     if (inPlan) {
       a.href = `${planHref(plan, m.plan.day, m.plan.part)}&mark=${encodeURIComponent(m.ref)}`;
-      label.append(el("span", "mark-plan", `Reading plan · ${plan.title}, day ${m.plan.day}`));
+      label.append(el("span", "mark-plan", tr("Reading plan · {title}, day {n}", { title: plan.title, n: m.plan.day })));
     }
     a.append(label);
     if (m.snippet) a.append(el("span", "mark-snippet", m.snippet));
     const del = el("button", "mark-delete", "×");
-    del.title = "Delete this bookmark";
-    del.setAttribute("aria-label", `Delete the bookmark ${m.label ?? m.ref}`);
+    del.title = tr("Delete this bookmark");
+    del.setAttribute("aria-label", tr("Delete the bookmark {name}", { name: m.label ?? m.ref }));
     del.addEventListener("click", async () => {
       del.disabled = true;
       try {
@@ -656,7 +653,7 @@ function renderMarks(marks) {
         if (!ul.children.length) marksBox.hidden = true;
       } catch {
         del.disabled = false;
-        del.title = "Couldn't delete it (offline?)";
+        del.title = tr("Couldn't delete it (offline?)");
       }
     });
     li.append(a, del);
@@ -699,8 +696,8 @@ const dropSkeleton = () => document.querySelector(".lib-skel")?.remove();
     renderMarks(marks);
     if (planList) renderPlans(planList);
     root.replaceChildren(el("p", "notice", navigator.onLine === false || err instanceof TypeError
-      ? "The library isn't available offline yet: open it once while online."
-      : `Could not load the library: ${err.message}`));
+      ? tr("The library isn't available offline yet: open it once while online.")
+      : tr("Could not load the library: {error}", { error: err.message })));
   });
 
 // Coming back with the back button (a page kept in memory): the places last opened, and
