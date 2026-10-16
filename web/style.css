@@ -1201,6 +1201,8 @@ body.prose-text .toggle:has(#focused) { display: none; }
 
 /* The library (index.html). */
 /* The library is all navigation: it follows the reader's Interface size, not Text. */
+/* (Below the status bar in the installed app: the body, which isn't zoomed.) */
+body.library { padding-top: env(safe-area-inset-top); }
 .library main { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); font-size: 1em; }
 .library main, .library-tools { zoom: var(--ui-scale, 1); }
 .library-tools {
