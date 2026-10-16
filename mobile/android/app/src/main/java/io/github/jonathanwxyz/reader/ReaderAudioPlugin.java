@@ -1,11 +1,15 @@
 package io.github.jonathanwxyz.reader;
 
 import android.content.ComponentName;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Window;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MediaMetadata;
@@ -270,6 +274,28 @@ public class ReaderAudioPlugin extends Plugin {
     @PluginMethod
     public void getState(PluginCall call) {
         withController((c) -> call.resolve(state(c)));
+    }
+
+    /**
+     * The status and navigation bars as the page's theme has them ({dark, color}): light
+     * or dark icons, and its colour behind them where the page doesn't draw under them.
+     */
+    @PluginMethod
+    public void setSystemBars(PluginCall call) {
+        boolean dark = call.getBoolean("dark", false);
+        String color = call.getString("color");
+        main.post(() -> {
+            Window window = getActivity().getWindow();
+            WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(window, window.getDecorView());
+            bars.setAppearanceLightStatusBars(!dark);
+            bars.setAppearanceLightNavigationBars(!dark);
+            if (color != null) {
+                try {
+                    window.getDecorView().setBackgroundColor(Color.parseColor(color));
+                } catch (IllegalArgumentException ignored) {}
+            }
+            call.resolve();
+        });
     }
 
     // Downloads (offline.js): a piece at a time, so a pause takes effect between pieces.

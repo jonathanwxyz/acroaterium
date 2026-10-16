@@ -286,6 +286,19 @@ body {
   font-size: 23px;  /* sized for EB Garamond, which runs small; --font-scale takes the others down */
   line-height: 1.55;
 }
+/* Behind the phone's status bar (the installed app, which draws under it): the page's
+   colour, with what scrolls up going under it rather than behind the clock. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--bg);
+  z-index: 30;
+  pointer-events: none;
+}
 main {
   font-size: calc(var(--text-scale, 1) * var(--font-scale, 1) * 1em);  /* the reader's Text size */
   max-width: 44rem;

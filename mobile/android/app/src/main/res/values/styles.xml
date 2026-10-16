@@ -13,6 +13,8 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- (behind the status bar, and before the page draws: the page's colour) -->
+        <item name="android:windowBackground">@color/page</item>
     </style>
 
 

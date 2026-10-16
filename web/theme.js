@@ -12,6 +12,7 @@
     // The phone's status bar (installed app) takes the page's background colour.
     const dark = mode === "dark" || (mode === "auto" && !!systemDark?.matches);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#1d1a16" : "#fdf6e3");
+    window.nativeApp?.systemBars(dark);  // (the Android app: its status bar's icons and colour)
   }
   systemDark?.addEventListener?.("change", showTheme);
   sizeMenu.addEventListener("click", (e) => {
