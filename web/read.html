@@ -17,8 +17,8 @@
 <script>
   // The chosen theme, applied before the page draws (no flash of the other one).
   try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
-  // And the accent (red unless another was chosen).
-  try { const a = localStorage.getItem("accent"); if (["amber", "purple", "blue"].includes(a)) document.documentElement.dataset.accent = a; } catch {}
+  // And the accent (amber unless another was chosen).
+  try { const a = localStorage.getItem("accent"); if (["red", "purple", "blue"].includes(a)) document.documentElement.dataset.accent = a; } catch {}
   // Text and interface sizes (the reader's Aa menu), likewise.
   try {
     for (const [key, prop] of [["textScale", "--text-scale"], ["uiScale", "--ui-scale"]]) {

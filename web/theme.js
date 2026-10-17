@@ -18,17 +18,17 @@
   }
   systemDark?.addEventListener?.("change", showTheme);
 
-  // Accent: red (the default), amber, purple or blue, remembered per browser, applied before the page
+  // Accent: amber (the default), red, purple or blue, remembered per browser, applied before the page
   // draws likewise.
   function showAccent() {
-    const accent = document.documentElement.dataset.accent ?? "red";
+    const accent = document.documentElement.dataset.accent ?? "amber";
     for (const b of sizeMenu.querySelectorAll(".accent-choice")) b.setAttribute("aria-pressed", String(b.dataset.accent === accent));
   }
   sizeMenu.addEventListener("click", (e) => {
     const choice = e.target.closest(".accent-choice");
     if (!choice) return;
     const accent = choice.dataset.accent;
-    if (accent === "red") delete document.documentElement.dataset.accent;
+    if (accent === "amber") delete document.documentElement.dataset.accent;
     else document.documentElement.dataset.accent = accent;
     try { localStorage.setItem("accent", accent); } catch {}
     showAccent();

@@ -223,10 +223,10 @@
   --text: #2b2620;
   --muted: #8b8174;
   --rule: #e6dfd2;
-  /* The accent: a deep manuscript red (the verse being read, lit buttons, links). */
-  --current-bg: #eedccb;  /* (12% of the red in the paper) */
-  --current-bar: #7f1d1d;
-  --pause-bg: #f5e9d7;    /* (6%) */
+  /* The accent (the verse being read, lit buttons, links): amber, unless another is chosen. */
+  --current-bg: #f3e6c4;
+  --current-bar: #b07a1e;
+  --pause-bg: #f7efdb;
   --player-bg: rgba(253, 246, 227, 0.94);
   --greek: "Gentium Book Plus", "GFS Didot", "Noto Serif", "Times New Roman", serif;
   --font-scale: 0.91;
@@ -243,10 +243,9 @@
     --text: #e9e2d6;
     --muted: #8f8577;
     --rule: #34302a;
-    --current-bg: #412821;
-    --current-bar: #bf5a4a;  /* (the light theme's red, lightened to read on the dark paper, and
-                                turned a little toward brick: a red lightened alone goes pink) */
-    --pause-bg: #30221c;
+    --current-bg: #3d3220;
+    --current-bar: #d9a441;
+    --pause-bg: #2c271e;
     --player-bg: rgba(29, 26, 22, 0.94);
     color-scheme: dark;
   }
@@ -257,30 +256,32 @@
   --text: #e9e2d6;
   --muted: #8f8577;
   --rule: #34302a;
-  --current-bg: #412821;
-  --current-bar: #bf5a4a;
-  --pause-bg: #30221c;
-  --player-bg: rgba(29, 26, 22, 0.94);
-}
-
-/* Other accents (the Aa menu; red, above, unless another is chosen): each its colours in
-   the light and dark themes. */
-:root[data-accent="amber"] {
-  --current-bg: #f3e6c4;
-  --current-bar: #b07a1e;
-  --pause-bg: #f7efdb;
-}
-@media (prefers-color-scheme: dark) {
-  :root[data-accent="amber"]:not([data-theme="light"]) {
-    --current-bg: #3d3220;
-    --current-bar: #d9a441;
-    --pause-bg: #2c271e;
-  }
-}
-:root[data-accent="amber"][data-theme="dark"] {
   --current-bg: #3d3220;
   --current-bar: #d9a441;
   --pause-bg: #2c271e;
+  --player-bg: rgba(29, 26, 22, 0.94);
+}
+
+/* Other accents (the Aa menu; amber, above, unless another is chosen): each its colours in
+   the light and dark themes. A deep manuscript red, its highlights 12% and 6% of it in
+   the paper; in the dark theme lightened and turned a little toward brick (a red lightened
+   alone goes pink). */
+:root[data-accent="red"] {
+  --current-bg: #eedccb;
+  --current-bar: #7f1d1d;
+  --pause-bg: #f5e9d7;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-accent="red"]:not([data-theme="light"]) {
+    --current-bg: #412821;
+    --current-bar: #bf5a4a;
+    --pause-bg: #30221c;
+  }
+}
+:root[data-accent="red"][data-theme="dark"] {
+  --current-bg: #412821;
+  --current-bar: #bf5a4a;
+  --pause-bg: #30221c;
 }
 /* Purple, the porphyry of the purple manuscripts, and blue, as lapis in illumination. In
    the dark theme these two have a neutral near-black rather than the warm one: brown
