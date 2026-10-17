@@ -237,6 +237,9 @@
    --font-scale. */
 :root[data-font="garamond"] { --greek: "EB Garamond", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 1; }
 :root[data-font="didot"] { --greek: "GFS Didot", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 0.91; }
+/* (Didot has no bold of its own: what would be bold, the browser's thickened regular, is
+   left regular instead, set apart by its colour where it has one.) */
+:root[data-font="didot"] { font-synthesis-weight: none; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #1d1a16;
