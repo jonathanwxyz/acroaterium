@@ -212,7 +212,7 @@ window.nativeApp = (() => {
   document.documentElement.classList.add("app-no-overscroll");
 
   // The status and navigation bars: the page's colour behind them, icons to suit.
-  const systemBars = (dark) => call("setSystemBars", { dark, color: dark ? "#1d1a16" : "#fdf6e3" }).catch(() => {});
+  const systemBars = (dark, color = dark ? "#1d1a16" : "#fdf6e3") => call("setSystemBars", { dark, color }).catch(() => {});
 
   return { audio, files, systemBars };
 })();

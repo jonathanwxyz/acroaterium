@@ -9,10 +9,12 @@
   function showTheme() {
     const mode = document.documentElement.dataset.theme ?? "auto";
     for (const b of sizeMenu.querySelectorAll(".theme-choice")) b.setAttribute("aria-pressed", String(b.dataset.theme === mode));
-    // The phone's status bar (installed app) takes the page's background colour.
+    // The phone's status bar (installed app) takes the page's background colour: the theme's,
+    // which in the dark theme depends on the accent too.
     const dark = mode === "dark" || (mode === "auto" && !!systemDark?.matches);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#1d1a16" : "#fdf6e3");
-    window.nativeApp?.systemBars(dark);  // (the Android app: its status bar's icons and colour)
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || (dark ? "#1d1a16" : "#fdf6e3");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", bg);
+    window.nativeApp?.systemBars(dark, bg);  // (the Android app: its status bar's icons and colour)
   }
   systemDark?.addEventListener?.("change", showTheme);
 
@@ -30,6 +32,7 @@
     else document.documentElement.dataset.accent = accent;
     try { localStorage.setItem("accent", accent); } catch {}
     showAccent();
+    showTheme();  // (the status bar: purple and blue have their own dark background)
   });
   showAccent();
   sizeMenu.addEventListener("click", (e) => {

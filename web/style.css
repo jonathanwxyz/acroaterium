@@ -282,7 +282,9 @@
   --current-bar: #d9a441;
   --pause-bg: #2c271e;
 }
-/* Purple, the porphyry of the purple manuscripts, and blue, as lapis in illumination. */
+/* Purple, the porphyry of the purple manuscripts, and blue, as lapis in illumination. In
+   the dark theme these two have a neutral near-black rather than the warm one: brown
+   muddies them. */
 :root[data-accent="purple"] {
   --current-bg: #e9ded5;
   --current-bar: #5a2a6e;
@@ -290,15 +292,25 @@
 }
 @media (prefers-color-scheme: dark) {
   :root[data-accent="purple"]:not([data-theme="light"]) {
-    --current-bg: #3b2f3b;
+    --bg: #1b1b1d;
+    --text: #e5e5e7;
+    --muted: #8e8e93;
+    --rule: #323235;
+    --player-bg: rgba(27, 27, 29, 0.94);
+    --current-bg: #3a3041;
     --current-bar: #a77bc0;
-    --pause-bg: #2e262a;
+    --pause-bg: #2c2731;
   }
 }
 :root[data-accent="purple"][data-theme="dark"] {
-  --current-bg: #3b2f3b;
+  --bg: #1b1b1d;
+  --text: #e5e5e7;
+  --muted: #8e8e93;
+  --rule: #323235;
+  --player-bg: rgba(27, 27, 29, 0.94);
+  --current-bg: #3a3041;
   --current-bar: #a77bc0;
-  --pause-bg: #2e262a;
+  --pause-bg: #2c2731;
 }
 :root[data-accent="blue"] {
   --current-bg: #e2e0d6;
@@ -307,15 +319,25 @@
 }
 @media (prefers-color-scheme: dark) {
   :root[data-accent="blue"]:not([data-theme="light"]) {
-    --current-bg: #2f363f;
+    --bg: #1b1b1d;
+    --text: #e5e5e7;
+    --muted: #8e8e93;
+    --rule: #323235;
+    --player-bg: rgba(27, 27, 29, 0.94);
+    --current-bg: #2d3644;
     --current-bar: #6f98cf;
-    --pause-bg: #27292c;
+    --pause-bg: #252a32;
   }
 }
 :root[data-accent="blue"][data-theme="dark"] {
-  --current-bg: #2f363f;
+  --bg: #1b1b1d;
+  --text: #e5e5e7;
+  --muted: #8e8e93;
+  --rule: #323235;
+  --player-bg: rgba(27, 27, 29, 0.94);
+  --current-bg: #2d3644;
   --current-bar: #6f98cf;
-  --pause-bg: #27292c;
+  --pause-bg: #252a32;
 }
 /* (The accent buttons: a swatch of each, as it is in the theme in use.) */
 .accent-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }
