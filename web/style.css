@@ -424,12 +424,8 @@ main {
 }
 .eyebrow { color: var(--muted); letter-spacing: 0.06em; font-size: 0.85em; white-space: nowrap;
            min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* The title and book in full on wider screens, shortened on phones (app.js fills both). */
+/* The title and book, each in the longest form that fits (app.js, fitTopbar). */
 #eyebrow .short, #book-label .short { display: none; }
-@media (max-width: 640px) {
-  #eyebrow .long, #book-label .long { display: none; }
-  #eyebrow .short, #book-label .short { display: inline; }
-}
 /* Book picker: a button and a short menu under it (a native select fills a phone's
    screen with its list). */
 /* The title: in a book of a Testament, a button opening a menu of the Testament's books
@@ -1529,6 +1525,12 @@ body.library { padding-top: env(safe-area-inset-top); }
 .download.compact { min-width: 2.1rem; width: 2.1rem; height: 2rem; padding: 0; border-radius: 50%; }
 /* The book's own, in the reader's top bar: round, as the bookmark beside it. */
 #download-slot { flex: none; display: flex; }
+/* A narrow top bar (a large interface size on a phone): room for the title and book made
+   by leaving out, first, the way back to the beginning, then the download (which the
+   library has too). */
+#topbar { container: topbar / inline-size; }
+@container topbar (max-width: 21rem) { #to-start { display: none; } }
+@container topbar (max-width: 17.5rem) { #download-slot { display: none; } }
 #download-slot[hidden] { display: none; }
 #download-slot .download { width: 1.85rem; min-width: 0; height: 1.85rem; min-height: 0; }
 #download-slot .download[data-state="done"] { border-color: var(--rule); }

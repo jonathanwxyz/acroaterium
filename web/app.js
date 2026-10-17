@@ -123,7 +123,7 @@ function render(data) {
   document.body.classList.toggle("prose-text", data.form === "prose");
   if (!has.has("audio") || data.form === "prose") document.body.classList.remove("focused");
   list.classList.toggle("prose", data.form === "prose");
-  showTitle(data.eyebrow ?? data.title, data.short ?? data.title);
+  showTitle(data.eyebrow ?? data.title, data.title, data.short);
   fillTitles(data.collectionTexts);
   const bookLabel = data.books.find((b) => b.n === data.book)?.label;
   document.title = `${data.title}${bookLabel ? ` · ${bookLabel}` : ""} — ${tr("Reader")}`;
@@ -1550,14 +1550,45 @@ document.getElementById("to-start").addEventListener("click", () => {
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
-// The top bar's title and book: in full on wider screens ("Ὁμήρου Ἰλιάς", "Ῥαψῳδία Α (1)"),
-// shortened on phones ("Ἰλιάς", "Α (1)"); style.css shows one or the other.
-function setBoth(box, long, short) {
-  box.querySelector(".long").textContent = long;
-  box.querySelector(".short").textContent = short;
+// The top bar's title and book, each in the longest form that fits: "Ὁμήρου Ἰλιάς", then
+// "Ἰλιάς", then "Ἰλ."; "Ῥαψῳδία Α (1)", then "Α (1)", then "Α". The pairs are tried each
+// shortened a step before either goes two (so "Ἰλιάς Α (1)" before "Ἰλ. Ῥαψῳδία Α (1)"), by
+// how far they're shortened in all, and where it's the same, the book given way rather than
+// the title ("Ἰλιάς Α" before "Ἰλ. Α (1)"); the first that fits is kept, and looked for
+// again as the room changes (the window, the Interface size, the font).
+const topbarForms = { eyebrow: [""], "book-label": [""] };
+function setForms(id, forms) {
+  topbarForms[id] = [...new Set(forms.filter(Boolean))];
+  if (!topbarForms[id].length) topbarForms[id] = [""];
+  fitTopbar();
 }
-function showTitle(long, short) {
-  setBoth(document.getElementById("eyebrow"), long, short);
+function fitTopbar() {
+  const title = document.getElementById("eyebrow"), book = document.getElementById("book-label");
+  const tf = topbarForms.eyebrow, bf = topbarForms["book-label"];
+  const show = (t, b) => {
+    title.querySelector(".long").textContent = tf[t];
+    book.querySelector(".long").textContent = bf[b];
+  };
+  const over = (el) => el.offsetParent !== null && el.scrollWidth > el.clientWidth + 0.5;
+  const pairs = [];
+  for (let t = 0; t < tf.length; t++) for (let b = 0; b < bf.length; b++) pairs.push([t, b]);
+  pairs.sort((p, q) => Math.max(...p) - Math.max(...q) || p[0] + p[1] - (q[0] + q[1]) || p[0] - q[0]);
+  for (const [t, b] of pairs) {
+    show(t, b);
+    if (!over(title) && !over(book)) return;
+  }
+  // (none fits: the shortest, cut with an ellipsis)
+}
+addEventListener("resize", fitTopbar);
+document.addEventListener("sizechange", fitTopbar);
+document.fonts?.ready.then(fitTopbar);
+document.fonts?.addEventListener?.("loadingdone", fitTopbar);  // (the Greek, which comes as it's first needed)
+function showTitle(long, title, short) {
+  setForms("eyebrow", [long, title, short]);
+}
+// A book's shortest name: its numeral letter, or its number ("Α", "5").
+function tinyLabel(label, n) {
+  return label?.match(/\s(\p{Script=Greek}{1,2})$/u)?.[1] ?? label?.match(/\s(\d+)$/)?.[1] ?? String(n);
 }
 
 // Book picker (hidden for a work in one piece): a menu of links to the other books, by
@@ -1575,8 +1606,7 @@ function fillBooks(books) {
     return li;
   }));
   const here = books.find((b) => b.n === BOOK);
-  setBoth(document.getElementById("book-label"), here ? longLabel(here.label, here.n) : "",
-          here ? shortLabel(here.label, here.n) : "");
+  setForms("book-label", here ? [longLabel(here.label, here.n), shortLabel(here.label, here.n), tinyLabel(here.label, here.n)] : []);
   bookPicker.hidden = books.length < 2;
 }
 // A dropdown: the button opens its menu (kept on screen, at the current item); a tap
@@ -2053,7 +2083,7 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 try {
   const meta = JSON.parse(localStorage.getItem(`meta:${TEXT}`));
   if (meta?.title) {
-    showTitle(meta.eyebrow ?? meta.title, meta.short ?? meta.title);
+    showTitle(meta.eyebrow ?? meta.title, meta.title, meta.short);
     fillBooks(meta.books ?? []);
     fillTitles(meta.collectionTexts);
   }
