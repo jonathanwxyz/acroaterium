@@ -564,6 +564,9 @@ function setFocus(i) {
 
   for (const k of [focusIdx - 1, focusIdx, focusIdx + 1]) verses[k]?.el.classList.remove("f-prev", "f-cur", "f-next");
   focusIdx = i;
+  // (Focused mode: what follows the text, the next chapter and a reading plan's next step,
+  // only once its last verse is reached.)
+  document.body.classList.toggle("at-last", i >= verses.length - 1);
   verses[i - 1]?.el.classList.add("f-prev");
   verses[i]?.el.classList.add("f-cur");
   verses[i + 1]?.el.classList.add("f-next");

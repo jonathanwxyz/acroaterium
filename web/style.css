@@ -1580,6 +1580,7 @@ body.focused .verse.bookmarked:not(.f-cur)::before { display: none; }
 .range-note { text-align: center; margin: 0 0 1rem; font: 13px system-ui, sans-serif; color: var(--muted); }
 .range-note a { color: var(--current-bar); text-decoration: none; }
 body.focused .range-note, body.focused .plan-note-top { display: none; }
+body.focused:not(.at-last) .chapter-nav, body.focused:not(.at-last) .plan-end { display: none; }
 
 /* While a book loads: grey lines in place of the verses, shown only if it takes a moment. */
 #verses.loading { animation: skel-in 250ms ease 180ms both; }
