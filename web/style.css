@@ -223,9 +223,10 @@
   --text: #2b2620;
   --muted: #8b8174;
   --rule: #e6dfd2;
-  --current-bg: #f3e6c4;
-  --current-bar: #b07a1e;
-  --pause-bg: #f7efdb;
+  /* The accent: rubric red, as the manuscripts' red ink (the verse being read, lit buttons, links). */
+  --current-bg: #f2dfd4;
+  --current-bar: #a83a2c;
+  --pause-bg: #f7ebe3;
   --player-bg: rgba(253, 246, 227, 0.94);
   --greek: "Gentium Book Plus", "GFS Didot", "Noto Serif", "Times New Roman", serif;
   --font-scale: 0.91;
@@ -242,9 +243,9 @@
     --text: #e9e2d6;
     --muted: #8f8577;
     --rule: #34302a;
-    --current-bg: #3d3220;
-    --current-bar: #d9a441;
-    --pause-bg: #2c271e;
+    --current-bg: #3f2723;
+    --current-bar: #e07a63;
+    --pause-bg: #2d2220;
     --player-bg: rgba(29, 26, 22, 0.94);
     color-scheme: dark;
   }
@@ -255,9 +256,9 @@
   --text: #e9e2d6;
   --muted: #8f8577;
   --rule: #34302a;
-  --current-bg: #3d3220;
-  --current-bar: #d9a441;
-  --pause-bg: #2c271e;
+  --current-bg: #3f2723;
+  --current-bar: #e07a63;
+  --pause-bg: #2d2220;
   --player-bg: rgba(29, 26, 22, 0.94);
 }
 
