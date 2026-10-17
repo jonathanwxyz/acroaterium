@@ -223,10 +223,10 @@
   --text: #2b2620;
   --muted: #8b8174;
   --rule: #e6dfd2;
-  /* The accent: rubric red, as the manuscripts' red ink (the verse being read, lit buttons, links). */
-  --current-bg: #f2dfd4;
-  --current-bar: #a83a2c;
-  --pause-bg: #f7ebe3;
+  /* The accent: a deep manuscript red (the verse being read, lit buttons, links). */
+  --current-bg: #eedccb;  /* (12% of the red in the paper) */
+  --current-bar: #7f1d1d;
+  --pause-bg: #f5e9d7;    /* (6%) */
   --player-bg: rgba(253, 246, 227, 0.94);
   --greek: "Gentium Book Plus", "GFS Didot", "Noto Serif", "Times New Roman", serif;
   --font-scale: 0.91;
@@ -243,9 +243,9 @@
     --text: #e9e2d6;
     --muted: #8f8577;
     --rule: #34302a;
-    --current-bg: #3f2723;
-    --current-bar: #e07a63;
-    --pause-bg: #2d2220;
+    --current-bg: #442c29;
+    --current-bar: #cf6e6e;  /* (the light theme's red, lightened to read on the dark paper) */
+    --pause-bg: #322420;
     --player-bg: rgba(29, 26, 22, 0.94);
     color-scheme: dark;
   }
@@ -256,9 +256,9 @@
   --text: #e9e2d6;
   --muted: #8f8577;
   --rule: #34302a;
-  --current-bg: #3f2723;
-  --current-bar: #e07a63;
-  --pause-bg: #2d2220;
+  --current-bg: #442c29;
+  --current-bar: #cf6e6e;
+  --pause-bg: #322420;
   --player-bg: rgba(29, 26, 22, 0.94);
 }
 
