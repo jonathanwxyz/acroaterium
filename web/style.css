@@ -571,7 +571,7 @@ main {
   max-width: calc(100vw / var(--ui-scale, 1) - 16px);  /* in the bar's (zoomed) units */
   /* (Wide enough for the three fonts and the four accents on one line, unless the screen,
      at a large interface size, isn't: then as wide as the screen, the fonts wrapping.) */
-  min-width: min(21rem, calc(100vw / var(--ui-scale, 1) - 16px));
+  min-width: min(22rem, calc(100vw / var(--ui-scale, 1) - 16px));
   /* (No taller than the room between the bars, scrolling within itself if it must: the
      bars' heights are on screen, so divided by the interface size, as the menu is in it.) */
   max-height: calc((100dvh - var(--topbar-h, 3.5rem) - var(--player-h, 7rem)) / var(--ui-scale, 1) - 1rem);
