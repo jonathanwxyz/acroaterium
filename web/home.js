@@ -218,6 +218,80 @@ function fillPanel() {
 
 document.addEventListener("downloadschange", showDownloads);
 
+// The whole library kept on this device, to read every text offline (local/manager.js; the
+// service worker reads it): offered under the heading, with its size; once asked for, the
+// progress, then "on this device", with a way to let it go. The manager is loaded only
+// where it's in use: asked for here, or in the app, which always keeps it (from its own
+// copy) and so shows nothing here but an update's progress.
+const localBox = document.getElementById("local-library");
+let localManager = null;
+function loadLocalManager() {
+  localManager ??= new Promise((ok, fail) => {
+    const s = document.createElement("script");
+    s.src = "local/manager.js";
+    s.onload = () => {
+      window.localLibrary.onChange(showLocal);
+      ok(window.localLibrary);
+    };
+    s.onerror = () => { localManager = null; fail(new Error("not loaded")); };
+    document.head.append(s);
+  });
+  return localManager;
+}
+function localAsked() {
+  if (window.nativeApp) return true;
+  try { return localStorage.getItem("localLibrary") === "1"; } catch { return false; }
+}
+let localSize = 0;  // the file's size, as the server gave it (offered with it)
+let localArmed = null;
+function showLocal(st) {
+  clearTimeout(localArmed);
+  localArmed = null;
+  const supported = "caches" in window && "serviceWorker" in navigator;
+  let state = st?.state ?? (localAsked() ? "checking" : "off");
+  if (state === "none" && !localAsked()) state = "off";  // (let go of: offered again)
+  localBox.replaceChildren();
+  const app = !!window.nativeApp;
+  if (state === "off" && supported) {
+    const keep = el("button", "ll-keep", tr("Keep the whole library on this device") + (localSize ? ` (${formatSize(localSize)})` : ""));
+    keep.title = tr("Read every text, with its notes and its words' parsing, offline: without downloading them one by one");
+    keep.addEventListener("click", () => {
+      keep.disabled = true;
+      loadLocalManager().then((m) => m.start()).catch(() => { keep.disabled = false; });
+    });
+    localBox.append(keep);
+  } else if (state === "running") {
+    localBox.append(tr("Library for offline use: {pct} of {size}",
+                       { pct: `${Math.floor((100 * st.have) / st.size)}%`, size: formatSize(st.size) }));
+  } else if (state === "ready" && !app) {
+    const remove = el("button", "ll-remove", tr("Remove"));
+    remove.addEventListener("click", () => {
+      if (!localArmed) {  // (a second tap, within a few seconds, to be sure)
+        remove.textContent = tr("Tap again to remove {size}", { size: formatSize(st.size) });
+        remove.classList.add("armed");
+        localArmed = setTimeout(() => showLocal(st), 4000);
+        return;
+      }
+      loadLocalManager().then((m) => m.remove());
+    });
+    localBox.append(tr("Whole library on this device ({size})", { size: formatSize(st.size) }), " · ", remove);
+  } else if (state === "failed") {
+    const again = el("button", "ll-remove", tr("Try again"));
+    again.addEventListener("click", () => loadLocalManager().then((m) => m.start()));
+    localBox.append(tr("The library couldn't be kept on this device: {error}", { error: st.error }), " · ", again);
+  }
+  localBox.hidden = !localBox.childNodes.length;
+}
+showLocal();
+if (localAsked()) {
+  loadLocalManager().then((m) => m.check()).catch(() => {});
+} else if ("caches" in window) {
+  // (Its size, for the offer: the server's, asked for cheaply.)
+  fetch("/api/compact", { method: "HEAD" })
+    .then((r) => { if (r.ok) { localSize = Number(r.headers.get("Content-Length")) || 0; showLocal(); } })
+    .catch(() => {});
+}
+
 // (The author is left out where the category is all one author's: its heading names him.)
 function workEntry(t, showAuthor = true) {
   const work = el("div", "work");

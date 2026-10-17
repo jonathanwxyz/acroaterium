@@ -11,13 +11,21 @@
 // kept in caches of their own that a new version leaves alone. A recording saved whole is
 // played from there, the byte ranges the player asks for read out of its pieces; any other
 // audio is left to the browser.
-const VERSION = "v72";
+//
+// The whole library kept on this device (local/manager.js keeps it, where it's asked for,
+// and always in the app): the compact library's file (data/library_compact.sqlite), in
+// pieces in a cache of its own. The API's books, word cards and notes are then made here,
+// from the file (local/library.js, reading only the pages it needs: local/sqlite.js),
+// before the network is asked; anything not made here, or failing, goes to the server.
+importScripts("local/sqlite.js", "local/library.js");
+const VERSION = "v73";
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 const FONTS = "fonts";  // kept across versions
 const OFFLINE = "offline";  // downloaded texts' books (and their records), kept across versions
 const AUDIO = "audio";  // downloaded recordings, in pieces, kept across versions
-const SHELL_FILES = ["./", "index.html", "home.js", "read.html", "app.js", "i18n.js", "theme.js", "shared.js", "offline.js", "native.js", "style.css",
+const LOCAL = "local-library";  // the whole library kept on this device (local/manager.js), kept across versions
+const SHELL_FILES = ["./", "index.html", "home.js", "read.html", "app.js", "i18n.js", "theme.js", "shared.js", "offline.js", "native.js", "style.css", "local/manager.js",
                      "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png", "icons/icon-32.png"];
 
 self.addEventListener("install", (e) => {
@@ -25,7 +33,7 @@ self.addEventListener("install", (e) => {
 });
 
 self.addEventListener("activate", (e) => {
-  const keep = new Set([SHELL, DATA, FONTS, OFFLINE, AUDIO]);
+  const keep = new Set([SHELL, DATA, FONTS, OFFLINE, AUDIO, LOCAL]);
   e.waitUntil(caches.keys()
     .then((names) => Promise.all(names.filter((n) => !keep.has(n)).map((n) => caches.delete(n))))
     .then(() => self.clients.claim()));
@@ -118,6 +126,56 @@ async function savedAudio(request) {
   return new Response(body, { status: partial ? 206 : 200, headers });
 }
 
+// The whole library on this device, as local/manager.js keeps it: its record at
+// /__local/meta ({version, size, piece, pieces, done}), the file's pieces at
+// /__local/<version>/<k>, and the sizes of the server's recordings at /__local/sizes.
+// Opened once (a page says when it changes), and read a block at a time from the pieces.
+let local = null;  // Promise of {version, api}, or of null: none kept
+function localLibrary() {
+  local ??= (async () => {
+    if (!(await caches.has(LOCAL))) return null;
+    const cache = await caches.open(LOCAL);
+    const meta = await (await cache.match("/__local/meta"))?.json();
+    if (!meta?.done) return null;
+    const pieces = await Promise.all(Array.from({ length: meta.pieces },
+      async (_, k) => (await cache.match(`/__local/${meta.version}/${k}`))?.blob()));
+    if (pieces.some((b) => !b)) return null;
+    const readAt = async (at, length) => {  // (never across pieces: blocks divide a piece)
+      const k = Math.floor(at / meta.piece), from = at - k * meta.piece;
+      return new Uint8Array(await pieces[k].slice(from, from + length).arrayBuffer());
+    };
+    // (Not known yet, as when the app has just put its own copy here offline: which
+    // recordings the server has decides whether a book has audio, so then the server is
+    // asked first.)
+    const sizes = await (await cache.match("/__local/sizes"))?.json();
+    const file = await SqliteFile.open(readAt, meta.size);
+    return { version: meta.version, sizesKnown: !!sizes, api: new LocalApi(new CompactLibrary(file), sizes) };
+  })().catch(() => null);
+  return local;
+}
+self.addEventListener("message", (e) => {
+  if (e.data?.type === "local-library") local = null;  // (kept anew, or removed)
+});
+
+// The API: made here from the library on this device where it can be, else as before.
+async function api(request) {
+  const path = decodeURIComponent(new URL(request.url).pathname);
+  const local = async () => {
+    try {
+      const lib = await localLibrary();
+      const json = lib && await lib.api.route(path);
+      if (json != null) return Response.json(json, { headers: { "X-Local": lib.version } });
+    } catch {}
+    return null;
+  };
+  if (!LocalApi.handles(path)) return networkFirst(request, DATA);
+  const lib = await localLibrary();
+  if (lib && !lib.sizesKnown) {
+    try { return await networkFirst(request, DATA); } catch { return (await local()) ?? Response.error(); }
+  }
+  return (await local()) ?? networkFirst(request, DATA);
+}
+
 async function audio(request) {
   try {
     const saved = await savedAudio(request);
@@ -130,8 +188,10 @@ self.addEventListener("fetch", (e) => {
   const { request } = e;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== location.origin) {
-    return;  // the browser handles it
+  if (url.origin !== location.origin || url.pathname.startsWith("/__app/") || url.pathname.startsWith("/api/compact")) {
+    // (The browser handles it: another site; the app's own copy of the library; the
+    // library's file and its recordings' sizes, fetched for local/manager.js.)
+    return;
   } else if (url.pathname.startsWith("/fonts/")) {
     e.respondWith(cacheFirst(request));
   } else if (url.pathname.startsWith("/audio/")) {
@@ -142,7 +202,7 @@ self.addEventListener("fetch", (e) => {
     // The reader is one page whatever the text and book (?text=…&book=N): one cache key.
     e.respondWith(cachedThenRevalidated(e, SHELL, new URL("read.html", self.registration.scope).href));
   } else if (url.pathname.startsWith("/api/")) {
-    e.respondWith(networkFirst(request, DATA));
+    e.respondWith(api(request));
   } else {
     e.respondWith(cachedThenRevalidated(e, SHELL));
   }

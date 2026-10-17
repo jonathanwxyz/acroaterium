@@ -1416,6 +1416,21 @@ body.library { padding-top: env(safe-area-inset-top); }
 }
 @media (hover: hover) { #downloads .dl-open:hover { border-color: var(--current-bar); } }
 #downloads .dl-note { margin-top: 0.5rem; }
+/* The whole library on this device (home.js): offered, then its progress, then kept. */
+#local-library { text-align: center; color: var(--muted); font: 12px system-ui, sans-serif; margin: -0.8rem 0 1.5rem; }
+#local-library[hidden] { display: none; }
+#local-library .ll-keep {
+  font: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+}
+#local-library .ll-remove { font: inherit; color: var(--muted); background: none; border: 0; padding: 0.2rem; text-decoration: underline; cursor: pointer; }
+#local-library .ll-remove.armed { color: #c0392b; }
+@media (hover: hover) { #local-library .ll-keep:hover { border-color: var(--current-bar); color: var(--text); } }
 /* The downloads panel: everything saved or on its way, each with its own control, and all
    of them removed at once. */
 #dl-panel {

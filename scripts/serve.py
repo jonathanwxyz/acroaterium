@@ -48,12 +48,14 @@ Routes:
   /api/plans/preview?target=…&days=…  JSON: the days such a plan would have
   /api/compact         data/library_compact.sqlite (scripts/compact_library.py), the whole
                        library in one file, for an app to keep (with Range support; its
-                       version, size and time, in X-Version and ETag; HEAD to ask only that)
+                       version, the start of its SHA-256, in X-Version and ETag; HEAD to ask
+                       only that)
   /api/compact/sizes   JSON: {file: bytes} of the recordings there are, as the compact
                        library can't know them (the books' audio and downloads depend on them)
 """
 import argparse
 import datetime
+import hashlib
 import xml.etree.ElementTree as ElementTree
 import json
 import mimetypes
@@ -140,6 +142,24 @@ def recording_sizes():
     files = [f for (f,) in con.execute("SELECT DISTINCT file FROM recordings")]
     con.close()
     return {f: (RECORDINGS / f).stat().st_size for f in files if (RECORDINGS / f).is_file()}
+
+
+_compact_version = {}  # (size, mtime) -> the compact library's version
+
+
+def compact_version():
+    """The compact library's version: the start of its SHA-256 (the same file, built anywhere
+    or bundled in the app, has the same version: mobile/android/app/build.gradle)."""
+    st = LIBRARY_COMPACT.stat()
+    key = (st.st_size, st.st_mtime_ns)
+    if key not in _compact_version:
+        digest = hashlib.sha256()
+        with LIBRARY_COMPACT.open("rb") as f:
+            while chunk := f.read(1 << 20):
+                digest.update(chunk)
+        _compact_version.clear()
+        _compact_version[key] = digest.hexdigest()[:16]
+    return _compact_version[key]
 
 
 def library_json():
@@ -1193,14 +1213,13 @@ class Handler(SimpleHTTPRequestHandler):
     def send_compact(self, head=False):
         if not LIBRARY_COMPACT.is_file():
             return self.send_error(HTTPStatus.NOT_FOUND)
-        st = LIBRARY_COMPACT.stat()
-        version = f"{st.st_size}-{int(st.st_mtime)}"
+        version = compact_version()
         extra = {"X-Version": version, "ETag": f'"{version}"', "Cache-Control": "no-cache"}
         if head:
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/vnd.sqlite3")
             self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Content-Length", str(st.st_size))
+            self.send_header("Content-Length", str(LIBRARY_COMPACT.stat().st_size))
             for k, v in extra.items():
                 self.send_header(k, v)
             return self.end_headers()

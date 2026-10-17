@@ -109,8 +109,11 @@ const offline = (() => {
     job.have = saved(info, keys);
     job.size = info.size;
     tell(job.key, { state: "running", have: job.have, size: job.size });
-    for (const page of info.pages) {  // (small: fetched again each time, so they're fresh)
-      await books.put(abs(page), await fetchOk(page, { signal, cache: "no-cache" }));
+    // (Small: fetched again each time, so they're fresh. Not needed where the whole
+    // library is on this device: local/manager.js.)
+    const local = await (await caches.match("/__local/meta", { cacheName: "local-library" }))?.json().catch(() => null);
+    if (!local?.done) {
+      for (const page of info.pages) await books.put(abs(page), await fetchOk(page, { signal, cache: "no-cache" }));
     }
     for (const a of info.audio) {
       const url = abs(a.url);

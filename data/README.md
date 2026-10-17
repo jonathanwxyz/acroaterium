@@ -32,7 +32,11 @@ kind in one compressed chunk, and what repeats from word to word (lemmas, morpho
 stored once. `scripts/compact_library.py` writes it from the full databases and checks it
 (it restores them from it and compares every row, and the API's JSON for a sample);
 `scripts/compact_read.py` reads it, or writes the full databases back from it. Its
-docstring describes the format. It stays out of git.
+docstring describes the format. It stays out of git. The server hands it out at
+`/api/compact` (its version, the start of its SHA-256, in `X-Version`); the reader keeps
+it, where asked, as the whole library on the device (`web/local/`: the service worker
+then makes the API's books, cards and notes from it), and the Android app comes with it
+(`mobile/README.md`).
 
 ## Rebuilding
 

@@ -357,6 +357,15 @@ Object.assign(I18N.el, {
   "word fragment": "τμήμα λέξης",
   "coordinated": "συμπλεκόμενο",
   "in apposition": "σε παράθεση",
+
+  // (the whole library kept on this device: local/manager.js, home.js)
+  "Keep the whole library on this device": "Διατήρηση όλης της βιβλιοθήκης σε αυτή τη συσκευή",
+  "Read every text, with its notes and its words' parsing, offline: without downloading them one by one": "Διαβάστε κάθε κείμενο, με τις σημειώσεις του και την ανάλυση των λέξεών του, χωρίς σύνδεση: χωρίς να τα κατεβάζετε ένα ένα",
+  "Library for offline use: {pct} of {size}": "Βιβλιοθήκη για χρήση χωρίς σύνδεση: {pct} από {size}",
+  "Whole library on this device ({size})": "Όλη η βιβλιοθήκη σε αυτή τη συσκευή ({size})",
+  "Remove": "Αφαίρεση",
+  "The library couldn't be kept on this device: {error}": "Η βιβλιοθήκη δεν αποθηκεύτηκε σε αυτή τη συσκευή: {error}",
+  "Try again": "Δοκιμάστε ξανά",
 });
 Object.assign(I18N.grc, {
   "Reader": "Ἀναγνώστης",
@@ -661,6 +670,15 @@ Object.assign(I18N.grc, {
   "word fragment": "μέρος λέξεως",
   "coordinated": "συμπεπλεγμένον",
   "in apposition": "ἐν παραθέσει",
+
+  // (the whole library kept on this device: local/manager.js, home.js)
+  "Keep the whole library on this device": "Φύλαττε πᾶσαν τὴν βιβλιοθήκην ἐν τῇδε τῇ συσκευῇ",
+  "Read every text, with its notes and its words' parsing, offline: without downloading them one by one": "Ἀναγίγνωσκε πᾶν κείμενον, σὺν τοῖς σχολίοις καὶ τῇ τῶν λέξεων ἀναλύσει, ἄνευ συνδέσεως· οὐ καθ᾿ ἓν ἕκαστον ἀποθέμενος",
+  "Library for offline use: {pct} of {size}": "Βιβλιοθήκη ἄνευ συνδέσεως: {pct} ἐκ {size}",
+  "Whole library on this device ({size})": "Πᾶσα ἡ βιβλιοθήκη ἐν τῇδε τῇ συσκευῇ ({size})",
+  "Remove": "Ἄφελε",
+  "The library couldn't be kept on this device: {error}": "Ἡ βιβλιοθήκη οὐκ ἐφυλάχθη ἐν τῇδε τῇ συσκευῇ: {error}",
+  "Try again": "Πείρασον αὖθις",
 });
 
 translatePage();
