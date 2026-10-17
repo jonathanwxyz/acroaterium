@@ -1012,18 +1012,24 @@ body.playing .play .icon-pause { display: block; }
 #mute .vol-x, body.muted #mute .vol-waves { display: none; }
 body.muted #mute .vol-x { display: inline; }
 
+/* The settings (focused, pause on hover, paraphrase, …): a row of pills, lit when on; on a
+   narrow screen the row scrolls sideways rather than wrapping. */
 .controls {
   max-width: 56rem;
   margin: 0.45rem auto 0;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-wrap: nowrap;
+  justify-content: safe center;
   align-items: center;
-  gap: 0.35rem 0.9rem;
+  gap: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 1px;  /* (room for a pill's focus ring) */
   font-family: system-ui, sans-serif;
   font-size: 13px;
   color: var(--muted);
 }
+.controls::-webkit-scrollbar { display: none; }
 
 /* Narrow screens: volume, the play buttons (centred) and the line on one row, the timeline below. */
 @media (max-width: 600px) {
@@ -1050,7 +1056,27 @@ body.muted #mute .vol-x { display: inline; }
 @media (hover: hover) { #position:hover { border-color: var(--rule); } }
 #position:focus { outline: none; border-color: var(--current-bar); color: var(--text); background: var(--bg); }
 #position.invalid { border-color: #c0392b; }
-.toggle { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+.toggle {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 1.9rem;
+  padding: 0 0.8rem;
+  white-space: nowrap;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+.toggle:has(input:checked) { color: var(--text); background: var(--current-bg); border-color: var(--current-bar); }
+/* (The checkbox itself is kept, unseen: the keyboard and screen readers use it.) */
+.toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.toggle:has(input:focus-visible) { outline: 2px solid var(--current-bar); outline-offset: 1px; }
+@media (hover: hover) { .toggle:hover { border-color: var(--current-bar); } }
+@media (hover: none) { .toggle:active { opacity: 0.55; } }
 
 /* Focused mode: only the current verse (large, centred) and its neighbours, in exactly
    the space between the bars: the page never scrolls. The current verse is always shown
