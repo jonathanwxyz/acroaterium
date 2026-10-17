@@ -10,6 +10,14 @@ server serves it (`scripts/serve.py`), and gives it what a browser on a phone ca
   are kept as files the player plays, fetched in pieces as in the browser. Books and word
   cards stay in the service worker's caches, as on the web.
 
+- **The whole library on the device**, from the first launch and offline: the build
+  bundles `data/library_compact.sqlite` (the compact library, `scripts/compact_library.py`)
+  where it's there, and `BundledLibrary` serves it to the pages at `/__app/library.json`
+  and `/__app/library-compact.sqlite`. `web/local/manager.js` keeps it in the browser's
+  caches, as on a website where it's asked for, and the service worker makes the books,
+  word cards and notes from it. When the server's copy is another version (its
+  `/api/compact`), that one is fetched in its place.
+
 The web pages are the same ones the browser gets. `web/native.js` does the switching: in
 the app, it stands in for the `<audio>` element and `navigator.mediaSession` (driving
 `ReaderAudioPlugin`), and gives `offline.js` the app's file store. In a browser, it does
@@ -39,6 +47,12 @@ npm run install-apk                      # adb install onto a connected phone or
 ```
 
 `READER_URL=… npm run build` overrides `server.url`.
+
+The build copies `../data/library_compact.sqlite` into the APK, with its version
+(`app/build.gradle`, task `bundleLibrary`; into `app/build/`, out of git), so run
+`scripts/compact_library.py` first to bundle the current library. Without the file the app
+builds as before (about 8 MB rather than 36), and keeps the library from the server on
+first launch. Your library is in the APK: share it only as you would the library itself.
 
 To test against the server on this machine from the emulator, run `scripts/serve.py`,
 then `adb reverse tcp:8000 tcp:8000`, and use `http://localhost:8000` as the server. It

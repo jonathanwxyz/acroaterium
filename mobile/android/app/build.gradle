@@ -46,6 +46,40 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
+// The compact library (data/library_compact.sqlite, built by scripts/compact_library.py),
+// bundled with the app where it's been built: the reader keeps it as the library on the
+// device from the first launch, offline too (web/local/manager.js asks the app for it at
+// /__app/…, which MainActivity serves). Copied in at build time, out of git, with its
+// version (the start of its SHA-256, as the server's /api/compact gives it). Without it,
+// the app builds as before and the library comes from the server.
+def compactLibrary = rootProject.file("../../data/library_compact.sqlite")
+def libraryAssets = layout.buildDirectory.dir("generated/library-assets").get().asFile
+android.sourceSets.main.assets.srcDir(libraryAssets)
+def bundleLibrary = tasks.register("bundleLibrary") {
+    outputs.dir(libraryAssets)
+    outputs.upToDateWhen { false }
+    doLast {
+        def out = new File(libraryAssets, "library")
+        project.delete(out)
+        out.mkdirs()
+        if (!compactLibrary.exists()) {
+            logger.lifecycle("No data/library_compact.sqlite: the app is built without the library")
+            return
+        }
+        def md = java.security.MessageDigest.getInstance("SHA-256")
+        compactLibrary.withInputStream { input ->
+            byte[] buf = new byte[1 << 20]
+            int n
+            while ((n = input.read(buf)) > 0) md.update(buf, 0, n)
+        }
+        def version = md.digest().encodeHex().toString().substring(0, 16)
+        project.copy { from compactLibrary; into out; rename { "library-compact.sqlite" } }
+        new File(out, "library.json").text = groovy.json.JsonOutput.toJson([version: version, size: compactLibrary.length()])
+        logger.lifecycle("Bundled the compact library, version ${version}")
+    }
+}
+preBuild.dependsOn(bundleLibrary)
+
 try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
