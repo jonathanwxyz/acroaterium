@@ -1584,7 +1584,8 @@ body.library { padding-top: env(safe-area-inset-top); }
 }
 @media (hover: hover) { #downloads .dl-open:hover { border-color: var(--current-bar); } }
 #downloads .dl-note { margin-top: 0.5rem; }
-/* The whole library on this device (home.js): offered, then its progress, then kept. */
+/* The texts of the whole library on this device (home.js): offered, then their progress
+   (once kept, they're in the downloads panel). */
 #local-library { text-align: center; color: var(--muted); font: 12px system-ui, sans-serif; margin: -0.8rem 0 1.5rem; }
 #local-library[hidden] { display: none; }
 #local-library .ll-keep {
@@ -1597,7 +1598,6 @@ body.library { padding-top: env(safe-area-inset-top); }
   cursor: pointer;
 }
 #local-library .ll-remove { font: inherit; color: var(--muted); background: none; border: 0; padding: 0.2rem; text-decoration: underline; cursor: pointer; }
-#local-library .ll-remove.armed { color: #c0392b; }
 @media (hover: hover) { #local-library .ll-keep:hover { border-color: var(--current-bar); color: var(--text); } }
 /* The downloads panel: everything saved or on its way, each with its own control, and all
    of them removed at once. */
@@ -1638,6 +1638,16 @@ body.library { padding-top: env(safe-area-inset-top); }
 .dl-foot { flex-wrap: wrap; }
 .dl-foot .remove-all { color: #c0392b; border-color: color-mix(in srgb, #c0392b 50%, var(--rule)); }
 .dl-foot .remove-all.armed { color: #fff; background: #c0392b; border-color: #c0392b; }
+/* The texts, then the recordings, each under its own small heading. */
+.dl-section { padding: 0.55rem 0.9rem 0.15rem; color: var(--muted); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+.dl-section + .dl-row { border-top: 0; }
+.dl-name-box { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dl-sub { color: var(--muted); font-size: 12px; }
+.dl-row.armed { flex-wrap: wrap; }  /* (the confirmation on a line of its own, where there's no room) */
+.dl-row.armed .dl-name-box { flex-basis: 12rem; }
+.dl-row.armed .icon-btn.remove { margin-left: auto; }
+.dl-foot:empty { display: none; }
+.dl-row .icon-btn.remove.armed { width: auto; padding: 0 0.7rem; border-radius: 999px; color: #fff; background: #c0392b; border-color: #c0392b; font: 12px system-ui, sans-serif; white-space: nowrap; }
 .dl-empty { padding: 1.2rem 0.9rem; color: var(--muted); text-align: center; }
 
 /* Bookmarks, at the top of the library. */

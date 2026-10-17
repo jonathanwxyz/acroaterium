@@ -365,12 +365,18 @@ Object.assign(I18N.el, {
   "in apposition": "σε παράθεση",
 
   // (the whole library kept on this device: local/manager.js, home.js)
-  "Keep the whole library on this device": "Διατήρηση όλης της βιβλιοθήκης σε αυτή τη συσκευή",
-  "Read every text, with its notes and its words' parsing, offline: without downloading them one by one": "Διαβάστε κάθε κείμενο, με τις σημειώσεις του και την ανάλυση των λέξεών του, χωρίς σύνδεση: χωρίς να τα κατεβάζετε ένα ένα",
-  "Library for offline use: {pct} of {size}": "Βιβλιοθήκη για χρήση χωρίς σύνδεση: {pct} από {size}",
-  "Whole library on this device ({size})": "Όλη η βιβλιοθήκη σε αυτή τη συσκευή ({size})",
-  "Remove": "Αφαίρεση",
-  "The library couldn't be kept on this device: {error}": "Η βιβλιοθήκη δεν αποθηκεύτηκε σε αυτή τη συσκευή: {error}",
+  "Keep every text offline ({size}, no recordings)": "Όλα τα κείμενα χωρίς σύνδεση ({size}, χωρίς ηχογραφήσεις)",
+  "Keep every text offline (no recordings)": "Όλα τα κείμενα χωρίς σύνδεση (χωρίς ηχογραφήσεις)",
+  "Read every text, with its notes and its words' parsing, offline: the recordings are downloaded separately": "Διαβάστε κάθε κείμενο, με τις σημειώσεις του και την ανάλυση των λέξεών του, χωρίς σύνδεση· οι ηχογραφήσεις κατεβαίνουν χωριστά",
+  "Keeping the texts on this device: {pct} of {size}": "Αποθήκευση των κειμένων σε αυτή τη συσκευή: {pct} από {size}",
+  "The texts couldn't be kept on this device: {error}": "Τα κείμενα δεν αποθηκεύτηκαν σε αυτή τη συσκευή: {error}",
+  "Texts": "Κείμενα",
+  "Recordings": "Ηχογραφήσεις",
+  "Every text in the library": "Όλα τα κείμενα της βιβλιοθήκης",
+  "With their notes and parsing; no recordings": "Με τις σημειώσεις και την ανάλυσή τους· χωρίς ηχογραφήσεις",
+  "With their notes and parsing; they come with the app": "Με τις σημειώσεις και την ανάλυσή τους· συνοδεύουν την εφαρμογή",
+  "Remove the texts from this device": "Αφαίρεση των κειμένων από αυτή τη συσκευή",
+  "Remove all recordings": "Αφαίρεση όλων των ηχογραφήσεων",
   "Try again": "Δοκιμάστε ξανά",
 });
 Object.assign(I18N.grc, {
@@ -683,12 +689,18 @@ Object.assign(I18N.grc, {
   "in apposition": "ἐν παραθέσει",
 
   // (the whole library kept on this device: local/manager.js, home.js)
-  "Keep the whole library on this device": "Φύλαττε πᾶσαν τὴν βιβλιοθήκην ἐν τῇδε τῇ συσκευῇ",
-  "Read every text, with its notes and its words' parsing, offline: without downloading them one by one": "Ἀναγίγνωσκε πᾶν κείμενον, σὺν τοῖς σχολίοις καὶ τῇ τῶν λέξεων ἀναλύσει, ἄνευ συνδέσεως· οὐ καθ᾿ ἓν ἕκαστον ἀποθέμενος",
-  "Library for offline use: {pct} of {size}": "Βιβλιοθήκη ἄνευ συνδέσεως: {pct} ἐκ {size}",
-  "Whole library on this device ({size})": "Πᾶσα ἡ βιβλιοθήκη ἐν τῇδε τῇ συσκευῇ ({size})",
-  "Remove": "Ἄφελε",
-  "The library couldn't be kept on this device: {error}": "Ἡ βιβλιοθήκη οὐκ ἐφυλάχθη ἐν τῇδε τῇ συσκευῇ: {error}",
+  "Keep every text offline ({size}, no recordings)": "Φύλαττε πάντα τὰ κείμενα ἄνευ συνδέσεως ({size}, ἄνευ ἀκροαμάτων)",
+  "Keep every text offline (no recordings)": "Φύλαττε πάντα τὰ κείμενα ἄνευ συνδέσεως (ἄνευ ἀκροαμάτων)",
+  "Read every text, with its notes and its words' parsing, offline: the recordings are downloaded separately": "Ἀναγίγνωσκε πᾶν κείμενον, σὺν τοῖς σχολίοις καὶ τῇ τῶν λέξεων ἀναλύσει, ἄνευ συνδέσεως· τὰ δ᾿ ἀκροάματα χωρὶς ἀποτίθεται",
+  "Keeping the texts on this device: {pct} of {size}": "Φυλάττεται τὰ κείμενα ἐν τῇδε τῇ συσκευῇ: {pct} ἐκ {size}",
+  "The texts couldn't be kept on this device: {error}": "Τὰ κείμενα οὐκ ἐφυλάχθη ἐν τῇδε τῇ συσκευῇ: {error}",
+  "Texts": "Κείμενα",
+  "Recordings": "Ἀκροάματα",
+  "Every text in the library": "Πάντα τὰ τῆς βιβλιοθήκης κείμενα",
+  "With their notes and parsing; no recordings": "Σὺν τοῖς σχολίοις καὶ τῇ ἀναλύσει· ἄνευ ἀκροαμάτων",
+  "With their notes and parsing; they come with the app": "Σὺν τοῖς σχολίοις καὶ τῇ ἀναλύσει· σὺν τῇ ἐφαρμογῇ δίδοται",
+  "Remove the texts from this device": "Ἄφελε τὰ κείμενα ἐκ τῆσδε τῆς συσκευῆς",
+  "Remove all recordings": "Ἄφελε πάντα τὰ ἀκροάματα",
   "Try again": "Πείρασον αὖθις",
 });
 
