@@ -46,6 +46,11 @@ Routes:
                        "category:<name>"), POST /api/plans/<id> {day, done} to mark a
                        day read (or not), DELETE /api/plans/<id> to end it. Kept in data/plans.json
   /api/plans/preview?target=…&days=…  JSON: the days such a plan would have
+  /api/compact         data/library_compact.sqlite (scripts/compact_library.py), the whole
+                       library in one file, for an app to keep (with Range support; its
+                       version, size and time, in X-Version and ETag; HEAD to ask only that)
+  /api/compact/sizes   JSON: {file: bytes} of the recordings there are, as the compact
+                       library can't know them (the books' audio and downloads depend on them)
 """
 import argparse
 import datetime
@@ -70,6 +75,7 @@ WEB = ROOT / "web"
 RECORDINGS = ROOT / "recordings"
 LIBRARY = ROOT / "data" / "library.sqlite"
 LIBRARY_AUDIO = ROOT / "data" / "library_audio.sqlite"
+LIBRARY_COMPACT = ROOT / "data" / "library_compact.sqlite"
 BOOKMARKS = ROOT / "data" / "bookmarks.json"
 PLANS = ROOT / "data" / "plans.json"
 
@@ -124,6 +130,16 @@ def collection_of(con, column="collection"):
     """SQL for a column of texts (collection, short), or NULL in a library built before it existed."""
     cols = {row[1] for row in con.execute("PRAGMA table_info(texts)")}
     return column if column in cols else "NULL"
+
+
+def recording_sizes():
+    """{file under recordings/: bytes} of the aligned recordings there are."""
+    if not LIBRARY_AUDIO.exists():
+        return {}
+    con = sqlite3.connect(LIBRARY_AUDIO)
+    files = [f for (f,) in con.execute("SELECT DISTINCT file FROM recordings")]
+    con.close()
+    return {f: (RECORDINGS / f).stat().st_size for f in files if (RECORDINGS / f).is_file()}
 
 
 def library_json():
@@ -1169,8 +1185,33 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB), **kwargs)
 
+    def do_HEAD(self):
+        if self.path == "/api/compact":
+            return self.send_compact(head=True)
+        super().do_HEAD()
+
+    def send_compact(self, head=False):
+        if not LIBRARY_COMPACT.is_file():
+            return self.send_error(HTTPStatus.NOT_FOUND)
+        st = LIBRARY_COMPACT.stat()
+        version = f"{st.st_size}-{int(st.st_mtime)}"
+        extra = {"X-Version": version, "ETag": f'"{version}"', "Cache-Control": "no-cache"}
+        if head:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/vnd.sqlite3")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(st.st_size))
+            for k, v in extra.items():
+                self.send_header(k, v)
+            return self.end_headers()
+        self.send_audio(LIBRARY_COMPACT, extra)
+
     def do_GET(self):
-        if self.path == "/api/library":
+        if self.path == "/api/compact":
+            self.send_compact()
+        elif self.path == "/api/compact/sizes":
+            self.send_json(recording_sizes())
+        elif self.path == "/api/library":
             self.send_json(library_json())
         elif m := re.fullmatch(r"/api/text/([\w-]+)/(\d+)", self.path):
             self.send_json(text_json(m[1], int(m[2])))
@@ -1243,7 +1284,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_audio(self, path):
+    def send_audio(self, path, headers=None):
         """Serve a recording, honouring a single byte Range (browsers seek with these)."""
         if not path.is_file():
             return self.send_error(HTTPStatus.NOT_FOUND)
@@ -1267,6 +1308,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(end - start + 1))
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         with path.open("rb") as f:
             f.seek(start)
