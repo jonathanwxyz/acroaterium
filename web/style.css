@@ -722,6 +722,8 @@ main {
   #size-menu .size-row, #size-menu .font-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; }
   #size-menu .size-name { min-width: 0; font-size: 12.5px; }
   #size-menu .font-row .font-choices { max-width: 100%; }
+  /* (The fonts two by two, so they don't set the menu's width.) */
+  #size-menu .typefaces { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 /* The rows share the menu's two columns (subgrid): the labels', as wide as the longest in the
    language in use ("Γραμματοσειρά" is longer than "Font"), and the choices'. */
