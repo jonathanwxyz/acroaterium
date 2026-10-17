@@ -572,7 +572,21 @@ main {
   color: var(--muted);
   white-space: nowrap;
   max-width: calc(100vw / var(--ui-scale, 1) - 16px);  /* in the bar's (zoomed) units */
-  min-width: 17rem;  /* (wide enough for the four accents on one line) */
+  /* (Wide enough for the three fonts and the four accents on one line, unless the screen,
+     at a large interface size, isn't: then as wide as the screen, the fonts wrapping.) */
+  min-width: min(21rem, calc(100vw / var(--ui-scale, 1) - 16px));
+  /* (No taller than the room between the bars, scrolling within itself if it must: the
+     bars' heights are on screen, so divided by the interface size, as the menu is in it.) */
+  max-height: calc((100dvh - var(--topbar-h, 3.5rem) - var(--player-h, 7rem)) / var(--ui-scale, 1) - 1rem);
+  overflow-y: auto;
+  container: sizemenu / inline-size;
+}
+/* A narrow menu (a large interface size on a phone): each label above its choices, and
+   the choices wrapping rather than running off its edge. */
+@container sizemenu (max-width: 17rem) {
+  #size-menu .font-row { flex-wrap: wrap; }
+  #size-menu .font-row .size-name { width: 100%; }
+  #size-menu .theme-row .font-choices, #size-menu .accent-row .font-choices { flex-wrap: wrap; }
 }
 #size-menu[hidden] { display: none; }
 .size-row { display: grid; grid-template-columns: 5.2rem 2rem 3.2rem 2rem; align-items: center; }
@@ -971,6 +985,7 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
   transform: translateZ(0);
 }
 #player audio { display: none; }
+#player { container: player / inline-size; }  /* (its layout below, when it's narrow) */
 
 /* Media bar: volume, previous / play-pause / next, line box and timeline. */
 .playback { flex: none; display: inline-flex; align-items: center; gap: 0.45rem; }
@@ -1137,6 +1152,19 @@ body.muted #mute .vol-x { display: inline; }
   .end-side { justify-self: end; min-width: 0; max-width: 100%; }
   .transport #position { width: auto; flex: 0 1 6.5rem; min-width: 2.6rem; }
   .timeline { grid-column: 1 / -1; min-width: 0; }
+}
+/* Too narrow even for that (a large interface size on a phone): the play buttons have the
+   first row to themselves, volume and speed and the end of the chapter and the line below
+   them, rather than running into one another. */
+@container player (max-width: 18.5rem) {
+  .transport {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "play play" "side end" "time time";
+  }
+  .playback { grid-area: play; justify-self: center; }
+  .side { grid-area: side; }
+  .end-side { grid-area: end; }
+  .timeline { grid-area: time; }
 }
 
 #position {
