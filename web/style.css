@@ -243,9 +243,10 @@
     --text: #e9e2d6;
     --muted: #8f8577;
     --rule: #34302a;
-    --current-bg: #442c29;
-    --current-bar: #cf6e6e;  /* (the light theme's red, lightened to read on the dark paper) */
-    --pause-bg: #322420;
+    --current-bg: #412821;
+    --current-bar: #bf5a4a;  /* (the light theme's red, lightened to read on the dark paper, and
+                                turned a little toward brick: a red lightened alone goes pink) */
+    --pause-bg: #30221c;
     --player-bg: rgba(29, 26, 22, 0.94);
     color-scheme: dark;
   }
@@ -256,9 +257,9 @@
   --text: #e9e2d6;
   --muted: #8f8577;
   --rule: #34302a;
-  --current-bg: #442c29;
-  --current-bar: #cf6e6e;
-  --pause-bg: #322420;
+  --current-bg: #412821;
+  --current-bar: #bf5a4a;
+  --pause-bg: #30221c;
   --player-bg: rgba(29, 26, 22, 0.94);
 }
 
