@@ -11,10 +11,11 @@ declares them, and a browser downloads only the parts a page uses.
 | EB Garamond (The EB Garamond Project Authors) | `eb-garamond-*` | [OFL-ebgaramond.txt](OFL-ebgaramond.txt) |
 | GFS Didot (Greek Font Society) | `gfs-didot-*` | [OFL-gfsdidot.txt](OFL-gfsdidot.txt) |
 | GFS Neohellenic (Greek Font Society) | `gfs-neohellenic-*` | [OFL-gfsneohellenic.txt](OFL-gfsneohellenic.txt) |
+| GFS Porson (Greek Font Society) | `gfs-porson-*` | [OFL-gfsporson.txt](OFL-gfsporson.txt) |
 
-GFS Didot's bold and italic aren't on Google Fonts: they're the Greek Font Society's own
-(`GFSDidotBold.otf`, `GFSDidotItalic.otf`, from CTAN's `fonts/greek/gfs/gfsdidot`), split the
-same way with fontTools' `pyftsubset --layout-features='*' --flavor=woff2`.
+GFS Didot's bold and italic, and GFS Porson, aren't on Google Fonts: they're the Greek Font
+Society's own (`GFSDidotBold.otf`, `GFSDidotItalic.otf`, `GFSPorson.otf`, from CTAN's
+`fonts/greek/gfs/gfsdidot` and `gfsporson`), split the same way with fontTools' `pyftsubset --layout-features='*' --flavor=woff2`.
 
-All four are under the SIL Open Font License 1.1, which allows them to be bundled and
+All five are under the SIL Open Font License 1.1, which allows them to be bundled and
 redistributed with software.

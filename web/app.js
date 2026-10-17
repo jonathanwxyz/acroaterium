@@ -1540,7 +1540,7 @@ showVolume();
 
 // Buttons don't keep keyboard focus after a click, so Space stays play/pause (rather
 // than pressing the last-clicked button again on top of it).
-for (const b of document.querySelectorAll(".tbtn, #focus-controls button, #to-start, #theme, #size-button, .size-step, .font-choice, .toggle, #scholia-close, .sch-btn")) {
+for (const b of document.querySelectorAll(".tbtn, #focus-controls button, #to-start, #theme, #size-button, .size-step, .toggle, #scholia-close, .sch-btn")) {
   b.addEventListener("mousedown", (e) => e.preventDefault());
 }
 

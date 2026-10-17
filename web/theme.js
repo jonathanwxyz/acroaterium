@@ -77,16 +77,16 @@
     showSizes();
     document.dispatchEvent(new Event("sizechange"));
   });
-  // The font for the Greek: Gentium Book Plus (the default), EB Garamond, GFS Didot or
-  // GFS Neohellenic.
+  // The font for the Greek: Gentium Book Plus (the default), EB Garamond, GFS Didot,
+  // GFS Neohellenic or GFS Porson, from a list.
+  const fontSelect = sizeMenu.querySelector(".font-select");
   function showFont() {
     const font = document.documentElement.dataset.font ?? "gentium";
-    for (const b of sizeMenu.querySelectorAll(".font-choice")) b.setAttribute("aria-pressed", String(b.dataset.font === font));
+    fontSelect.value = fontSelect.dataset.font = font;
   }
-  sizeMenu.addEventListener("click", (e) => {
-    const choice = e.target.closest(".font-choice");
-    if (!choice) return;
-    const font = choice.dataset.font;
+  fontSelect.addEventListener("change", () => {
+    const font = fontSelect.value;
+    fontSelect.blur();  // (so Space is play/pause again, not the list)
     if (font === "gentium") delete document.documentElement.dataset.font;
     else document.documentElement.dataset.font = font;
     try { localStorage.setItem("font", font); } catch {}

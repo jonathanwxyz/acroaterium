@@ -242,6 +242,30 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
+  font-family: 'GFS Porson';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/gfs-porson-400-greek-ext.woff2) format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+@font-face {
+  font-family: 'GFS Porson';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/gfs-porson-400-greek.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+@font-face {
+  font-family: 'GFS Porson';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/gfs-porson-400-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
   font-family: 'Gentium Book Plus';
   font-style: italic;
   font-weight: 400;
@@ -358,6 +382,8 @@
 :root[data-font="garamond"] { --greek: "EB Garamond", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 1; }
 :root[data-font="didot"] { --greek: "GFS Didot", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 0.91; }
 :root[data-font="neohellenic"] { --greek: "GFS Neohellenic", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 1.06; }
+/* (Porson is Greek only, in one weight: the Latin, figures aside, is Gentium's.) */
+:root[data-font="porson"] { --greek: "GFS Porson", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 1.06; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #1d1a16;
@@ -691,17 +717,18 @@ main {
   color: var(--muted);
   white-space: nowrap;
   max-width: calc(100vw / var(--ui-scale, 1) - 16px);  /* in the bar's (zoomed) units */
-  /* (Wide enough for the four fonts and the four accents on one line, unless the screen,
-     at a large interface size, isn't: then as wide as the screen, the fonts wrapping.) */
-  min-width: min(28rem, calc(100vw / var(--ui-scale, 1) - 16px));
+
+  /* (Wide enough for the language and the four accents on one line, unless the screen, at
+     a large interface size, isn't: then as wide as the screen.) */
+  min-width: min(22rem, calc(100vw / var(--ui-scale, 1) - 16px));
   /* (No taller than the room between the bars, scrolling within itself if it must: the
      bars' heights are on screen, so divided by the interface size, as the menu is in it.) */
   max-height: calc((100dvh - var(--topbar-h, 3.5rem) - var(--player-h, 7rem)) / var(--ui-scale, 1) - 1rem);
   overflow-y: auto;
   container: sizemenu / inline-size;
 }
-/* (In Greek its labels are longer: wider, so the three fonts still fit side by side.) */
-:root[data-ui="el"] #size-menu, :root[data-ui="grc"] #size-menu { min-width: min(30.5rem, calc(100vw / var(--ui-scale, 1) - 16px)); }
+/* (In Greek its labels are longer: wider, to keep the same room for the choices.) */
+:root[data-ui="el"] #size-menu, :root[data-ui="grc"] #size-menu { min-width: min(24.5rem, calc(100vw / var(--ui-scale, 1) - 16px)); }
 /* A narrow menu (a large interface size on a phone): each label above its choices, and
    the choices wrapping rather than running off its edge. */
 @container sizemenu (max-width: 17rem) {
@@ -722,8 +749,6 @@ main {
   #size-menu .size-row, #size-menu .font-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; }
   #size-menu .size-name { min-width: 0; font-size: 12.5px; }
   #size-menu .font-row .font-choices { max-width: 100%; }
-  /* (The fonts two by two, so they don't set the menu's width.) */
-  #size-menu .typefaces { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 /* The rows share the menu's two columns (subgrid): the labels', as wide as the longest in the
    language in use ("Γραμματοσειρά" is longer than "Font"), and the choices'. */
@@ -741,10 +766,27 @@ main {
   border-radius: 6px;
   cursor: pointer;
 }
-.font-choice[data-font="garamond"] { font-family: "EB Garamond", serif; }
-.font-choice[data-font="gentium"] { font-family: "Gentium Book Plus", serif; font-size: 15.5px; }
-.font-choice[data-font="didot"] { font-family: "GFS Didot", serif; font-size: 15.5px; }
-.font-choice[data-font="neohellenic"] { font-family: "GFS Neohellenic", serif; font-size: 17px; }
+/* The font: a list to choose from, showing the one in use in its own face (and each in the
+   list in its own, where the browser draws the list itself). */
+.font-select {
+  appearance: none;
+  min-width: 10rem;
+  padding: 0.2rem 2rem 0.2rem 0.6rem;
+  font: 17px "Gentium Book Plus", serif;
+  color: var(--text);
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='14' height='14'%3E%3Cpath fill='none' stroke='%23888' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 0.6rem center;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+}
+@media (hover: hover) { .font-select:hover { border-color: var(--current-bar); } }
+.font-select:focus-visible { outline: 2px solid var(--current-bar); outline-offset: 1px; }
+.font-select[data-font="gentium"], .font-select option[value="gentium"] { font-family: "Gentium Book Plus", serif; font-size: 15.5px; }
+.font-select[data-font="garamond"], .font-select option[value="garamond"] { font-family: "EB Garamond", serif; font-size: 17px; }
+.font-select[data-font="didot"], .font-select option[value="didot"] { font-family: "GFS Didot", serif; font-size: 15.5px; }
+.font-select[data-font="neohellenic"], .font-select option[value="neohellenic"] { font-family: "GFS Neohellenic", serif; font-size: 17px; }
+.font-select[data-font="porson"], .font-select option[value="porson"] { font-family: "GFS Porson", "Gentium Book Plus", serif; font-size: 17px; }
+.font-select option { color: var(--text); background: var(--bg); }
 .theme-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }  /* an icon each */
 .theme-row .font-choices, .accent-row .font-choices { flex-wrap: nowrap; }
 .lang-choice:not([data-lang="en"]) { font-family: var(--greek); font-size: 15.5px; }
