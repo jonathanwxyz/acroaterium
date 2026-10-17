@@ -589,7 +589,8 @@ function setFocus(i) {
     if (now.includes(el)) continue;
     // Outgoing: it is hidden now, so animate a copy left where it was.
     const ghost = el.cloneNode(true);
-    ghost.classList.remove("current", "pausing", "held");
+    ghost.querySelector("#card")?.remove();  // (the card stays with the verse, not its ghost)
+    ghost.classList.remove("current", "pausing", "held", "with-card");
     Object.assign(ghost.style, {
       position: "fixed", left: `${b.rect.left}px`, top: `${b.rect.top}px`, width: `${b.rect.width}px`,
       margin: "0", fontSize: `${b.font}px`, pointerEvents: "none", zIndex: "1",
@@ -663,7 +664,8 @@ function update() {
   skipSilence(i, t);
   document.body.classList.toggle("playing", isPlaying());
   showTimeline(audio.currentTime);
-  placeCard();  // the selected word may have moved (follow scroll, focused-mode steps)
+  // (focused mode: the selected word's verse stepped out of view)
+  if (selected && focused.checked && !selected.getClientRects().length) closeCard();
   if (i >= 0) {
     const v = verses[i];
     v.el.classList.toggle("pausing", t >= v.speechEnd);
@@ -1055,7 +1057,7 @@ list.addEventListener("pointerout", (e) => {
   linkGroup(w, false);
   if (!e.relatedTarget?.closest?.(".w")) gloss.hidden = true;
 });
-window.addEventListener("scroll", () => { gloss.hidden = true; placeCard(); }, { passive: true });
+window.addEventListener("scroll", () => { gloss.hidden = true; }, { passive: true });
 
 // Parsing card: clicking a word shows its treebank analysis (instead of seeking).
 let selected = null;
@@ -1183,11 +1185,11 @@ async function openCard(w) {
     cardBody.replaceChildren(el("h2", null, w.textContent.replace(/^[^\p{L}]+|[^\p{L}’'᾽]+$/gu, "")), skel);
   }
   cardBody.scrollTop = 0;
-  placeCard();
+  placeCard({ again: true });
   if (wordLoaded.has(id)) return;
   try {
     const data = await fetchWord(w);
-    if (selected === w) { renderCard(data); placeCard(); }
+    if (selected === w) { renderCard(data); placeCard(); }  // (on the side it opened on)
   } catch (err) {
     if (selected === w) {
       cardBody.replaceChildren(el("p", "note", navigator.onLine === false
@@ -1196,43 +1198,70 @@ async function openCard(w) {
   }
 }
 
-// Small and medium screens: the card floats just above the selected word's line (below
-// it when there is more room there), centred on the word and kept between the top bar
-// and the player. Wide screens keep it in the right-hand margin (CSS).
+// Small and medium screens: the card stands just above the selected word's verse (below it
+// when there is more room there), centred on the word. It is put inside the verse, so it
+// scrolls with the text as part of the page (no lag, nothing to redo as the page moves),
+// and it keeps the side it opened on: above, it hangs from the verse by its lower edge, so
+// as its parsing comes it grows upward, away from the text, rather than jumping. Wide
+// screens keep it in the right-hand margin (CSS).
 const cardFloats = window.matchMedia?.("(max-width: 75.99rem)");
 const CARD_GAP = 8;    // px between the card and the bars and edges
 const CARD_SPACE = 20; // px between the card and the word's line
-function placeCard() {
+let cardHost = null;   // the verse (or paragraph) the card is in
+let cardSide = null;   // {above, from: "verse" | "line", maxHeight}: chosen as it opens
+function unhostCard() {
+  cardHost?.classList.remove("with-card");
+  cardHost = null;
+  if (card.parentElement !== document.body) document.body.append(card);
+}
+function placeCard({ again = false } = {}) {
   if (card.hidden || !selected) return;
-  Object.assign(card.style, { left: "", top: "", maxHeight: "" });
-  if (!cardFloats?.matches) return;
+  Object.assign(card.style, { left: "", top: "", bottom: "", maxHeight: "" });
+  const host = selected.closest("li.verse");
+  if (!cardFloats?.matches || !host) return unhostCard();
   const r = selected.getBoundingClientRect();
   if (!r.width && !r.height) return closeCard();  // its verse is hidden (focused mode)
-  const minTop = document.getElementById("topbar").getBoundingClientRect().bottom + CARD_GAP;
-  const maxBottom = document.getElementById("player").getBoundingClientRect().top - CARD_GAP;
-  // Above the whole verse, so a wrapped verse isn't half covered; failing that below it;
-  // failing both (a verse at the top of the page, a long prose paragraph) beside the word's line.
-  const v = selected.closest(".text")?.getBoundingClientRect() ?? r;
-  const need = Math.min(card.offsetHeight, 160);
-  const room = (top, bottom) => ({ above: top - CARD_SPACE - minTop, below: maxBottom - bottom - CARD_SPACE });
-  let { above, below } = room(v.top, v.bottom), from = v;
-  if (above < need && below < need) {
-    ({ above, below } = room(r.top, r.bottom));
-    from = r;
+  if (cardHost !== host) {
+    unhostCard();
+    host.classList.add("with-card");
+    host.append(card);
+    cardHost = host;
+    cardSide = null;
   }
-  const fitsAbove = above >= need || above >= below;
-  card.style.maxHeight = `${Math.max(fitsAbove ? above : below, 120)}px`;
-  card.style.top = `${fitsAbove ? from.top - CARD_SPACE - card.offsetHeight : from.bottom + CARD_SPACE}px`;
+  const v = selected.closest(".text")?.getBoundingClientRect() ?? r;
+  if (!cardSide || again) {
+    const minTop = document.getElementById("topbar").getBoundingClientRect().bottom + CARD_GAP;
+    const maxBottom = document.getElementById("player").getBoundingClientRect().top - CARD_GAP;
+    // Above the whole verse, so a wrapped verse isn't half covered; failing that below it;
+    // failing both (a verse at the top of the page, a long prose paragraph) by the word's line.
+    const need = 160;
+    const room = (top, bottom) => ({ above: top - CARD_SPACE - minTop, below: maxBottom - bottom - CARD_SPACE });
+    let { above, below } = room(v.top, v.bottom), from = "verse";
+    if (above < need && below < need) {
+      ({ above, below } = room(r.top, r.bottom));
+      from = "line";
+    }
+    const up = above >= need || above >= below;
+    cardSide = { above: up, from, maxHeight: Math.max(up ? above : below, 120) };
+  }
+  const h = host.getBoundingClientRect();
+  const from = cardSide.from === "verse" ? v : r;
+  card.style.maxHeight = `${cardSide.maxHeight}px`;
+  if (cardSide.above) card.style.bottom = `${h.bottom - from.top + CARD_SPACE}px`;
+  else card.style.top = `${from.bottom - h.top + CARD_SPACE}px`;
   const w = card.offsetWidth;
-  card.style.left = `${Math.min(Math.max(CARD_GAP, r.left + r.width / 2 - w / 2), innerWidth - w - CARD_GAP)}px`;
+  card.style.left = `${Math.min(Math.max(CARD_GAP, r.left + r.width / 2 - w / 2), innerWidth - w - CARD_GAP) - h.left}px`;
 }
-window.addEventListener("resize", placeCard);
-cardFloats?.addEventListener?.("change", placeCard);
+// (Inside the verse, its clicks are its own: not a tap on the verse, which would seek.)
+card.addEventListener("click", (e) => e.stopPropagation());
+window.addEventListener("resize", () => placeCard({ again: true }));
+cardFloats?.addEventListener?.("change", () => placeCard({ again: true }));
 
 function closeCard() {
   selected?.classList.remove("selected");
   selected = null;
   card.hidden = true;
+  unhostCard();
 }
 
 // Capture phase, so a word click doesn't also reach the verse's seek handler.
@@ -1311,7 +1340,7 @@ measureBars();
 // After a size change in the Aa menu (theme.js): refit focused mode, the card and the view.
 document.addEventListener("sizechange", () => {
   measureBars();
-  placeCard();
+  placeCard({ again: true });
   if (!focused.checked && current >= 0 && follow.checked) centerRow(verses[current].el);
 });
 

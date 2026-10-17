@@ -689,8 +689,13 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
 }
 /* Narrower screens: card floating above the selected word's line (placed by placeCard). */
 @media (max-width: 75.99rem) {
-  #card { width: min(22rem, calc(100vw - 16px)); }
+  /* Inside the verse it belongs to (placeCard), scrolling with it; under the bars (4). */
+  #card { position: absolute; width: min(22rem, calc(100vw - 16px)); animation: card-in 140ms ease-out; }
+  /* (Its verse drawn whatever its place, so the card isn't clipped, and above the verses
+     after it.) */
+  #verses > li.verse.with-card { content-visibility: visible; z-index: 3; }  /* (over body:not(.focused) #verses > li) */
 }
+@keyframes card-in { from { opacity: 0; transform: translateY(4px); } }
 
 /* Scholia: the ancient notes on the current verse. */
 #scholia {
