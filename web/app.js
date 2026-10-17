@@ -1659,6 +1659,7 @@ endMode.addEventListener("click", () => {
   endChoice = modes[(modes.indexOf(endMode.dataset.mode) + 1) % modes.length];
   try { localStorage.setItem("endMode", endChoice); } catch {}
   showEndMode();
+  toast(tr(END_MODES[endMode.dataset.mode]));  // (in words: the icons alone are easily mistaken)
 });
 audio.addEventListener("ended", () => atEnd());
 

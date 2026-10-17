@@ -28,3 +28,6 @@ data/bookmarks.tmp
 # Reading plans (scripts/serve.py), kept local
 data/plans.json
 data/plans.tmp
+
+# The Flutter version of the app (an experiment), kept local
+flutter_app/
