@@ -383,6 +383,7 @@
 :root[data-font="didot"] { --greek: "GFS Didot", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 0.91; }
 :root[data-font="neohellenic"] { --greek: "GFS Neohellenic", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 1.06; }
 /* (Porson is Greek only, in one weight: the Latin, figures aside, is Gentium's.) */
+:root[data-font="system"] { --greek: system-ui, "Noto Sans", Roboto, sans-serif; --font-scale: 0.82; }  /* (the device's own sans-serif, the interface's: nothing to download) */
 :root[data-font="porson"] { --greek: "GFS Porson", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 1.06; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -786,6 +787,7 @@ main {
 .font-select[data-font="didot"], .font-select option[value="didot"] { font-family: "GFS Didot", serif; font-size: 15.5px; }
 .font-select[data-font="neohellenic"], .font-select option[value="neohellenic"] { font-family: "GFS Neohellenic", serif; font-size: 17px; }
 .font-select[data-font="porson"], .font-select option[value="porson"] { font-family: "GFS Porson", "Gentium Book Plus", serif; font-size: 17px; }
+.font-select[data-font="system"], .font-select option[value="system"] { font-family: system-ui, sans-serif; font-size: 15px; }
 .font-select option { color: var(--text); background: var(--bg); }
 .theme-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }  /* an icon each */
 .theme-row .font-choices, .accent-row .font-choices { flex-wrap: nowrap; }

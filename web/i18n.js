@@ -213,6 +213,7 @@ Object.assign(I18N.el, {
   "Smaller interface": "Μικρότερη διεπαφή",
   "Larger interface": "Μεγαλύτερη διεπαφή",
   "Font": "Γραμματοσειρά",
+  "System": "Του συστήματος",  // (the font: the device's own)
   "Theme": "Θέμα",
   "Accent": "Χρώμα",
   "Red": "Κόκκινο",
@@ -537,6 +538,7 @@ Object.assign(I18N.grc, {
   "Smaller interface": "Ἐλάττων διεπαφή",
   "Larger interface": "Μείζων διεπαφή",
   "Font": "Χαρακτήρ",
+  "System": "Τοῦ συστήματος",
   "Theme": "Χρῶμα",
   "Accent": "Βαφή",
   "Red": "Ἐρυθρόν",

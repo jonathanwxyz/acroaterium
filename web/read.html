@@ -29,10 +29,10 @@
   // And the font for the Greek (Gentium unless another was chosen).
   {
     let font = "gentium";
-    try { const f = localStorage.getItem("font"); if (["garamond", "didot", "neohellenic", "porson"].includes(f)) document.documentElement.dataset.font = font = f; } catch {}
+    try { const f = localStorage.getItem("font"); if (["garamond", "didot", "neohellenic", "porson", "system"].includes(f)) document.documentElement.dataset.font = font = f; } catch {}
     // Fetch its Greek at once, rather than once the stylesheet has been read.
     const file = { gentium: "gentium-book-plus-400", garamond: "eb-garamond-400", didot: "gfs-didot-400", neohellenic: "gfs-neohellenic-400", porson: "gfs-porson-400" }[font];
-    for (const part of ["greek", "greek-ext"]) {
+    for (const part of file ? ["greek", "greek-ext"] : []) {  // (the system's: none to fetch)
       const link = Object.assign(document.createElement("link"),
         { rel: "preload", as: "font", type: "font/woff2", crossOrigin: "anonymous", href: `fonts/${file}-${part}.woff2` });
       document.head.append(link);
@@ -113,6 +113,7 @@
             <option value="didot">Didot</option>
             <option value="neohellenic">Neohellenic</option>
             <option value="porson">Porson</option>
+            <option value="system">System</option>
           </select>
         </div>
         <div class="font-row theme-row" role="group" aria-label="Theme">
