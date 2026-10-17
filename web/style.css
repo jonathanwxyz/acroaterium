@@ -572,6 +572,7 @@ main {
   color: var(--muted);
   white-space: nowrap;
   max-width: calc(100vw / var(--ui-scale, 1) - 16px);  /* in the bar's (zoomed) units */
+  min-width: 17rem;  /* (wide enough for the four accents on one line) */
 }
 #size-menu[hidden] { display: none; }
 .size-row { display: grid; grid-template-columns: 5.2rem 2rem 3.2rem 2rem; align-items: center; }
@@ -592,7 +593,7 @@ main {
 .font-choice[data-font="gentium"] { font-family: "Gentium Book Plus", serif; font-size: 15.5px; }
 .font-choice[data-font="didot"] { font-family: "GFS Didot", serif; font-size: 15.5px; }
 .theme-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }  /* an icon each */
-.theme-row .font-choices { flex-wrap: nowrap; }
+.theme-row .font-choices, .accent-row .font-choices { flex-wrap: nowrap; }
 .lang-choice:not([data-lang="en"]) { font-family: var(--greek); font-size: 15.5px; }
 .lang-choice[data-lang="en"] { font-size: 14px; }  /* (each language's name in its own script) */
 @media (hover: hover) { .font-choice:hover, .theme-choice:hover, .lang-choice:hover, .accent-choice:hover { color: var(--text); border-color: var(--current-bar); } }
