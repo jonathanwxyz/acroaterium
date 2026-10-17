@@ -17,6 +17,8 @@
 <script>
   // The chosen theme, applied before the page draws (no flash of the other one).
   try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+  // And the accent (red unless another was chosen).
+  try { const a = localStorage.getItem("accent"); if (a === "amber") document.documentElement.dataset.accent = a; } catch {}
   // Text and interface sizes (the reader's Aa menu), likewise.
   try {
     for (const [key, prop] of [["textScale", "--text-scale"], ["uiScale", "--ui-scale"]]) {
@@ -113,6 +115,13 @@
             <button class="theme-choice" data-theme="auto" aria-pressed="false" title="Automatic (as the system)" aria-label="Automatic"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path fill="currentColor" d="M12 4a8 8 0 0 1 0 16z"/></svg></button>
             <button class="theme-choice" data-theme="light" aria-pressed="false" title="Light" aria-label="Light"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg></button>
             <button class="theme-choice" data-theme="dark" aria-pressed="false" title="Dark" aria-label="Dark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+          </span>
+        </div>
+        <div class="font-row accent-row" role="group" aria-label="Accent">
+          <span class="size-name">Accent</span>
+          <span class="font-choices">
+            <button class="accent-choice" data-accent="red" aria-pressed="false" title="Red" aria-label="Red"><span class="swatch"></span></button>
+            <button class="accent-choice" data-accent="amber" aria-pressed="false" title="Amber" aria-label="Amber"><span class="swatch"></span></button>
           </span>
         </div>
           <div class="font-row lang-row" role="group" aria-label="Language">

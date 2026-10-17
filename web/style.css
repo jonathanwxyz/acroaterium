@@ -263,6 +263,37 @@
   --player-bg: rgba(29, 26, 22, 0.94);
 }
 
+/* Other accents (the Aa menu; red, above, unless another is chosen): each its colours in
+   the light and dark themes. */
+:root[data-accent="amber"] {
+  --current-bg: #f3e6c4;
+  --current-bar: #b07a1e;
+  --pause-bg: #f7efdb;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-accent="amber"]:not([data-theme="light"]) {
+    --current-bg: #3d3220;
+    --current-bar: #d9a441;
+    --pause-bg: #2c271e;
+  }
+}
+:root[data-accent="amber"][data-theme="dark"] {
+  --current-bg: #3d3220;
+  --current-bar: #d9a441;
+  --pause-bg: #2c271e;
+}
+/* (The accent buttons: a swatch of each, as it is in the theme in use.) */
+.accent-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }
+.accent-choice .swatch { width: 1rem; height: 1rem; border-radius: 50%; background: var(--swatch); }
+.accent-choice[data-accent="red"] { --swatch: #7f1d1d; }
+.accent-choice[data-accent="amber"] { --swatch: #b07a1e; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .accent-choice[data-accent="red"] { --swatch: #bf5a4a; }
+  :root:not([data-theme="light"]) .accent-choice[data-accent="amber"] { --swatch: #d9a441; }
+}
+:root[data-theme="dark"] .accent-choice[data-accent="red"] { --swatch: #bf5a4a; }
+:root[data-theme="dark"] .accent-choice[data-accent="amber"] { --swatch: #d9a441; }
+
 * { box-sizing: border-box; }
 /* (What's scrolled to, the current line, kept clear of the bars: --topbar-h and
    --player-h are their heights on screen, kept up to date by app.js.) */
@@ -485,7 +516,7 @@ main {
 /* The choices wrap among themselves, beside the label rather than under it. */
 .font-choices { display: flex; flex-wrap: wrap; gap: 0.3rem; min-width: 0; }
 .font-row .size-name { width: 5.2rem; flex: none; }
-.font-choice, .theme-choice, .lang-choice {
+.font-choice, .theme-choice, .lang-choice, .accent-choice {
   padding: 0.2rem 0.5rem;
   font-size: 17px;
   color: var(--muted);
@@ -501,8 +532,9 @@ main {
 .theme-row .font-choices { flex-wrap: nowrap; }
 .lang-choice:not([data-lang="en"]) { font-family: var(--greek); font-size: 15.5px; }
 .lang-choice[data-lang="en"] { font-size: 14px; }  /* (each language's name in its own script) */
-@media (hover: hover) { .font-choice:hover, .theme-choice:hover, .lang-choice:hover { color: var(--text); border-color: var(--current-bar); } }
-.font-choice[aria-pressed="true"], .theme-choice[aria-pressed="true"], .lang-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
+@media (hover: hover) { .font-choice:hover, .theme-choice:hover, .lang-choice:hover, .accent-choice:hover { color: var(--text); border-color: var(--current-bar); } }
+.font-choice[aria-pressed="true"], .theme-choice[aria-pressed="true"], .lang-choice[aria-pressed="true"],
+.accent-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
 .size-value { text-align: center; font-variant-numeric: tabular-nums; color: var(--text); }
 .size-step {
   width: 2rem;

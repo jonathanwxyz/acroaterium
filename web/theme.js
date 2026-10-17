@@ -15,6 +15,23 @@
     window.nativeApp?.systemBars(dark);  // (the Android app: its status bar's icons and colour)
   }
   systemDark?.addEventListener?.("change", showTheme);
+
+  // Accent: red (the default) or amber, remembered per browser, applied before the page
+  // draws likewise.
+  function showAccent() {
+    const accent = document.documentElement.dataset.accent ?? "red";
+    for (const b of sizeMenu.querySelectorAll(".accent-choice")) b.setAttribute("aria-pressed", String(b.dataset.accent === accent));
+  }
+  sizeMenu.addEventListener("click", (e) => {
+    const choice = e.target.closest(".accent-choice");
+    if (!choice) return;
+    const accent = choice.dataset.accent;
+    if (accent === "red") delete document.documentElement.dataset.accent;
+    else document.documentElement.dataset.accent = accent;
+    try { localStorage.setItem("accent", accent); } catch {}
+    showAccent();
+  });
+  showAccent();
   sizeMenu.addEventListener("click", (e) => {
     const choice = e.target.closest(".theme-choice");
     if (!choice) return;
