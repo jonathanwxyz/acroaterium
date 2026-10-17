@@ -18,7 +18,7 @@
   if (new URLSearchParams(location.search).has("book")) location.replace("read.html" + location.search);
   try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
   // And the accent (red unless another was chosen).
-  try { const a = localStorage.getItem("accent"); if (a === "amber") document.documentElement.dataset.accent = a; } catch {}
+  try { const a = localStorage.getItem("accent"); if (["amber", "purple", "blue"].includes(a)) document.documentElement.dataset.accent = a; } catch {}
   // Text and interface sizes (the reader's Aa menu), likewise; the library uses the interface one.
   try {
     for (const [key, prop] of [["textScale", "--text-scale"], ["uiScale", "--ui-scale"]]) {
@@ -87,6 +87,8 @@
         <span class="font-choices">
           <button class="accent-choice" data-accent="red" aria-pressed="false" title="Red" aria-label="Red"><span class="swatch"></span></button>
           <button class="accent-choice" data-accent="amber" aria-pressed="false" title="Amber" aria-label="Amber"><span class="swatch"></span></button>
+          <button class="accent-choice" data-accent="purple" aria-pressed="false" title="Purple" aria-label="Purple"><span class="swatch"></span></button>
+          <button class="accent-choice" data-accent="blue" aria-pressed="false" title="Blue" aria-label="Blue"><span class="swatch"></span></button>
         </span>
       </div>
       <div class="font-row lang-row" role="group" aria-label="Language">

@@ -282,17 +282,58 @@
   --current-bar: #d9a441;
   --pause-bg: #2c271e;
 }
+/* Purple, the porphyry of the purple manuscripts, and blue, as lapis in illumination. */
+:root[data-accent="purple"] {
+  --current-bg: #e9ded5;
+  --current-bar: #5a2a6e;
+  --pause-bg: #f3eadc;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-accent="purple"]:not([data-theme="light"]) {
+    --current-bg: #3b2f3b;
+    --current-bar: #a77bc0;
+    --pause-bg: #2e262a;
+  }
+}
+:root[data-accent="purple"][data-theme="dark"] {
+  --current-bg: #3b2f3b;
+  --current-bar: #a77bc0;
+  --pause-bg: #2e262a;
+}
+:root[data-accent="blue"] {
+  --current-bg: #e2e0d6;
+  --current-bar: #1f3f74;
+  --pause-bg: #f0ebdc;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-accent="blue"]:not([data-theme="light"]) {
+    --current-bg: #2f363f;
+    --current-bar: #6f98cf;
+    --pause-bg: #27292c;
+  }
+}
+:root[data-accent="blue"][data-theme="dark"] {
+  --current-bg: #2f363f;
+  --current-bar: #6f98cf;
+  --pause-bg: #27292c;
+}
 /* (The accent buttons: a swatch of each, as it is in the theme in use.) */
 .accent-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }
 .accent-choice .swatch { width: 1rem; height: 1rem; border-radius: 50%; background: var(--swatch); }
 .accent-choice[data-accent="red"] { --swatch: #7f1d1d; }
 .accent-choice[data-accent="amber"] { --swatch: #b07a1e; }
+.accent-choice[data-accent="purple"] { --swatch: #5a2a6e; }
+.accent-choice[data-accent="blue"] { --swatch: #1f3f74; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .accent-choice[data-accent="red"] { --swatch: #bf5a4a; }
   :root:not([data-theme="light"]) .accent-choice[data-accent="amber"] { --swatch: #d9a441; }
+  :root:not([data-theme="light"]) .accent-choice[data-accent="purple"] { --swatch: #a77bc0; }
+  :root:not([data-theme="light"]) .accent-choice[data-accent="blue"] { --swatch: #6f98cf; }
 }
 :root[data-theme="dark"] .accent-choice[data-accent="red"] { --swatch: #bf5a4a; }
 :root[data-theme="dark"] .accent-choice[data-accent="amber"] { --swatch: #d9a441; }
+:root[data-theme="dark"] .accent-choice[data-accent="purple"] { --swatch: #a77bc0; }
+:root[data-theme="dark"] .accent-choice[data-accent="blue"] { --swatch: #6f98cf; }
 
 * { box-sizing: border-box; }
 /* (What's scrolled to, the current line, kept clear of the bars: --topbar-h and

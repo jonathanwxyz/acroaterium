@@ -16,7 +16,7 @@
   }
   systemDark?.addEventListener?.("change", showTheme);
 
-  // Accent: red (the default) or amber, remembered per browser, applied before the page
+  // Accent: red (the default), amber, purple or blue, remembered per browser, applied before the page
   // draws likewise.
   function showAccent() {
     const accent = document.documentElement.dataset.accent ?? "red";
