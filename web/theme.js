@@ -77,7 +77,8 @@
     showSizes();
     document.dispatchEvent(new Event("sizechange"));
   });
-  // The font for the Greek: Gentium Book Plus (the default), EB Garamond or GFS Didot.
+  // The font for the Greek: Gentium Book Plus (the default), EB Garamond, GFS Didot or
+  // GFS Neohellenic.
   function showFont() {
     const font = document.documentElement.dataset.font ?? "gentium";
     for (const b of sizeMenu.querySelectorAll(".font-choice")) b.setAttribute("aria-pressed", String(b.dataset.font === font));

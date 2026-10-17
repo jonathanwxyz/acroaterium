@@ -29,9 +29,9 @@
   // And the font for the Greek (Gentium unless another was chosen).
   {
     let font = "gentium";
-    try { const f = localStorage.getItem("font"); if (f === "garamond" || f === "didot") document.documentElement.dataset.font = font = f; } catch {}
+    try { const f = localStorage.getItem("font"); if (["garamond", "didot", "neohellenic"].includes(f)) document.documentElement.dataset.font = font = f; } catch {}
     // Fetch its Greek at once, rather than once the stylesheet has been read.
-    const file = { gentium: "gentium-book-plus-400", garamond: "eb-garamond-400", didot: "gfs-didot-400" }[font];
+    const file = { gentium: "gentium-book-plus-400", garamond: "eb-garamond-400", didot: "gfs-didot-400", neohellenic: "gfs-neohellenic-400" }[font];
     for (const part of ["greek", "greek-ext"]) {
       const link = Object.assign(document.createElement("link"),
         { rel: "preload", as: "font", type: "font/woff2", crossOrigin: "anonymous", href: `fonts/${file}-${part}.woff2` });
@@ -111,6 +111,7 @@
             <button class="font-choice" data-font="gentium" aria-pressed="false">Gentium</button>
             <button class="font-choice" data-font="garamond" aria-pressed="false">Garamond</button>
             <button class="font-choice" data-font="didot" aria-pressed="false">Didot</button>
+            <button class="font-choice" data-font="neohellenic" aria-pressed="false">Neohellenic</button>
           </span>
         </div>
         <div class="font-row theme-row" role="group" aria-label="Theme">

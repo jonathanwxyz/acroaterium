@@ -10,6 +10,11 @@ declares them, and a browser downloads only the parts a page uses.
 | Gentium Book Plus (SIL International) | `gentium-book-plus-*` | [OFL-gentiumbookplus.txt](OFL-gentiumbookplus.txt) |
 | EB Garamond (The EB Garamond Project Authors) | `eb-garamond-*` | [OFL-ebgaramond.txt](OFL-ebgaramond.txt) |
 | GFS Didot (Greek Font Society) | `gfs-didot-*` | [OFL-gfsdidot.txt](OFL-gfsdidot.txt) |
+| GFS Neohellenic (Greek Font Society) | `gfs-neohellenic-*` | [OFL-gfsneohellenic.txt](OFL-gfsneohellenic.txt) |
 
-All three are under the SIL Open Font License 1.1, which allows them to be bundled and
+GFS Didot's bold and italic aren't on Google Fonts: they're the Greek Font Society's own
+(`GFSDidotBold.otf`, `GFSDidotItalic.otf`, from CTAN's `fonts/greek/gfs/gfsdidot`), split the
+same way with fontTools' `pyftsubset --layout-features='*' --flavor=woff2`.
+
+All four are under the SIL Open Font License 1.1, which allows them to be bundled and
 redistributed with software.
