@@ -589,6 +589,19 @@ main {
   #size-menu .theme-row .font-choices, #size-menu .accent-row .font-choices { flex-wrap: wrap; }
 }
 #size-menu[hidden] { display: none; }
+/* On a phone: each label above its choices, so the menu is only as wide as its widest
+   choices (the three fonts), in any language. */
+@media (max-width: 40rem) {
+  #size-menu, :root[data-ui="el"] #size-menu, :root[data-ui="grc"] #size-menu {
+    grid-template-columns: minmax(0, 1fr);
+    width: max-content;
+    min-width: 0;
+    container-type: normal;  /* (its width is its content's: no narrow-menu query needed) */
+  }
+  #size-menu .size-row, #size-menu .font-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; }
+  #size-menu .size-name { min-width: 0; font-size: 12.5px; }
+  #size-menu .font-row .font-choices { max-width: 100%; }
+}
 /* The rows share the menu's two columns (subgrid): the labels', as wide as the longest in the
    language in use ("Γραμματοσειρά" is longer than "Font"), and the choices'. */
 .size-row, .font-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
