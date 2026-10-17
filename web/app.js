@@ -420,6 +420,7 @@ function renderProse(data, has) {
       close();
       li = el("li", "verse prose-para untimed" + (v.line <= 0 ? " title" : ""));  // (lines 0, -1…: a heading read first)
       li.dataset.from = v.line;
+      li.addEventListener("click", proseMarginClick);
       num = el("span", "num");
       text = el("span", "text");
       li.append(num, text);
@@ -477,6 +478,27 @@ function renderProse(data, has) {
   close();
   list.append(frag);
   verses.sort((a, b) => a.start - b.start);
+}
+
+// Prose with a recording: a tap in the paragraph's margin (beside the text, not on it, where
+// every word opens its card) goes to the sentence on that line; where a line holds more
+// than one, the one the line starts with.
+function proseMarginClick(e) {
+  if (e.target.closest(".text, .sch-btn")) return;
+  let best = null, bestDist = Infinity;
+  for (const sent of this.querySelectorAll(".sent")) {
+    for (const r of sent.getClientRects()) {
+      const dist = e.clientY < r.top ? r.top - e.clientY : e.clientY > r.bottom ? e.clientY - r.bottom : 0;
+      if (dist < bestDist || (dist === bestDist && best && r.left < best.left)) {
+        bestDist = dist;
+        best = { sent, left: r.left };
+      }
+    }
+  }
+  const entry = best && entryOf.get(best.sent);
+  if (!entry) return;
+  noteTap(this, e.clientY);
+  seekTo(verses.indexOf(entry));
 }
 
 // Each row knows which segments its notes are on (for the scholia panel and popup).

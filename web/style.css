@@ -1169,6 +1169,9 @@ body.no-audio .verse { cursor: auto; }
    later ones marked in the text. */
 #verses.prose .verse { margin-bottom: 0.9rem; line-height: 1.6; }
 #verses.prose .num { visibility: visible; padding-top: 0.45em; }
+/* (Its margin goes to the sentence on that line: app.js, proseMarginClick.) */
+#verses.prose .prose-para:has(.sent) { cursor: pointer; }
+#verses.prose .prose-para:has(.sent) .text { cursor: auto; }
 /* Prose with a recording: the sentence being read lights up (a sentence carried into the
    next section lights up there in turn); a sentence is tapped to go to it. The paragraph
    itself isn't a target, and there is no focused mode. */
