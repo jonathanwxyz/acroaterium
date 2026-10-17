@@ -15,6 +15,7 @@ try {
 } catch {}
 // Dates and numbers (Intl has no Ancient Greek: Modern Greek's will do).
 const UI_LOCALE = UI_LANG === "en" ? undefined : "el";
+document.documentElement.dataset.ui = UI_LANG;  // (for the stylesheet: Greek labels are longer)
 
 function tr(phrase, vars) {
   let out = I18N[UI_LANG]?.[phrase] ?? phrase;
