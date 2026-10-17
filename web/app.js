@@ -113,6 +113,7 @@ function render(data) {
     localStorage.setItem(`meta:${TEXT}`, JSON.stringify({
       title: data.title, eyebrow: data.eyebrow, short: data.short, books: data.books, text: data.text,
       features: data.features ?? [], form: data.form, downloads: { ...old.downloads, [BOOK]: data.download ?? null },
+      collectionTexts: data.collectionTexts ?? null,  // (the title's menu, its chevron drawn at once)
     }));
   } catch {}
   document.body.classList.remove("features-unknown");
@@ -2051,6 +2052,7 @@ try {
   if (meta?.title) {
     showTitle(meta.eyebrow ?? meta.title, meta.short ?? meta.title);
     fillBooks(meta.books ?? []);
+    fillTitles(meta.collectionTexts);
   }
   // And its download button, at once (in the place read.html kept for it).
   if (meta?.downloads?.[BOOK]) {

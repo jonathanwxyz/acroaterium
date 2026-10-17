@@ -18,7 +18,7 @@
 // from the file (local/library.js, reading only the pages it needs: local/sqlite.js),
 // before the network is asked; anything not made here, or failing, goes to the server.
 importScripts("local/sqlite.js", "local/library.js");
-const VERSION = "v76";
+const VERSION = "v77";
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 const FONTS = "fonts";  // kept across versions

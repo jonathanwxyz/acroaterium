@@ -143,6 +143,9 @@
       document.body.classList.toggle(`no-${f}`, !meta.features.includes(f));
     }
     document.body.classList.toggle("prose-text", meta.form === "prose");
+    // (In a collection, the title is a menu: its chevron there from the start, so the book
+    // beside it doesn't move along once the book has come.)
+    if (meta.collectionTexts?.length) document.getElementById("title-select").disabled = false;
     if (meta.downloads?.[book]) {
       const slot = document.getElementById("download-slot");
       slot.innerHTML = '<button class="download compact" disabled aria-hidden="true"></button>';
