@@ -26,13 +26,22 @@ and when each line (verse) or sentence (prose) is spoken, built by
 `library.py`. It is kept apart so that rebuilding `library.sqlite` leaves the other
 texts' timings alone (realign after a rebuild that changes a text). It stays out of git.
 
+`library_compact.sqlite` is both of them in one file, a fifth of the size, for an app to
+keep on the device (the server reads the full ones): the same rows, a book's rows of each
+kind in one compressed chunk, and what repeats from word to word (lemmas, morphology codes)
+stored once. `scripts/compact_library.py` writes it from the full databases and checks it
+(it restores them from it and compares every row, and the API's JSON for a sample);
+`scripts/compact_read.py` reads it, or writes the full databases back from it. Its
+docstring describes the format. It stays out of git.
+
 ## Rebuilding
 
 Build the Iliad (`iliad.sqlite`) with the scripts below, in this order; each replaces
 only its own tables. Pages are cached in `raw/`. Then run `scripts/library.py`, which
 builds `library.sqlite` and copies the Iliad (and its timings, into
 `library_audio.sqlite`) in: after changing anything in `iliad.sqlite`, run it again for
-the reader to see it.
+the reader to see it. Last, after any change to either, run `scripts/compact_library.py`
+to write `library_compact.sqlite` again (about a minute, with its check).
 
 1. `scripts/parse_iliad.py` → `verses` (+ `iliad.tsv`), from vasilestancu.ro, and `books`
    from `book_titles.tsv`
