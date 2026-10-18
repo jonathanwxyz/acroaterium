@@ -5,6 +5,13 @@ const root = document.getElementById("library");
 const marksBox = document.getElementById("bookmarks");
 const plansBox = document.getElementById("plans");
 
+// Majuscule in scriptio continua (the Aa menu's Script: shared.js): the texts' names, their
+// books', the bookmarks' words and the plans' readings, their Greek only (a book's number
+// stays as it is); not the interface's own words.
+const NAMES = ".library h1, .work-title, .work-author, .member-row, .book-list a, .book-list-name, .chapters a, "
+  + ".mark-label, .mark-snippet, .plan-reading";
+keepCarved(document.querySelector("main"), (n) => n.parentElement.closest(NAMES), carveGreek);
+
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;

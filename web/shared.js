@@ -1,5 +1,60 @@
 // Shared by the library (home.js) and the reader (app.js): short book labels, the book
-// last opened in each text, and bookmarks.
+// last opened in each text, bookmarks, and the text in majuscule.
+
+// Majuscule in scriptio continua (the Aa menu's Script, theme.js): Greek in capitals without
+// accents or breathings (an iota subscript written beside, ΤΩΙ), and without spaces or
+// punctuation between the words. Only what's shown is turned: each text node keeps what it
+// was (shownText reads that back), and the words stay where they were, to be tapped.
+const printed = new WeakMap();  // text node -> its text as printed
+// The whole of it (the reader's verses).
+const carve = (s) => s.normalize("NFD").replace(/\u0345/g, "ι").replace(/[^\p{L}]/gu, "").toUpperCase();
+// Its Greek only, a run of Greek words at a time, leaving the rest (a book's number) as it
+// is: "Ῥαψῳδία Α (1)" -> "ΡΑΨΩΙΔΙΑΑ (1)" (the library's names).
+const carveGreek = (s) => s.replace(/[\p{Script=Greek}][\p{Script=Greek}\p{M}\s’'᾽·.,;:!]*[\p{Script=Greek}\p{M}]|\p{Script=Greek}/gu, carve);
+const carving = () => document.documentElement.dataset.letters === "capitals";
+function carveIn(root, accept, how) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (accept(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+  });
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (printed.has(n)) continue;
+    printed.set(n, n.nodeValue);
+    n.nodeValue = how(n.nodeValue);
+  }
+}
+function uncarveIn(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!printed.has(n)) continue;
+    n.nodeValue = printed.get(n);
+    printed.delete(n);
+  }
+}
+// The text nodes under root that accept() takes, turned (how: carve or carveGreek) while
+// the Script is majuscule: now, as it's chosen, and as more is drawn.
+function keepCarved(root, accept, how) {
+  new MutationObserver((changes) => {
+    if (!carving()) return;
+    for (const c of changes) {
+      for (const n of c.addedNodes) {
+        if (n.nodeType === 1) carveIn(n, accept, how);
+        else if (n.nodeType === 3 && n.parentNode) carveIn(n.parentNode, accept, how);
+      }
+    }
+  }).observe(root, { childList: true, subtree: true });
+  document.addEventListener("letterschange", () => (carving() ? carveIn(root, accept, how) : uncarveIn(root)));
+  if (carving()) carveIn(root, accept, how);
+}
+// An element's text as printed, whatever's shown (the word card's heading, a bookmark's
+// words), leaving out what's within `skip`.
+function shownText(node, skip) {
+  let out = "";
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!skip || !n.parentElement.closest(skip)) out += printed.get(n) ?? n.nodeValue;
+  }
+  return out;
+}
 
 // A book's short name: the numeral letter at the end of its label with its number
 // ("Ῥαψῳδία Α" -> "Α (1)"), a chapter's number ("Κεφάλαιον 5" -> "5"), else the label
