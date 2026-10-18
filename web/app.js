@@ -66,6 +66,50 @@ const SCHOLIA_ICON = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidde
 
 const audio = window.nativeApp?.audio() ?? document.getElementById("audio");  // (native.js: in the app)
 const list = document.getElementById("verses");
+
+// Capitals only (the Aa menu's Letters): the text as carved in stone, in capitals without
+// accents or breathings (an iota subscript written beside, ΤΩΙ), and without spaces or
+// punctuation between the words. Only what's shown is turned: each text node keeps what it
+// was (shownText reads that back), and the words stay where they were, to be tapped.
+const printed = new WeakMap();  // text node -> its text as printed
+const carve = (s) => s.normalize("NFD").replace(/\u0345/g, "ι").replace(/[^\p{L}]/gu, "").toUpperCase();
+function carveIn(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentElement.closest(".text") && !n.parentElement.closest(".num, .ref-mark, .speaker")
+      ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+  });
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (printed.has(n)) continue;
+    printed.set(n, n.nodeValue);
+    n.nodeValue = carve(n.nodeValue);
+  }
+}
+function uncarveIn(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!printed.has(n)) continue;
+    n.nodeValue = printed.get(n);
+    printed.delete(n);
+  }
+}
+// An element's text as printed, whatever's shown (the word card's heading, a bookmark's
+// words), leaving out what's within `skip`.
+function shownText(node, skip) {
+  let out = "";
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!skip || !n.parentElement.closest(skip)) out += printed.get(n) ?? n.nodeValue;
+  }
+  return out;
+}
+const carving = () => document.documentElement.dataset.letters === "capitals";
+// (Text drawn later, a chapter loaded or a book opened, is turned as it comes.)
+new MutationObserver((changes) => {
+  if (!carving()) return;
+  for (const c of changes) for (const n of c.addedNodes) if (n.nodeType === 1 || n.nodeType === 3) carveIn(n.nodeType === 1 ? n : n.parentNode);
+}).observe(list, { childList: true, subtree: true });
+document.addEventListener("letterschange", () => (carving() ? carveIn(list) : uncarveIn(list)));
+if (carving()) carveIn(list);
 const position = document.getElementById("position");
 const follow = document.getElementById("follow");
 const showParaphrase = document.getElementById("show-paraphrase");
@@ -1186,7 +1230,7 @@ async function openCard(w) {
     // Until it comes: the word itself and grey lines, never the last word's card.
     const skel = el("div", "card-skel");
     for (let i = 0; i < 5; i++) skel.append(el("span"));
-    cardBody.replaceChildren(el("h2", null, w.textContent.replace(/^[^\p{L}]+|[^\p{L}’'᾽]+$/gu, "")), skel);
+    cardBody.replaceChildren(el("h2", null, shownText(w).replace(/^[^\p{L}]+|[^\p{L}’'᾽]+$/gu, "")), skel);
   }
   cardBody.scrollTop = 0;
   placeCard({ again: true });
@@ -2032,9 +2076,8 @@ async function toggleBookmark() {
       marks.delete(t.ref);
       toast(`${tr("Bookmark removed")} · ${label}`);
     } else {
-      const copy = (t.seg ?? t.li.querySelector(".text")).cloneNode(true);
-      for (const m of copy.querySelectorAll(".ref-mark")) m.remove();  // the section numbers
-      const words = copy.textContent.replace(/\s+/g, " ").trim();
+      const words = shownText(t.seg ?? t.li.querySelector(".text"), ".ref-mark")  // (not the section numbers)
+        .replace(/\s+/g, " ").trim();
       const mark = await bookmarksApi.add({
         text: TEXT, book: BOOK, ref: t.ref, title: DATA.title, label,
         snippet: words.length > 90 ? `${words.slice(0, 88).trimEnd()}…` : words,

@@ -26,12 +26,14 @@
       if (v > 0) document.documentElement.style.setProperty(prop, v);
     }
   } catch {}
+  // The letters: as printed, or capitals only (as carved: app.js turns the text).
+  try { if (localStorage.getItem("letters") === "capitals") document.documentElement.dataset.letters = "capitals"; } catch {}
   // And the font for the Greek (Gentium unless another was chosen).
   {
     let font = "gentium";
-    try { const f = localStorage.getItem("font"); if (["garamond", "didot", "neohellenic", "porson", "alegreya", "system"].includes(f)) document.documentElement.dataset.font = font = f; } catch {}
+    try { const f = localStorage.getItem("font"); if (["garamond", "didot", "neohellenic", "porson", "alegreya", "decker", "system"].includes(f)) document.documentElement.dataset.font = font = f; } catch {}
     // Fetch its Greek at once, rather than once the stylesheet has been read.
-    const file = { gentium: "gentium-book-plus-400", garamond: "eb-garamond-400", didot: "gfs-didot-400", neohellenic: "gfs-neohellenic-400", porson: "gfs-porson-400", alegreya: "alegreya-400" }[font];
+    const file = { gentium: "gentium-book-plus-400", garamond: "eb-garamond-400", didot: "gfs-didot-400", neohellenic: "gfs-neohellenic-400", porson: "gfs-porson-400", alegreya: "alegreya-400", decker: "gfs-decker-400" }[font];
     for (const part of file ? ["greek", "greek-ext"] : []) {  // (the system's: none to fetch)
       const link = Object.assign(document.createElement("link"),
         { rel: "preload", as: "font", type: "font/woff2", crossOrigin: "anonymous", href: `fonts/${file}-${part}.woff2` });
@@ -74,6 +76,7 @@
         <span class="size-name">Font</span>
         <select class="font-select" aria-label="Font">
           <option value="alegreya">Alegreya</option>
+          <option value="decker">Decker</option>
           <option value="didot">Didot</option>
           <option value="garamond">Garamond</option>
           <option value="gentium" selected>Gentium</option>
@@ -81,6 +84,13 @@
           <option value="porson">Porson</option>
           <option value="system">System</option>
         </select>
+      </div>
+      <div class="font-row letters-row" role="group" aria-label="Letters">
+        <span class="size-name">Letters</span>
+        <span class="font-choices">
+          <button class="letters-choice" data-letters="book" aria-pressed="false" title="As printed: small letters, accents and spaces">ἄειδε</button>
+          <button class="letters-choice" data-letters="capitals" aria-pressed="false" title="As carved in stone: capitals only, without accents, spaces or punctuation">ΑΕΙΔΕ</button>
+        </span>
       </div>
       <div class="font-row theme-row" role="group" aria-label="Theme">
         <span class="size-name">Theme</span>

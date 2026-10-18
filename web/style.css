@@ -306,6 +306,30 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
+  font-family: 'GFS Decker';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/gfs-decker-400-greek-ext.woff2) format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+@font-face {
+  font-family: 'GFS Decker';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/gfs-decker-400-greek.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+@font-face {
+  font-family: 'GFS Decker';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/gfs-decker-400-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
   font-family: 'GFS Porson';
   font-style: normal;
   font-weight: 400;
@@ -448,6 +472,7 @@
 :root[data-font="neohellenic"] { --greek: "GFS Neohellenic", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 1.06; }
 /* (Porson is Greek only, in one weight: the Latin, figures aside, is Gentium's.) */
 :root[data-font="alegreya"] { --greek: "Alegreya", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 0.92; }
+:root[data-font="decker"] { --greek: "GFS Decker", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 0.98; }  /* (uncial: its small letters are small capitals; Greek only) */
 :root[data-font="system"] { --greek: system-ui, "Noto Sans", Roboto, sans-serif; --font-scale: 0.82; }  /* (the device's own sans-serif, the interface's: nothing to download) */
 :root[data-font="porson"] { --greek: "GFS Porson", "Gentium Book Plus", "Noto Serif", "Times New Roman", serif; --font-scale: 1.06; }
 @media (prefers-color-scheme: dark) {
@@ -803,19 +828,6 @@ main {
   #size-menu .theme-row .font-choices, #size-menu .accent-row .font-choices { flex-wrap: wrap; }
 }
 #size-menu[hidden] { display: none; }
-/* On a phone: each label above its choices, so the menu is only as wide as its widest
-   choices (the three fonts), in any language. */
-@media (max-width: 40rem) {
-  #size-menu, :root[data-ui="el"] #size-menu, :root[data-ui="grc"] #size-menu {
-    grid-template-columns: minmax(0, 1fr);
-    width: max-content;
-    min-width: 0;
-    container-type: normal;  /* (its width is its content's: no narrow-menu query needed) */
-  }
-  #size-menu .size-row, #size-menu .font-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; }
-  #size-menu .size-name { min-width: 0; font-size: 12.5px; }
-  #size-menu .font-row .font-choices { max-width: 100%; }
-}
 /* The rows share the menu's two columns (subgrid): the labels', as wide as the longest in the
    language in use ("Γραμματοσειρά" is longer than "Font"), and the choices'. */
 .size-row, .font-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
@@ -823,7 +835,7 @@ main {
 /* The choices wrap among themselves, beside the label rather than under it. */
 .font-choices { display: flex; flex-wrap: wrap; gap: 0.3rem; min-width: 0; }
 .size-name { min-width: 5.2rem; }
-.font-choice, .theme-choice, .lang-choice, .accent-choice {
+.font-choice, .theme-choice, .lang-choice, .accent-choice, .letters-choice {
   padding: 0.2rem 0.5rem;
   font-size: 17px;
   color: var(--muted);
@@ -836,6 +848,7 @@ main {
    list in its own, where the browser draws the list itself). */
 .font-select {
   appearance: none;
+  justify-self: start;
   min-width: 10rem;
   padding: 0.2rem 2rem 0.2rem 0.6rem;
   font: 17px "Gentium Book Plus", serif;
@@ -853,15 +866,20 @@ main {
 .font-select[data-font="neohellenic"], .font-select option[value="neohellenic"] { font-family: "GFS Neohellenic", serif; font-size: 17px; }
 .font-select[data-font="porson"], .font-select option[value="porson"] { font-family: "GFS Porson", "Gentium Book Plus", serif; font-size: 17px; }
 .font-select[data-font="alegreya"], .font-select option[value="alegreya"] { font-family: "Alegreya", serif; font-size: 16.5px; }
+.font-select[data-font="decker"], .font-select option[value="decker"] { font-family: "GFS Decker", "Gentium Book Plus", serif; font-size: 17px; }
 .font-select[data-font="system"], .font-select option[value="system"] { font-family: system-ui, sans-serif; font-size: 15px; }
 .font-select option { color: var(--text); background: var(--bg); }
 .theme-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }  /* an icon each */
-.theme-row .font-choices, .accent-row .font-choices { flex-wrap: nowrap; }
+.theme-row .font-choices, .accent-row .font-choices, .letters-row .font-choices { flex-wrap: nowrap; }
+.letters-choice { font-family: var(--greek); font-size: 16px; }
+/* Capitals only (the Aa menu's Letters): the text as one unbroken run, so a line may break
+   anywhere in it, as in an inscription. */
+:root[data-letters="capitals"] #verses .text { word-break: break-all; }
 .lang-choice:not([data-lang="en"]) { font-family: var(--greek); font-size: 15.5px; }
 .lang-choice[data-lang="en"] { font-size: 14px; }  /* (each language's name in its own script) */
-@media (hover: hover) { .font-choice:hover, .theme-choice:hover, .lang-choice:hover, .accent-choice:hover { color: var(--text); border-color: var(--current-bar); } }
+@media (hover: hover) { .font-choice:hover, .theme-choice:hover, .lang-choice:hover, .accent-choice:hover, .letters-choice:hover { color: var(--text); border-color: var(--current-bar); } }
 .font-choice[aria-pressed="true"], .theme-choice[aria-pressed="true"], .lang-choice[aria-pressed="true"],
-.accent-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
+.accent-choice[aria-pressed="true"], .letters-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
 .size-value { text-align: center; font-variant-numeric: tabular-nums; color: var(--text); }
 .size-step {
   width: 2rem;

@@ -78,7 +78,8 @@
     document.dispatchEvent(new Event("sizechange"));
   });
   // The font for the Greek: Gentium Book Plus (the default), EB Garamond, GFS Didot,
-  // GFS Neohellenic, GFS Porson, Alegreya or the device's own (sans-serif), from a list.
+  // GFS Neohellenic, GFS Porson, GFS Decker, Alegreya or the device's own (sans-serif),
+  // from a list.
   const fontSelect = sizeMenu.querySelector(".font-select");
   function showFont() {
     const font = document.documentElement.dataset.font ?? "gentium";
@@ -94,6 +95,23 @@
     document.dispatchEvent(new Event("sizechange"));
     // A web font is drawn once it has loaded: refit again then.
     document.fonts?.ready.then(() => document.dispatchEvent(new Event("sizechange")));
+  });
+  // The letters of the text: as printed, or capitals only, as carved in stone (app.js turns
+  // the text; "letterschange" tells it).
+  function showLetters() {
+    const letters = document.documentElement.dataset.letters ?? "book";
+    for (const b of sizeMenu.querySelectorAll(".letters-choice")) b.setAttribute("aria-pressed", String(b.dataset.letters === letters));
+  }
+  sizeMenu.addEventListener("click", (e) => {
+    const choice = e.target.closest(".letters-choice");
+    if (!choice) return;
+    const letters = choice.dataset.letters;
+    if (letters === "book") delete document.documentElement.dataset.letters;
+    else document.documentElement.dataset.letters = letters;
+    try { letters === "book" ? localStorage.removeItem("letters") : localStorage.setItem("letters", letters); } catch {}
+    showLetters();
+    document.dispatchEvent(new Event("letterschange"));
+    document.dispatchEvent(new Event("sizechange"));
   });
   // The interface's language (i18n.js): English, Modern Greek or Ancient Greek, remembered
   // per browser; the page is loaded again in it.
@@ -116,6 +134,7 @@
     if (!sizeMenu.hidden) return closeSizes();
     showSizes();
     showFont();
+    showLetters();
     sizeMenu.hidden = false;
     placeSizes();
     sizeButton.setAttribute("aria-expanded", "true");
