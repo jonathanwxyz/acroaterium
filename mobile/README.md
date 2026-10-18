@@ -18,6 +18,11 @@ server serves it (`scripts/serve.py`), and gives it what a browser on a phone ca
   word cards and notes from it. When the server's copy is another version (its
   `/api/compact`), that one is fetched in its place.
 
+- **Every font**, from the first launch and offline: the build copies `web/fonts/` into the
+  APK (task `bundleFonts`), and `BundledFonts` answers the pages' `/fonts/…` from there.
+  A font the app doesn't have (one added to the site since the build) comes from the
+  server, as in a browser.
+
 The web pages are the same ones the browser gets. `web/native.js` does the switching: in
 the app, it stands in for the `<audio>` element and `navigator.mediaSession` (driving
 `ReaderAudioPlugin`), and gives `offline.js` the app's file store. In a browser, it does

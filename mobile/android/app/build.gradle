@@ -80,6 +80,17 @@ def bundleLibrary = tasks.register("bundleLibrary") {
 }
 preBuild.dependsOn(bundleLibrary)
 
+// The reader's fonts (web/fonts/), bundled so that each is there at once, offline too,
+// whichever is chosen: MainActivity answers the pages' /fonts/… from them (BundledFonts).
+def webFonts = rootProject.file("../../web/fonts")
+def fontAssets = layout.buildDirectory.dir("generated/font-assets").get().asFile
+android.sourceSets.main.assets.srcDir(fontAssets)
+def bundleFonts = tasks.register("bundleFonts", Sync) {
+    from(webFonts) { include "*.woff2" }
+    into(new File(fontAssets, "fonts"))
+}
+preBuild.dependsOn(bundleFonts)
+
 try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {

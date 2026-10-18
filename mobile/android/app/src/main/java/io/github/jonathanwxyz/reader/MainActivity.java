@@ -27,8 +27,8 @@ public class MainActivity extends BridgeActivity {
 
     /**
      * The library the app comes with (BundledLibrary), at /__app/… on the pages' own
-     * server: answered here, for the pages and for their service worker alike; anything
-     * else goes on as Capacitor has it.
+     * server, and its fonts (BundledFonts), at /fonts/…: answered here, for the pages and
+     * for their service worker alike; anything else goes on as Capacitor has it.
      */
     private void serveBundledLibrary() {
         Bridge bridge = getBridge();
@@ -36,7 +36,7 @@ public class MainActivity extends BridgeActivity {
             new BridgeWebViewClient(bridge) {
                 @Override
                 public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                    WebResourceResponse r = BundledLibrary.intercept(MainActivity.this, request);
+                    WebResourceResponse r = bundled(request);
                     return r != null ? r : super.shouldInterceptRequest(view, request);
                 }
             }
@@ -47,11 +47,16 @@ public class MainActivity extends BridgeActivity {
                 new ServiceWorkerClient() {
                     @Override
                     public WebResourceResponse shouldInterceptRequest(WebResourceRequest request) {
-                        WebResourceResponse r = BundledLibrary.intercept(MainActivity.this, request);
+                        WebResourceResponse r = bundled(request);
                         if (r != null) return r;
                         return resolve ? bridge.getLocalServer().shouldInterceptRequest(request) : null;
                     }
                 }
             );
+    }
+
+    private WebResourceResponse bundled(WebResourceRequest request) {
+        WebResourceResponse r = BundledLibrary.intercept(this, request);
+        return r != null ? r : BundledFonts.intercept(this, request);
     }
 }
