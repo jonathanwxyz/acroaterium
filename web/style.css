@@ -864,7 +864,8 @@ main {
 .font-select option { color: var(--text); background: var(--bg); }
 .theme-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }  /* an icon each */
 .theme-row .font-choices, .accent-row .font-choices, .letters-row .font-choices { flex-wrap: nowrap; }
-.letters-choice { font-family: var(--greek); font-size: 16px; }
+.letters-choice { font-family: var(--greek); font-size: 15.5px; }  /* (named in Greek, whatever the interface's language) */
+.letters-choice[data-letters="capitals"] { letter-spacing: 0.04em; }
 /* Majuscule in scriptio continua (the Aa menu's Script): the text one unbroken run, so a
    line may break anywhere in it, as in an inscription. */
 :root[data-letters="capitals"] #verses .text { word-break: break-all; }
