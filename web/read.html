@@ -26,7 +26,7 @@
       if (v > 0) document.documentElement.style.setProperty(prop, v);
     }
   } catch {}
-  // The letters: as printed, or capitals only (as carved: app.js turns the text).
+  // The script: minuscule, as printed, or majuscule in scriptio continua (app.js turns the text).
   try { if (localStorage.getItem("letters") === "capitals") document.documentElement.dataset.letters = "capitals"; } catch {}
   // And the font for the Greek (Gentium unless another was chosen).
   {
@@ -120,11 +120,11 @@
             <option value="system">System</option>
           </select>
         </div>
-        <div class="font-row letters-row" role="group" aria-label="Letters">
-          <span class="size-name">Letters</span>
+        <div class="font-row letters-row" role="group" aria-label="Script">
+          <span class="size-name">Script</span>
           <span class="font-choices">
-            <button class="letters-choice" data-letters="book" aria-pressed="false" title="As printed: small letters, accents and spaces">ἄειδε</button>
-            <button class="letters-choice" data-letters="capitals" aria-pressed="false" title="As carved in stone: capitals only, without accents, spaces or punctuation">ΑΕΙΔΕ</button>
+            <button class="letters-choice" data-letters="book" aria-pressed="false" title="Minuscule: small letters, accents and spaces, as printed" aria-label="Minuscule">ἄειδε</button>
+            <button class="letters-choice" data-letters="capitals" aria-pressed="false" title="Majuscule, in scriptio continua: capitals only, without accents, spaces or punctuation" aria-label="Majuscule">ΑΕΙΔΕ</button>
           </span>
         </div>
         <div class="font-row theme-row" role="group" aria-label="Theme">

@@ -96,7 +96,7 @@
     // A web font is drawn once it has loaded: refit again then.
     document.fonts?.ready.then(() => document.dispatchEvent(new Event("sizechange")));
   });
-  // The letters of the text: as printed, or capitals only, as carved in stone (app.js turns
+  // The script of the text: minuscule, as printed, or majuscule in scriptio continua (app.js turns
   // the text; "letterschange" tells it).
   function showLetters() {
     const letters = document.documentElement.dataset.letters ?? "book";

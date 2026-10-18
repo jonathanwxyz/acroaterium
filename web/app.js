@@ -67,7 +67,7 @@ const SCHOLIA_ICON = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidde
 const audio = window.nativeApp?.audio() ?? document.getElementById("audio");  // (native.js: in the app)
 const list = document.getElementById("verses");
 
-// Capitals only (the Aa menu's Letters): the text as carved in stone, in capitals without
+// Majuscule in scriptio continua (the Aa menu's Script): the text in capitals without
 // accents or breathings (an iota subscript written beside, ΤΩΙ), and without spaces or
 // punctuation between the words. Only what's shown is turned: each text node keeps what it
 // was (shownText reads that back), and the words stay where they were, to be tapped.

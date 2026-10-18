@@ -865,8 +865,8 @@ main {
 .theme-choice { display: grid; place-items: center; width: 2.2rem; height: 2rem; padding: 0; }  /* an icon each */
 .theme-row .font-choices, .accent-row .font-choices, .letters-row .font-choices { flex-wrap: nowrap; }
 .letters-choice { font-family: var(--greek); font-size: 16px; }
-/* Capitals only (the Aa menu's Letters): the text as one unbroken run, so a line may break
-   anywhere in it, as in an inscription. */
+/* Majuscule in scriptio continua (the Aa menu's Script): the text one unbroken run, so a
+   line may break anywhere in it, as in an inscription. */
 :root[data-letters="capitals"] #verses .text { word-break: break-all; }
 .lang-choice:not([data-lang="en"]) { font-family: var(--greek); font-size: 15.5px; }
 .lang-choice[data-lang="en"] { font-size: 14px; }  /* (each language's name in its own script) */

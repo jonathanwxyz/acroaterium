@@ -18,7 +18,7 @@
 // from the file (local/library.js, reading only the pages it needs: local/sqlite.js),
 // before the network is asked; anything not made here, or failing, goes to the server.
 importScripts("local/sqlite.js", "local/library.js");
-const VERSION = "v106";
+const VERSION = "v107";
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 const FONTS = "fonts";  // kept across versions
@@ -29,7 +29,9 @@ const SHELL_FILES = ["./", "index.html", "home.js", "read.html", "app.js", "i18n
                      "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png", "icons/icon-32.png"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+  // (Fetched afresh: not the browser's own cached copy, which may be older than the deploy.)
+  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES.map((f) => new Request(f, { cache: "reload" }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (e) => {
