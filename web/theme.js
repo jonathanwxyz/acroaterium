@@ -145,6 +145,9 @@
   function placeSizes() {
     if (sizeMenu.hidden) return;
     sizeMenu.style.right = "";
+    // (Too wide for the screen, its rows run past its edge: then its labels go above.)
+    sizeMenu.classList.remove("narrow");
+    if (sizeMenu.scrollWidth > sizeMenu.clientWidth + 1) sizeMenu.classList.add("narrow");
     const r = sizeMenu.getBoundingClientRect();
     const shift = Math.min(Math.max(0, 8 - r.left), Math.max(0, innerWidth - 8 - r.right));
     const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-scale")) || 1;

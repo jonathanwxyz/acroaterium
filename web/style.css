@@ -807,26 +807,19 @@ main {
   font: 14px system-ui, sans-serif;
   color: var(--muted);
   white-space: nowrap;
+  width: max-content;  /* (as its rows need: below) */
   max-width: calc(100vw / var(--ui-scale, 1) - 16px);  /* in the bar's (zoomed) units */
-
-  /* (Wide enough for the language and the four accents on one line, unless the screen, at
-     a large interface size, isn't: then as wide as the screen.) */
-  min-width: min(22rem, calc(100vw / var(--ui-scale, 1) - 16px));
   /* (No taller than the room between the bars, scrolling within itself if it must: the
      bars' heights are on screen, so divided by the interface size, as the menu is in it.) */
   max-height: calc((100dvh - var(--topbar-h, 3.5rem) - var(--player-h, 7rem)) / var(--ui-scale, 1) - 1rem);
   overflow-y: auto;
-  container: sizemenu / inline-size;
 }
-/* (In Greek its labels are longer: wider, to keep the same room for the choices.) */
-:root[data-ui="el"] #size-menu, :root[data-ui="grc"] #size-menu { min-width: min(24.5rem, calc(100vw / var(--ui-scale, 1) - 16px)); }
-/* A narrow menu (a large interface size on a phone): each label above its choices, and
-   the choices wrapping rather than running off its edge. */
-@container sizemenu (max-width: 17rem) {
-  #size-menu .font-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-  #size-menu .font-row .size-name { width: 100%; }
-  #size-menu .theme-row .font-choices, #size-menu .accent-row .font-choices { flex-wrap: wrap; }
-}
+/* As wide as its rows need (its labels' and choices'). Where that's more than the screen
+   has (a large interface size on a phone), each label above its choices, and the choices
+   wrapping rather than running off its edge (theme.js: placeSizes). */
+#size-menu.narrow .font-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+#size-menu.narrow .font-row .size-name { width: 100%; }
+#size-menu.narrow :is(.theme-row, .accent-row, .letters-row) .font-choices { flex-wrap: wrap; }
 #size-menu[hidden] { display: none; }
 /* The rows share the menu's two columns (subgrid): the labels', as wide as the longest in the
    language in use ("Γραμματοσειρά" is longer than "Font"), and the choices'. */
