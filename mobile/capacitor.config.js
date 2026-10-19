@@ -16,7 +16,7 @@ if (!url) throw new Error("Set READER_URL, or put the server's address in mobile
 
 module.exports = {
   appId: "io.github.jonathanwxyz.reader",
-  appName: "Reader",
+  appName: "Acroaterium",
   webDir: "www",
   server: {
     url,

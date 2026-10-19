@@ -1,6 +1,6 @@
 {
-  "name": "Reader",
-  "short_name": "Reader",
+  "name": "Acroaterium",
+  "short_name": "Acroaterium",
   "description": "Greek texts to read, following a recitation where there is one.",
   "lang": "grc",
   "start_url": "./",
