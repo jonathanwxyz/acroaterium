@@ -127,6 +127,7 @@ function render(data) {
   document.body.classList.toggle("prose-text", data.form === "prose");
   if (!has.has("audio") || data.form === "prose") document.body.classList.remove("focused");
   list.classList.toggle("prose", data.form === "prose");
+  document.body.classList.toggle("named-parts", data.cite === "label");  // (the prayers: no position box)
   showTitle(data.eyebrow ?? data.title, data.title, data.short);
   fillTitles(data.collectionTexts);
   const bookLabel = data.books.find((b) => b.n === data.book)?.label;
@@ -791,11 +792,24 @@ function findLine(typed) {
   return last && !m[3] && line > parseInt(last.ref, 10) ? last : null;
 }
 // A part's heading: its name, and in the English interface its English name beside it.
+// A tap picks the part (lit as the verse playing is), for the bookmark button; again, lets
+// it go.
+let pickedHead = null;
 function partHeading(ref, english) {
   const h = el("li", "part-head");
-  h.append(el("span", "part-name", ref));
-  if (english && UI_LANG === "en") h.append(el("span", "part-en", english));
+  h.dataset.ref = ref;
+  const name = el("span", "part-label");
+  name.append(el("span", "part-name", ref));
+  if (english && UI_LANG === "en") name.append(el("span", "part-en", english));
+  h.append(name);
+  h.addEventListener("click", () => pickPart(pickedHead === h ? null : h));
   return h;
+}
+function pickPart(h) {
+  pickedHead?.classList.remove("picked");
+  pickedHead = h;
+  pickedHead?.classList.add("picked");
+  showMarkButton();
 }
 
 // A part, by its name in Greek or English, typed with or without accents and in part:
@@ -1274,7 +1288,7 @@ function placeCard({ again = false } = {}) {
   const v = selected.closest(".text")?.getBoundingClientRect() ?? r;
   if (!cardSide || again) {
     const minTop = document.getElementById("topbar").getBoundingClientRect().bottom + CARD_GAP;
-    const maxBottom = document.getElementById("player").getBoundingClientRect().top - CARD_GAP;
+    const maxBottom = barTop() - CARD_GAP;
     // Above the whole verse, so a wrapped verse isn't half covered; failing that below it;
     // failing both (a verse at the top of the page, a long prose paragraph) by the word's line.
     const need = 160;
@@ -1999,13 +2013,21 @@ list.addEventListener("pointerdown", (e) => {
 function onScreen(row) {
   const r = row.getBoundingClientRect();
   const top = document.getElementById("topbar").getBoundingClientRect().bottom;
-  const bottom = document.getElementById("player").getBoundingClientRect().top;
-  return r.height > 0 && r.bottom > top && r.top < bottom;
+  return r.height > 0 && r.bottom > top && r.top < barTop();
+}
+// The top of the media bar, or with none (the prayers) the foot of the window.
+function barTop() {
+  const bar = document.getElementById("player").getBoundingClientRect();
+  return bar.height ? bar.top : innerHeight;
 }
 
 // The verse (row) to mark, and its reference: a line, or for prose the section at the
 // reading position within the paragraph.
 function markTarget() {
+  if (pickedHead?.isConnected && onScreen(pickedHead)) {  // (a part picked by its heading)
+    const li = rowOfRef(pickedHead.dataset.ref);
+    if (li) return { li, ref: pickedHead.dataset.ref };
+  }
   const cur = current >= 0 ? verses[current] : null;
   const tapped = tappedRow && Date.now() - tappedAt < 60000 && onScreen(tappedRow);
   const playing = cur && cur.line > 0 && onScreen(cur.el);
@@ -2037,7 +2059,9 @@ function rowOfRef(ref) {
 
 function showMarks() {
   for (const li of list.querySelectorAll("li.bookmarked")) li.classList.remove("bookmarked");
-  for (const ref of marks.keys()) rowOfRef(ref)?.classList.add("bookmarked");
+  // (a part named by a heading: the ribbon on its heading)
+  for (const h of list.querySelectorAll(".part-head")) h.classList.toggle("bookmarked", marks.has(h.dataset.ref));
+  for (const ref of marks.keys()) if (DATA?.cite !== "label") rowOfRef(ref)?.classList.add("bookmarked");
   showMarkButton();
 }
 function showMarkButton() {

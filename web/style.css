@@ -1636,19 +1636,36 @@ body.no-audio .verse { cursor: auto; }
 body.prose-text .toggle:has(#focused) { display: none; }
 .speaker { color: var(--muted); font-size: 0.78em; letter-spacing: 0.05em; margin-right: 0.15em; }
 /* A part named rather than numbered (the prayers): its name over it, in line with the
-   text, and in the English interface its English name after it. */
+   text, and in the English interface its English name after it. A row as a verse's is,
+   which a tap picks (to bookmark the part), lit as the verse playing is. */
 .part-head {
   list-style: none;
-  margin: 1.6rem 0 0.6rem calc(3rem + 3px + 0.75rem);
+  position: relative;
+  display: grid;
+  grid-template-columns: 3rem 1fr;
+  column-gap: 0.75rem;
+  margin: 1.2rem 0 0.4rem;
+  padding: 0.3rem 0.6rem 0.3rem 0;
+  border-left: 3px solid transparent;
+  border-radius: 0 4px 4px 0;
   color: var(--muted);
   font-size: 0.85em;
   letter-spacing: 0.04em;
   line-height: 1.4;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease;
 }
-.part-head:first-child { margin-top: 0.4rem; }
+.part-head:first-child { margin-top: 0; }
+.part-head .part-label { grid-column: 2; }
 .part-head .part-en { opacity: 0.8; }
 .part-head .part-en::before { content: "·"; margin: 0 0.55em; }  /* (as much room either side) */
-@media (max-width: 520px) { .part-head { margin-left: calc(2.2rem + 3px + 0.5rem); } }  /* (the phone's narrower margin) */
+@media (hover: hover) { .part-head:hover { background: color-mix(in srgb, var(--current-bg) 45%, transparent); } }
+.part-head.picked { background: var(--current-bg); border-left-color: var(--current-bar); color: var(--text); }
+@media (max-width: 520px) { .part-head { grid-template-columns: 2.2rem 1fr; column-gap: 0.5rem; } }  /* (as a verse's) */
+/* No position box (a part is found by its heading); without it and anything else to show, no bar. */
+body.named-parts.no-audio #position { display: none; }
+body.named-parts.no-audio.no-paraphrase.no-modern.no-translation.no-scholia #player { display: none; }
 .ref-mark {
   font: 11px system-ui, sans-serif;
   color: var(--muted);
@@ -1982,7 +1999,7 @@ body.no-paraphrase #verses:not(.prose) .verse { margin-bottom: 0.15rem; padding-
 body.show-scholia .verse.noted, body.scholia-popup .verse.noted { border-left-color: color-mix(in srgb, var(--current-bar) 60%, transparent); background: color-mix(in srgb, var(--current-bg) 40%, transparent); }
 
 /* A bookmarked verse: a ribbon at the left of its row. */
-.verse.bookmarked::before {
+.verse.bookmarked::before, .part-head.bookmarked::before {
   content: "";
   position: absolute;
   left: 0.45rem;
