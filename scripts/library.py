@@ -1142,14 +1142,15 @@ def prayers(src, verbose, title, labels_out):
     ((ref, "en", label)). "labels": {"id or heading": [Greek, English]} (or a list of those,
     one for each time it comes); "": the text before the first part; psalm_N needs none
     (Ψαλμὸς Νʹ, Psalm 50). "starts": [[the line's start, Greek, English], ...] in the
-    text's order, for parts the file doesn't mark. "roles": who speaks a line ("Διάκονος·
+    text's order, for parts the file doesn't mark (a fourth item, true: the line is the
+    part's heading, left out of its text). "roles": who speaks a line ("Διάκονος·
     ...", also with "Ὁ " and a parenthesis: "Ἱερεύς (χαμηλοφώνως)·"), its speaker. A
     blank line ends a paragraph; the lines of one are kept as lines (para 2: a line break).
     The text is taken in Unicode's composed form (NFC), and so are the markers."""
     path = ROOT / src["file"]
     nfc = lambda x: unicodedata.normalize("NFC", x)  # (the ano teleia is a middle dot, oxia tonos)
     labels = {nfc(k): v for k, v in src.get("labels", {}).items()}
-    starts = [[nfc(at), el, en] for at, el, en in src.get("starts", [])]
+    starts = [[nfc(at), *rest] for at, *rest in src.get("starts", [])]
     roles = [nfc(r) for r in src.get("roles", [])]
     role = re.compile(rf"^((?:Ὁ )?(?:{'|'.join(map(re.escape, roles))})(?: \([^)]*\))?)·\s*(.*)$") if roles else None
     seen, used, missing = Counter(), Counter(), []
@@ -1188,9 +1189,11 @@ def prayers(src, verbose, title, labels_out):
             part(line)
             continue
         if starts and line.startswith(starts[0][0]):
-            _, el, en = starts.pop(0)
+            _, el, en, *heading = starts.pop(0)
             labels[f"start:{el}"] = [el, en]
             part(f"start:{el}")
+            if heading and heading[0]:  # (the line names the part: its heading, not its text)
+                continue
         if ref is None:
             part("")
         speaker, content = None, line
