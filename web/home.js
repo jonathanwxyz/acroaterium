@@ -89,7 +89,7 @@ function bookLinks(t, cls) {
     const li = el("li");
     li.append(a);
     // A book with a recording of its own (the Iliad's, the Odyssey's): its own download.
-    const own = cls === "book-list" && t.downloads?.length > 1 && t.downloads.find((d) => d.n === b.n);
+    const own = cls === "book-list" && t.downloads?.find((d) => d.n === b.n);
     const button = own && downloadButton([[`${slugOf(t)}/${b.n}`, own.size]], longLabel(b.label, b.n), { compact: true });
     if (button) li.append(button);
     ul.append(li);
@@ -343,7 +343,9 @@ function workEntry(t, showAuthor = true) {
   const named = [el("span", "work-title", t.title), ...(t.author && showAuthor ? [el("span", "work-author", t.author)] : [])];
   if (t.books.length > 1) {
     const list = bookLinks(t, "book-list");
-    work.append(withDownload(foldRow(slugOf(t), "work-head fold-row", named, list), downloadsOf(t),
+    // (with one download, a book's own button is the only one: "all of" it would be wrong)
+    const all = downloadsOf(t).length > 1 ? downloadsOf(t) : [];
+    work.append(withDownload(foldRow(slugOf(t), "work-head fold-row", named, list), all,
                              tr("all of {title}", { title: t.title }), "work-line"), list);
   } else {  // one book: the title opens it
     const head = el("a", "work-head");
