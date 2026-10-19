@@ -1135,7 +1135,6 @@ def iliad(verbose):
     return "verse", "line", [(b, f"Ῥαψῳδία {GREEK_NUMERALS[b]}") for b in books], []
 
 
-ILIAD_EYEBROW = "Ὁμήρου Ἰλιάς"
 ILIAD_NOTES_CREDIT = ("Scholia: Dindorf & Maass, Scholia Graeca in Homeri Iliadem (1875–88), via "
                       "First1KGreek, CC BY-SA 4.0 · Leaf, Seymour, Benner: via Perseus, CC BY-SA 3.0")
 ILIAD_TRANSLATION_CREDITS = {"en": "English: A. T. Murray (Loeb, 1924), via Perseus",
@@ -1214,8 +1213,8 @@ def iliad_into_library(con, slug="iliad", audio_db=AUDIO_DB, verbose=False):
     con.executemany("INSERT INTO divisions VALUES (?, ?, ?)",
                     [(slug, b, f"Ῥαψῳδία {GREEK_NUMERALS[b]}")
                      for (b,) in il.execute("SELECT DISTINCT book FROM verses ORDER BY book")])
-    con.execute("UPDATE texts SET reader = 'text', form = 'verse', cite = 'line', notes_credit = ?, "
-                "eyebrow = coalesce(eyebrow, ?) WHERE slug = ?", (ILIAD_NOTES_CREDIT, ILIAD_EYEBROW, slug))
+    con.execute("UPDATE texts SET reader = 'text', form = 'verse', cite = 'line', notes_credit = ? "
+                "WHERE slug = ?", (ILIAD_NOTES_CREDIT, slug))
 
     # The verses (line 0: the book's title, as the recording reads it), and Gaza's paraphrase.
     verses = il.execute("SELECT book, line, homer, paraphrase FROM verses ORDER BY book, line").fetchall()
