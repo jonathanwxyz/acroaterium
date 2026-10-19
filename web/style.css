@@ -1635,6 +1635,20 @@ body.no-audio .verse { cursor: auto; }
 }
 body.prose-text .toggle:has(#focused) { display: none; }
 .speaker { color: var(--muted); font-size: 0.78em; letter-spacing: 0.05em; margin-right: 0.15em; }
+/* A part named rather than numbered (the prayers): its name over it, in line with the
+   text, and in the English interface its English name after it. */
+.part-head {
+  list-style: none;
+  margin: 1.6rem 0 0.6rem calc(3rem + 3px + 0.75rem);
+  color: var(--muted);
+  font-size: 0.85em;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+.part-head:first-child { margin-top: 0.4rem; }
+.part-head .part-en { font: 0.85em system-ui, sans-serif; letter-spacing: 0; margin-left: 0.6em; opacity: 0.85; }
+.part-head .part-en::before { content: "· "; }
+@media (max-width: 520px) { .part-head { margin-left: calc(2.2rem + 3px + 0.5rem); } }  /* (the phone's narrower margin) */
 .ref-mark {
   font: 11px system-ui, sans-serif;
   color: var(--muted);

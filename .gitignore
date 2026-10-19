@@ -20,6 +20,8 @@ recordings/
 # shows the format
 library/*
 !library/catalogue.example.json
+# and the prayers' texts (scripts/library.py, source "prayers")
+prayer_texts/
 
 # Bookmarks (scripts/serve.py), kept local
 data/bookmarks.json

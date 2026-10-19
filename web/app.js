@@ -146,8 +146,10 @@ function render(data) {
   else renderVerse(data, has);
   applyScholia();
   const first = refs.find((r) => r.ref && r.ref !== "0")?.ref;
-  if (!data.audio) position.placeholder = data.cite === "section" ? tr("go to {ref}", { ref: first }) : tr("go to line");
+  if (!data.audio) position.placeholder = data.cite === "section" ? tr("go to {ref}", { ref: first })
+    : data.cite === "label" ? tr("go to a part") : tr("go to line");
   if (data.cite === "section") position.title = tr("Type a section (e.g. {ref}) and press Enter", { ref: first });
+  if (data.cite === "label") position.title = tr("Type a part's name (e.g. {ref}), in Greek or English, and press Enter", { ref: first });
   showEndMode();  // (continue, only where there's a next)
   showChapterNav();
 }
@@ -409,8 +411,11 @@ function renderVerse(data, has) {
 
 // Prose: a paragraph per speech (or the editor's paragraph), speaker first. Where a
 // section begins, its number stands in the margin if the paragraph opens with it, and
-// in the text otherwise.
+// in the text otherwise. Parts named rather than numbered ("cite": label, the prayers):
+// each opens with its name as a heading, in English too in the English interface; a
+// line kept as a line (br) starts on a new line of its paragraph.
 function renderProse(data, has) {
+  const labelled = data.cite === "label";
   const frag = document.createDocumentFragment();
   let li = null, text = null, num = null, lastRef = null, notes = 0, refsIn = [];
   const close = () => {  // the paragraph's notes key: its first to last segment
@@ -420,7 +425,14 @@ function renderProse(data, has) {
     if (notes) li.append(scholiaButton(li, label, notes));
   };
   for (const v of data.verses) {
+    const part = labelled && v.ref && v.ref !== lastRef;
+    if (part) {
+      close();
+      li = text = null;
+      frag.append(partHeading(v.ref, data.refLabels?.[v.ref]));
+    }
     const opens = v.para || !text;
+    if (!opens && v.br) text.append(document.createElement("br"));
     if (opens) {
       close();
       li = el("li", "verse prose-para untimed" + (v.line <= 0 ? " title" : ""));  // (lines 0, -1…: a heading read first)
@@ -440,7 +452,8 @@ function renderProse(data, has) {
     const seg = el("span", "seg");
     let sectionRef = null;
     if (v.ref && v.ref !== lastRef) {
-      if (opens) num.textContent = v.ref;
+      if (labelled) {}  // (its heading names it)
+      else if (opens) num.textContent = v.ref;
       else seg.append(el("span", "ref-mark", v.ref), " ");
       sectionRef = { ref: v.ref, el: opens ? text.parentNode : seg, entry: null };
       refs.push(sectionRef);
@@ -777,6 +790,28 @@ function findLine(typed) {
   const last = lines.at(-1);
   return last && !m[3] && line > parseInt(last.ref, 10) ? last : null;
 }
+// A part's heading: its name, and in the English interface its English name beside it.
+function partHeading(ref, english) {
+  const h = el("li", "part-head");
+  h.append(el("span", "part-name", ref));
+  if (english && UI_LANG === "en") h.append(el("span", "part-en", english));
+  return h;
+}
+
+// A part, by its name in Greek or English, typed with or without accents and in part:
+// the one named so, else the first whose name starts so, else the first that has it.
+const plainName = (s) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+function findLabel(typed) {
+  const t = plainName(typed);
+  if (!t) return null;
+  const names = refs.map((r) => [r, [r.ref, DATA.refLabels?.[r.ref]].filter(Boolean).map(plainName)]);
+  for (const test of [(n) => n === t, (n) => n.startsWith(t), (n) => n.includes(t)]) {
+    const hit = names.find(([, ns]) => ns.some(test));
+    if (hit) return hit[0];
+  }
+  return null;
+}
+
 function findSection(typed) {
   const m = typed.toLowerCase().replace(/[\s.§]+/g, "").match(/^(\d+)([a-e]?)$/);
   if (!m) return null;
@@ -785,9 +820,9 @@ function findSection(typed) {
 
 function jumpToTyped() {
   const typed = position.value.trim();
-  const target = DATA?.cite === "section" ? findSection(typed) : findLine(typed);
+  const target = DATA?.cite === "section" ? findSection(typed) : DATA?.cite === "label" ? findLabel(typed) : findLine(typed);
   // Another chapter or book of the text, not shown here: open it there.
-  const other = !target && DATA?.cite !== "section" && typed.replace(/\s+/g, "").match(/^(\d+)[.:](\d+[a-z]?)$/i);
+  const other = !target && DATA?.cite !== "section" && DATA?.cite !== "label" && typed.replace(/\s+/g, "").match(/^(\d+)[.:](\d+[a-z]?)$/i);
   if (other && DATA.books.some((b) => b.n === Number(other[1]))) {
     location.href = readerHref(TEXT, Number(other[1]), other[2]);
     return;
@@ -1876,7 +1911,8 @@ function whenAudioReady(fn) {
 // at its beginning and keeps its address; its place isn't saved over the book's.
 function goToLinked() {
   if (PLAN && RANGE && MARK) {  // (a bookmark made in the plan's day: at its verse)
-    const target = DATA.cite === "section" ? refs.find((r) => r.ref === MARK) : refs.find((r) => r.ref === MARK && r.div === BOOK);
+    const target = DATA.cite === "section" || DATA.cite === "label" ? refs.find((r) => r.ref === MARK)
+      : refs.find((r) => r.ref === MARK && r.div === BOOK);
     planRestored = true;
     if (target) {
       if (!focused.checked || !target.entry) centerRow(target.el);
@@ -1888,7 +1924,8 @@ function goToLinked() {
     }
   }
   if (PLAN && RANGE && restorePlanPlace()) return;
-  const target = RANGE ? refs[0] : V_TO ? null : DATA.cite === "section" ? findSection(V_FROM) : findLine(V_FROM);
+  const target = RANGE ? refs[0] : V_TO ? null : DATA.cite === "section" ? findSection(V_FROM)
+    : DATA.cite === "label" ? refs.find((r) => r.ref === V_FROM) ?? findLabel(V_FROM) : findLine(V_FROM);
   if (!target) {
     if (!RANGE) history.replaceState(null, "", readerHref(TEXT, BOOK));
     restored = !RANGE;

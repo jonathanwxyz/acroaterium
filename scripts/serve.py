@@ -488,6 +488,10 @@ def text_json(slug, n):
     except sqlite3.OperationalError:
         passages = []
     english, modern, paraphrase = translated["en"], translated["el"], translated["paraphrase"]
+    try:  # a part's label in English, beside the Greek (the prayers: "cite": label)
+        ref_labels = dict(con.execute("SELECT ref, label FROM ref_labels WHERE text = ? AND lang = 'en'", (slug,)))
+    except sqlite3.OperationalError:  # a library built before there were any
+        ref_labels = {}
     glosses, groups = paraphrase_glosses(con, slug, n)
     con.close()
     if not rows:
@@ -497,7 +501,8 @@ def text_json(slug, n):
     verses = []
     for seq, ref, content, speaker, para in rows:
         v = {"line": seq, "ref": ref, "text": content,
-             **({"speaker": speaker} if speaker else {}), **({"para": True} if para else {}),
+             **({"speaker": speaker} if speaker else {}), **({"para": True} if para == 1 else {}),
+             **({"br": True} if para == 2 else {}),  # (a new line in the paragraph)
              **({"scholia": notes[seq]} if seq in notes else {})}
         if seq in english:
             v["english"] = english[seq]
@@ -553,6 +558,8 @@ def text_json(slug, n):
             # file): the reader's timeline spans this one's verses, not the whole file.
             **({"clip": True} if recording and recording[2] > 1 else {}),
             **download_of(slug, n),
+            **({"refLabels": {r: ref_labels[r] for r in dict.fromkeys(v["ref"] for v in verses) if r in ref_labels}}
+               if ref_labels else {}),
             "verses": verses, "translation": passages, "credits": credits}
 
 

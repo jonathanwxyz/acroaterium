@@ -46,6 +46,9 @@ Sources (downloads are cached in data/raw/library/):
               (library/church_text.json, from scripts/church_text.py)
   swete       a book of the Septuagint ("books": [Swete's abbreviations, Gen, Dat, ...],
               see swete()): Swete's text as transcribed in LXX-Swete-1930; likewise
+  prayers     a service or prayers in a local text file ("file"), in parts labelled as
+              Stephanus sections are numbered ("cite": label), the labels in Greek and
+              English (ref_labels); see prayers()
 A text's "fixes" correct slips in its source: [{"ref": "17a", "find": "<as printed>",
 "replace": "<as it should read>"}] (the text at that section; it must match once).
 A text's "heading" is a title read before the text ("Πλάτωνος Ἀπολογία Σωκράτους"), or a list of lines
@@ -76,7 +79,7 @@ the treebank's text) and short definitions; its timings go into data/library_aud
 (recordings, units) beside the other texts'.
 
 Tables: categories (name, sort), texts (slug, title, author, category, sort, form:
-verse|prose, cite: line|section, reader: text, credit, notes_credit, collection, short,
+verse|prose, cite: line|section|verse|label, reader: text, credit, notes_credit, collection, short,
 hidden, eyebrow), divisions (text, n, label:
 a book, or the whole work), segments (text, div, seq, ref: line number or section,
 content, speaker, para: 1 where a paragraph or speech begins), note_sources (text, id,
@@ -1121,6 +1124,91 @@ def perseus(src, verbose, title):
     return "prose", "section", [(1, title)], segments
 
 
+# ---------------------------------------------------------------- prayers (local text files)
+
+# A heading set in capitals ("ΕΥΧΗ ΤΟΥ ΕΥΑΓΓΕΛΙΟΥ", "ΜΕΓΑΛΗ ΣΥΝΑΠΤΗ ἢ ΕΙΡΗΝΙΚΑ"): two or more
+# words in capitals, any others short ones (ἢ, ἡ).
+def capitals_heading(line):
+    words = [w for w in line.split() if any(c.isalpha() for c in w)]
+    caps = [w for w in words if not any(c.islower() for c in w) and sum(c.isalpha() for c in w) >= 2]
+    return len(caps) >= 2 and all(w in caps or sum(c.isalpha() for c in w) <= 2 for w in words)
+
+
+def prayers(src, verbose, title, labels_out):
+    """A service or prayers from a local text file ("file", under the project): "# name"
+    (its title, given by the catalogue instead), then its parts, each opened by "## id",
+    a heading in capitals, or a line starting as one of "starts" says. A part's label (the
+    segments' ref, as a Stephanus section) is Greek; its English goes in labels_out
+    ((ref, "en", label)). "labels": {"id or heading": [Greek, English]} (or a list of those,
+    one for each time it comes); "": the text before the first part; psalm_N needs none
+    (Ψαλμὸς Νʹ, Psalm 50). "starts": [[the line's start, Greek, English], ...] in the
+    text's order, for parts the file doesn't mark. "roles": who speaks a line ("Διάκονος·
+    ...", also with "Ὁ " and a parenthesis: "Ἱερεύς (χαμηλοφώνως)·"), its speaker. A
+    blank line ends a paragraph; the lines of one are kept as lines (para 2: a line break).
+    The text is taken in Unicode's composed form (NFC), and so are the markers."""
+    path = ROOT / src["file"]
+    nfc = lambda x: unicodedata.normalize("NFC", x)  # (the ano teleia is a middle dot, oxia tonos)
+    labels = {nfc(k): v for k, v in src.get("labels", {}).items()}
+    starts = [[nfc(at), el, en] for at, el, en in src.get("starts", [])]
+    roles = [nfc(r) for r in src.get("roles", [])]
+    role = re.compile(rf"^((?:Ὁ )?(?:{'|'.join(map(re.escape, roles))})(?: \([^)]*\))?)·\s*(.*)$") if roles else None
+    seen, used, missing = Counter(), Counter(), []
+    segments, ref, new_para = [], None, True
+
+    def part(marker):
+        nonlocal ref, new_para
+        k = seen[marker]
+        seen[marker] += 1
+        given = labels.get(marker)
+        if given and isinstance(given[0], list):
+            given = given[k] if k < len(given) else None
+        if not given and (m := re.fullmatch(r"psalm_(\d+)", marker)):
+            given = [f"Ψαλμὸς {greek_number(int(m[1]))}", f"Psalm {m[1]}"]
+        if not given:
+            missing.append(marker if k == 0 else f"{marker} (time {k + 1})")
+            given = [marker, marker]
+        el, en = given
+        used[el] += 1
+        if used[el] > 1:  # (the same again: Μικρὰ Συναπτή (Βʹ))
+            el, en = f"{el} ({greek_number(used[el])})", f"{en} ({used[el]})"
+        ref, new_para = el, True
+        labels_out.append((ref, "en", en))
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = nfc(line.strip())
+        if re.match(r"#(?!#)", line):
+            continue
+        if line.startswith("##"):
+            part(line.lstrip("#").strip())
+            continue
+        if not line:
+            new_para = True
+            continue
+        if capitals_heading(line):
+            part(line)
+            continue
+        if starts and line.startswith(starts[0][0]):
+            _, el, en = starts.pop(0)
+            labels[f"start:{el}"] = [el, en]
+            part(f"start:{el}")
+        if ref is None:
+            part("")
+        speaker, content = None, line
+        if role and (m := role.match(line)):
+            speaker, content = m[1], m[2]
+        if not content:
+            continue
+        segments.append((1, len(segments) + 1, ref, content, speaker, 1 if new_para else 2))
+        new_para = False
+    if missing:
+        sys.exit(f"{src['file']}: no label for " + ", ".join(repr(m) for m in missing))
+    if starts:
+        sys.exit(f"{src['file']}: not found (in order): " + ", ".join(repr(s[0]) for s in starts))
+    if verbose:
+        print(f"  {len({s[2] for s in segments})} parts, {len(segments)} lines")
+    return "prose", "label", [(1, title)], segments
+
+
 # ---------------------------------------------------------------- the Iliad
 
 def iliad(verbose):
@@ -1430,7 +1518,7 @@ def main():
 
     perseus_members([n["file"] for t in cat["texts"] for n in t.get("notes", []) if n["type"] == "perseus"])
     rows_t, rows_d, rows_s, rows_ns, rows_n, rows_w, rows_tr, rows_tc, rows_tb = [], [], [], [], [], [], [], [], []
-    rows_tp, rows_aw = [], []
+    rows_tp, rows_aw, rows_rl = [], [], []
     for sort, t in enumerate(cat["texts"]):
         gold_from = (len(rows_w), len(rows_tb))  # (this text's gold parsing: rows added from here)
         if t.get("category") not in categories:
@@ -1456,6 +1544,10 @@ def main():
                 rows_w += [(t["slug"], *w) for w in found]
             elif src["type"] == "swete":
                 form, cite, divs, segs = swete(src, args.v)
+            elif src["type"] == "prayers":
+                found = []
+                form, cite, divs, segs = prayers(src, args.v, t["title"], found)
+                rows_rl += [(t["slug"], *r) for r in found]
             else:
                 sys.exit(f"{t['slug']}: unknown source type {src['type']!r}")
         for fix in t.get("fixes", []):  # a slip in the source: {"ref": "17a", "find": ..., "replace": ...}
@@ -1523,7 +1615,7 @@ def main():
         DROP TABLE IF EXISTS divisions; DROP TABLE IF EXISTS segments;
         DROP TABLE IF EXISTS note_sources; DROP TABLE IF EXISTS notes;
         DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS lexicon; DROP TABLE IF EXISTS translations; DROP TABLE IF EXISTS translation_passages;
-        DROP TABLE IF EXISTS translation_credits;
+        DROP TABLE IF EXISTS translation_credits; DROP TABLE IF EXISTS ref_labels;
         DROP TABLE IF EXISTS treebank; DROP TABLE IF EXISTS auto_words; DROP TABLE IF EXISTS lemma_defs;
         DROP TABLE IF EXISTS paraphrase_links;
         CREATE TABLE categories (name TEXT PRIMARY KEY, sort INTEGER NOT NULL);
@@ -1624,6 +1716,12 @@ def main():
             lang     TEXT NOT NULL,
             content  TEXT NOT NULL,
             PRIMARY KEY (text, div, seq_from, lang));
+        CREATE TABLE ref_labels (        -- a part's label (segments.ref) in another language
+            text  TEXT NOT NULL,
+            ref   TEXT NOT NULL,
+            lang  TEXT NOT NULL,
+            label TEXT NOT NULL,
+            PRIMARY KEY (text, ref, lang));
         CREATE TABLE translation_credits (
             text   TEXT NOT NULL,
             lang   TEXT NOT NULL,
@@ -1644,6 +1742,7 @@ def main():
     con.executemany("INSERT INTO translations VALUES (?, ?, ?, ?, ?)", rows_tr)
     con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, ?, ?)", rows_tp)
     con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)", rows_tc)
+    con.executemany("INSERT INTO ref_labels VALUES (?, ?, ?, ?)", rows_rl)
     con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)", rows_tb)
     con.executemany("INSERT INTO auto_words VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_aw)
     if rows_tb or rows_w:  # definitions, as for the Iliad (import_shortdefs.py)
