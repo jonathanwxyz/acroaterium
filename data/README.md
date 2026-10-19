@@ -228,7 +228,7 @@ licence. Share-alike reaches the data, not the code that displays it.
 | `commentaries` | Leaf (1900), Seymour (1891), Benner (1903): Perseus's XML, [bulk download](https://www.perseus.tufts.edu/hopper/opensource/download) | texts public domain; encoding CC BY-SA 3.0 |
 | `scholia` | Dindorf & Maass, *Scholia Graeca in Homeri Iliadem* (1875–88), [First1KGreek](https://github.com/OpenGreekAndLatin/First1KGreek) tlg5026.tlg001 | CC BY-SA 4.0 |
 | `verse_timings` | made here with Meta's MMS forced aligner ([MahmoudAshraf/mms-300m-1130-forced-aligner](https://huggingface.co/MahmoudAshraf/mms-300m-1130-forced-aligner)) | the model is CC BY-NC 4.0: keep uses non-commercial |
-| recordings (not in git) | Project Eustathios readings on YouTube | the readers' copyright: stay local, link rather than redistribute |
+| recordings (not in git) | Project Eustathios readings on YouTube | the readers' copyright; hosted on the site with Project Eustathios's permission, credited "Recording: Project Eustathios"; kept out of git |
 
 `library.sqlite`'s sources are described, with their licences, where `scripts/library.py`
 fetches them. One is non-commercial: the Septuagint's (`rahlfs`) transcription and parsing,
