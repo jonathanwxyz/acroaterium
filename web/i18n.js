@@ -103,6 +103,7 @@ Object.assign(I18N.el, {
   "Plan finished": "Το πρόγραμμα ολοκληρώθηκε",
   "Acroaterium": "Ἀκροατήριον",  // (the library page: its name)
   "Library": "Βιβλιοθήκη",  // (the reader's way back to it)
+  "Library - Acroaterium": "Βιβλιοθήκη - Ἀκροατήριον",  // (the library page's tab)
   "Ἀκροατήριον, a hall for listening: where a reading or a lecture is heard (from ἀκροάομαι, to listen)": "Ἀκροατήριον: αίθουσα όπου ακούει κανείς ανάγνωση ή διάλεξη (από το ακροάομαι, ακούω)",
   "Mark day {n} read": "Σήμανση της ημέρας {n} ως διαβασμένης",
   "This isn't available offline yet: open it once while online, and it will be.": "Δεν είναι ακόμη διαθέσιμο χωρίς σύνδεση: ανοίξτε το μία φορά με σύνδεση και θα είναι.",
@@ -435,6 +436,7 @@ Object.assign(I18N.grc, {
   "Plan finished": "Τετέλεσται τὸ πρόγραμμα",
   "Acroaterium": "Ἀκροατήριον",
   "Library": "Βιβλιοθήκη",
+  "Library - Acroaterium": "Βιβλιοθήκη - Ἀκροατήριον",
   "Ἀκροατήριον, a hall for listening: where a reading or a lecture is heard (from ἀκροάομαι, to listen)": "Ἀκροατήριον· οἶκος ἐν ᾧ ἀκροῶνται ἀναγιγνώσκοντός τινος ἢ διαλεγομένου (ἐκ τοῦ ἀκροᾶσθαι)",
   "Mark day {n} read": "Σημείωσαι τὴν ἡμέραν {n} ὡς ἀνεγνωσμένην",
   "This isn't available offline yet: open it once while online, and it will be.": "Τοῦτο οὔπω πάρεστιν ἄνευ συνδέσεως· ἄνοιξον αὐτὸ ἅπαξ συνδεδεμένος, καὶ παρέσται.",
