@@ -1646,8 +1646,8 @@ body.prose-text .toggle:has(#focused) { display: none; }
   line-height: 1.4;
 }
 .part-head:first-child { margin-top: 0.4rem; }
-.part-head .part-en { font: 0.85em system-ui, sans-serif; letter-spacing: 0; margin-left: 0.6em; opacity: 0.85; }
-.part-head .part-en::before { content: "· "; }
+.part-head .part-en { opacity: 0.8; }
+.part-head .part-en::before { content: "·"; margin: 0 0.55em; }  /* (as much room either side) */
 @media (max-width: 520px) { .part-head { margin-left: calc(2.2rem + 3px + 0.5rem); } }  /* (the phone's narrower margin) */
 .ref-mark {
   font: 11px system-ui, sans-serif;
