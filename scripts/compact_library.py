@@ -3,7 +3,8 @@
 data/library.sqlite and data/library_audio.sqlite (the texts, translations, notes, every
 word's parsing, the timings), losslessly, in a fraction of the space, for an app to keep on
 the device. The server goes on using the full databases; this is the last step of a
-rebuild (data/README.md).
+rebuild (data/README.md). Hidden texts (texts.hidden) are left out, every row of them: an
+app gets only what the library lists.
 
     python3 scripts/compact_library.py            # writes it, then checks it (below)
     python3 scripts/compact_library.py --check    # only checks the one there
@@ -58,7 +59,7 @@ Format (scripts/compact_read.py reads it; an app's decoder follows that):
         auto.morph        [pos, morph]
 
 The check restores the full databases from the compact one (compact_read.restore) and
-compares every row of every table with the originals, then builds the API's JSON (with
+compares every row of every table with the originals (less the hidden texts'), then builds the API's JSON (with
 serve.py's own functions) from both for a broad sample and compares that too.
 """
 import argparse
@@ -85,6 +86,24 @@ def read_only(path):
     return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
 
 
+def hidden_texts():
+    """The slugs of the texts the library doesn't list (texts.hidden), which stay out."""
+    con = read_only(LIBRARY)
+    cols = {row[1] for row in con.execute("PRAGMA table_info(texts)")}
+    hidden = {s for (s,) in con.execute("SELECT slug FROM texts WHERE hidden = 1")} if "hidden" in cols else set()
+    con.close()
+    return hidden
+
+
+def not_hidden(name, cols, hidden):
+    """SQL selecting a table's rows that aren't a hidden text's (its "text" column, the
+    texts table's "slug"), with its parameters; all rows of a table not of a text."""
+    col = "slug" if name == "texts" else "text" if "text" in cols else None
+    if not col or not hidden:
+        return "1", []
+    return f'"{col}" NOT IN ({", ".join("?" * len(hidden))})', sorted(hidden)
+
+
 def pack(rows):
     return zlib.compress(json.dumps(rows, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8"), 9)
 
@@ -102,6 +121,7 @@ def build(out=OUT):
                 "PRIMARY KEY (kind, id)) WITHOUT ROWID")
     chunked = {table for _, table, _ in FULL.values()}
     srcs = {db: read_only(path) for db, path in SOURCES.items()}
+    hidden = hidden_texts()
     # The schemas, and the small tables as they are.
     for db, src in srcs.items():
         for type_, name, sql in src.execute("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL "
@@ -110,7 +130,8 @@ def build(out=OUT):
             if type_ == "table" and name not in chunked:
                 dst.execute(sql)
                 cols = [r[1] for r in src.execute(f'PRAGMA table_info("{name}")')]
-                rows = src.execute(f'SELECT * FROM "{name}" ORDER BY rowid').fetchall()
+                where, params = not_hidden(name, cols, hidden)
+                rows = src.execute(f'SELECT * FROM "{name}" WHERE {where} ORDER BY rowid', params).fetchall()
                 dst.executemany(f'INSERT INTO "{name}" VALUES ({", ".join("?" * len(cols))})', rows)
     # The big tables, a chunk per book.
     ids = {kind: {} for kind in DICTS}
@@ -122,11 +143,14 @@ def build(out=OUT):
         return d[value]
 
     segments = {}  # (text, div, seq) -> content, for the units
-    for row in srcs["library"].execute("SELECT text, div, seq, content FROM segments"):
+    where, params = not_hidden("segments", ["text"], hidden)
+    for row in srcs["library"].execute(f"SELECT text, div, seq, content FROM segments WHERE {where}", params):
         segments[row[:3]] = row[3]
     for kind, (db, table, cols) in FULL.items():
         chunks = {}
-        for row in srcs[db].execute(f'SELECT {", ".join(cols)} FROM "{table}" ORDER BY text, div, rowid'):
+        where, params = not_hidden(table, ["text"], hidden)
+        for row in srcs[db].execute(f'SELECT {", ".join(cols)} FROM "{table}" WHERE {where} ORDER BY text, div, rowid',
+                                    params):
             r = dict(zip(cols, row))
             out_row = []
             for name in CHUNK_COLUMNS[kind]:
@@ -170,8 +194,10 @@ def sizes(path):
 
 def check(out=OUT, samples=400, seed=1):
     """Restore the full databases from the compact one and compare: every table, row for
-    row; then the API's JSON for a sample. True if all is the same."""
+    row (the hidden texts' left out); then the API's JSON for a sample (of texts listed).
+    True if all is the same."""
     ok = True
+    hidden = hidden_texts()
     with tempfile.TemporaryDirectory() as tmp:
         restored = restore(out, tmp)
         rest = {"library": restored["library"], "audio": restored["audio"]}
@@ -181,7 +207,8 @@ def check(out=OUT, samples=400, seed=1):
             for (name,) in a.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"):
                 cols = [r[1] for r in a.execute(f'PRAGMA table_info("{name}")')]
                 order = ", ".join(f'"{c}"' for c in cols)
-                ra = [repr(r) for r in a.execute(f'SELECT * FROM "{name}" ORDER BY {order}')]
+                where, params = not_hidden(name, cols, hidden)
+                ra = [repr(r) for r in a.execute(f'SELECT * FROM "{name}" WHERE {where} ORDER BY {order}', params)]
                 rb = [repr(r) for r in b.execute(f'SELECT {order} FROM "{name}" ORDER BY {order}')]
                 same = ra == rb
                 ok &= same
@@ -199,7 +226,7 @@ def check(out=OUT, samples=400, seed=1):
         import serve
         rng = random.Random(seed)
         con = read_only(LIBRARY)
-        texts = [s for (s,) in con.execute("SELECT slug FROM texts ORDER BY sort")]
+        texts = [s for (s,) in con.execute("SELECT slug FROM texts ORDER BY sort") if s not in hidden]
         divs = {s: [n for (n,) in con.execute("SELECT DISTINCT div FROM segments WHERE text = ? ORDER BY div", (s,))]
                 for s in texts}
         calls = [("library_json", ())]
@@ -211,12 +238,13 @@ def check(out=OUT, samples=400, seed=1):
                 calls.append(("offline_json", (s, n)))
         calls += [("book_json", (b,)) for b in range(1, 25)]
         calls += [("words_json", ("iliad", 1))]
+        where, params = not_hidden("", ["text"], hidden)
         for table in ("words", "treebank", "auto_words"):
-            rows = con.execute(f"SELECT DISTINCT text, div, seq, word_index FROM {table} ORDER BY random() LIMIT ?",
-                               (samples,)).fetchall()
+            rows = con.execute(f"SELECT DISTINCT text, div, seq, word_index FROM {table} WHERE {where} "
+                               "ORDER BY random() LIMIT ?", (*params, samples)).fetchall()
             calls += [("lexword_json", r) for r in rows]
-        for text, div, a_, b_ in con.execute("SELECT text, div, pos_from, pos_to FROM notes ORDER BY random() LIMIT ?",
-                                             (samples // 2,)).fetchall():
+        for text, div, a_, b_ in con.execute(f"SELECT text, div, pos_from, pos_to FROM notes WHERE {where} "
+                                             "ORDER BY random() LIMIT ?", (*params, samples // 2)).fetchall():
             calls.append(("notes_json", (text, div, a_, b_)))
         calls += [("scholia_json", (b, rng.randint(1, 400))) for b in range(1, 25)]
         con.close()
