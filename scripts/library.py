@@ -1149,6 +1149,7 @@ ILIAD_NOTE_SOURCES = [
     ("Seymour", "Seymour", "Commentary, Books I–VI (1891)", "en"),
     ("Benner", "Benner", "Selections from the Iliad (1903)", "en"),
 ]
+ILIAD_RECORDING_CREDIT = "Recording: Project Eustathios"
 ILIAD_MODEL = "mms"  # the aligner whose timings the reader uses
 
 # Tables (and columns) the Iliad brings beyond the other texts': added to a library built
@@ -1280,7 +1281,8 @@ def iliad_into_library(con, slug="iliad", audio_db=AUDIO_DB, verbose=False):
         for (b,) in il.execute("SELECT DISTINCT book FROM verse_timings WHERE model = ? ORDER BY book", (ILIAD_MODEL,)).fetchall():
             (rec,) = il.execute("SELECT recording FROM verse_timings WHERE book = ? AND model = ? GROUP BY recording "
                                 "ORDER BY recording LIKE '%.m4a' DESC LIMIT 1", (b, ILIAD_MODEL)).fetchone()
-            audio.execute("INSERT INTO recordings (text, div, file) VALUES (?, ?, ?)", (slug, b, rec))
+            audio.execute("INSERT INTO recordings (text, div, file, credit) VALUES (?, ?, ?, ?)",
+                          (slug, b, rec, ILIAD_RECORDING_CREDIT))
             units = [(slug, b, line, 0, content.get((b, line), ""), start, speech_end, end, score, 0)
                      for line, start, speech_end, end, score in il.execute(
                          "SELECT line, start, speech_end, end, score FROM verse_timings "
