@@ -41,7 +41,7 @@ function translatePage(root = document.body) {
     }
   }
   if (words[document.title]) document.title = words[document.title];
-  // (English said beside Greek, as the library's "Library" under Βιβλιοθήκη: not needed)
+  // (English said beside Greek, as the library's "Acroaterium" under Ἀκροατήριον: not needed)
   for (const el of root.querySelectorAll("[data-en-only]")) el.hidden = true;
 }
 
@@ -101,7 +101,9 @@ Object.assign(I18N.el, {
   "Day {n} read": "Η ημέρα {n} διαβάστηκε",
   "Tap to unmark": "Πατήστε για αναίρεση",
   "Plan finished": "Το πρόγραμμα ολοκληρώθηκε",
-  "Library": "Βιβλιοθήκη",
+  "Acroaterium": "Ἀκροατήριον",  // (the library page: its name)
+  "Library": "Βιβλιοθήκη",  // (the reader's way back to it)
+  "Ἀκροατήριον, a hall for listening: where a reading or a lecture is heard (from ἀκροάομαι, to listen)": "Ἀκροατήριον: αίθουσα όπου ακούει κανείς ανάγνωση ή διάλεξη (από το ακροάομαι, ακούω)",
   "Mark day {n} read": "Σήμανση της ημέρας {n} ως διαβασμένης",
   "This isn't available offline yet: open it once while online, and it will be.": "Δεν είναι ακόμη διαθέσιμο χωρίς σύνδεση: ανοίξτε το μία φορά με σύνδεση και θα είναι.",
   "Could not load this text: {error}": "Το κείμενο δεν φορτώθηκε: {error}",
@@ -431,7 +433,9 @@ Object.assign(I18N.grc, {
   "Day {n} read": "Ἡ ἡμέρα {n} ἀνέγνωσται",
   "Tap to unmark": "Πίεσον ἵνα ἀναιρῇς",
   "Plan finished": "Τετέλεσται τὸ πρόγραμμα",
+  "Acroaterium": "Ἀκροατήριον",
   "Library": "Βιβλιοθήκη",
+  "Ἀκροατήριον, a hall for listening: where a reading or a lecture is heard (from ἀκροάομαι, to listen)": "Ἀκροατήριον· οἶκος ἐν ᾧ ἀκροῶνται ἀναγιγνώσκοντός τινος ἢ διαλεγομένου (ἐκ τοῦ ἀκροᾶσθαι)",
   "Mark day {n} read": "Σημείωσαι τὴν ἡμέραν {n} ὡς ἀνεγνωσμένην",
   "This isn't available offline yet: open it once while online, and it will be.": "Τοῦτο οὔπω πάρεστιν ἄνευ συνδέσεως· ἄνοιξον αὐτὸ ἅπαξ συνδεδεμένος, καὶ παρέσται.",
   "Could not load this text: {error}": "Οὐκ ἐκομίσθη τὸ κείμενον: {error}",

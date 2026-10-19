@@ -130,7 +130,7 @@ function render(data) {
   showTitle(data.eyebrow ?? data.title, data.title, data.short);
   fillTitles(data.collectionTexts);
   const bookLabel = data.books.find((b) => b.n === data.book)?.label;
-  document.title = `${data.title}${bookLabel ? ` · ${bookLabel}` : ""} — ${tr("Reader")}`;
+  document.title = `${data.title}${bookLabel ? ` · ${bookLabel}` : ""} - ${tr("Acroaterium")}`;
   fillBooks(data.books);
   document.getElementById("credits").replaceChildren(...(data.credits ?? []).map((c) => {
     const p = el("p", "credit", c.text);
@@ -1946,7 +1946,6 @@ function setupMediaSession() {
 // reading position is). A verse opened by a link counts as tapped. Marked verses carry a
 // ribbon; the library lists them.
 const bookmarkButton = document.getElementById("bookmark");
-const toastBox = document.getElementById("toast");
 let marks = new Map();  // ref -> bookmark, in this book
 let tappedRow = null, tappedAt = 0, tappedY = 0;  // tappedY: in the page (not the viewport)
 
@@ -2009,18 +2008,6 @@ function showMarkButton() {
   const on = !!(t && marks.has(t.ref));
   bookmarkButton.setAttribute("aria-pressed", String(on));
   bookmarkButton.title = on ? tr("Remove the bookmark on this verse") : tr("Bookmark this verse");
-}
-
-let toastTimer = 0;
-function toast(text) {
-  toastBox.textContent = text;
-  toastBox.hidden = false;
-  toastBox.classList.remove("out");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toastBox.classList.add("out");
-    toastTimer = setTimeout(() => { toastBox.hidden = true; }, 250);
-  }, 1800);
 }
 
 async function toggleBookmark() {
@@ -2156,7 +2143,7 @@ function showPlanEnd() {
     read.addEventListener("click", () => markPlanDay(false));
     const next = planNext(plan);
     box.append(read, next ? link(`${tr("Day {n}", { n: next })}: ${planLabel(plan, next)} ›`, planHref(plan, next), "primary")
-      : el("span", "plan-msg", tr("Plan finished")), link(tr("Library"), "./"));
+      : el("span", "plan-msg", tr("Plan finished")), link(tr("Acroaterium"), "./"));
   } else {
     const mark = el("button", "primary", tr("Mark day {n} read", { n: PLAN.day }));
     mark.addEventListener("click", () => markPlanDay(true));

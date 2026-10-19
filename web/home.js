@@ -12,6 +12,12 @@ const NAMES = ".library h1, .work-title, .work-author, .member-row, .book-list a
   + ".mark-label, .mark-snippet, .plan-reading";
 keepCarved(document.querySelector("main"), (n) => n.parentElement.closest(NAMES), carveGreek);
 
+// The page's name, Ἀκροατήριον: its meaning in its tooltip, and in a passing message when
+// it's tapped (a phone has nothing to hover with).
+for (const named of document.querySelectorAll(".library h1, .library .sub")) {
+  named.addEventListener("click", () => toast(document.querySelector(".library h1").title, { long: true }));
+}
+
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;

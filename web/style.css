@@ -1662,8 +1662,9 @@ body.library { padding-top: env(safe-area-inset-top); }
   align-items: center;
   gap: 0.4rem;
 }
-.library h1 { font-weight: 400; font-size: 1.6em; margin: 0.6rem 0 0.2rem; text-align: center; }
-.library .sub { text-align: center; color: var(--muted); font: 13px system-ui, sans-serif; margin: 0 0 1.5rem; }
+.library h1[title], .library .sub[title] { cursor: help; }
+.library h1 { font-weight: 400; font-size: 1.6em; margin: 0.6rem auto 0.2rem; text-align: center; width: fit-content; }  /* (only as wide as the name: what a tap on it takes) */
+.library .sub { text-align: center; color: var(--muted); font: 13px system-ui, sans-serif; margin: 0 auto 1.5rem; width: fit-content; }
 .library h1:has(+ .sub[hidden]) { margin-bottom: 1.7rem; }  /* (a Greek interface: no English under it) */
 .category { margin: 2rem 0 0; }
 .category > h2 {
@@ -2003,6 +2004,10 @@ body.focused .verse.bookmarked:not(.f-cur)::before { display: none; }
 }
 #toast[hidden] { display: none; }
 #toast.out { opacity: 0; }
+/* A longer one (the library's name, what it means): a few lines, centred. */
+#toast.long { width: max-content; max-width: min(24rem, calc(100vw - 32px)); white-space: normal; text-align: center; line-height: 1.45; border-radius: 14px; padding: 0.6rem 1rem; }
+/* (The library has no media bar to sit above.) */
+.library #toast { bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 6px); } }
 
 /* Showing a range of the book (?v=40-60): which, and the way back to all of it. */

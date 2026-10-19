@@ -225,3 +225,20 @@ function planLabel(plan, day) {
   const text = plan.text ?? (plan.target.includes(":") ? null : plan.title);  // (plans made before "text")
   return text && label.startsWith(`${text} `) ? label.slice(text.length + 1).replaceAll(` · ${text} `, " · ") : label;
 }
+
+// A passing message, in the page's #toast: a line (a bookmark added, the end mode in words),
+// or with long, a few lines held longer (the library's name, what it means).
+let toastTimer = 0;
+function toast(text, { long = false } = {}) {
+  const box = document.getElementById("toast");
+  if (!box) return;
+  box.textContent = text;
+  box.classList.toggle("long", long);
+  box.hidden = false;
+  box.classList.remove("out");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    box.classList.add("out");
+    toastTimer = setTimeout(() => { box.hidden = true; }, 250);
+  }, long ? 5000 : 1800);
+}
