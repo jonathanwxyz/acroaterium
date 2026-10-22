@@ -105,77 +105,65 @@ function rememberVisit(slug, book, collection) {
   } catch {}
 }
 
-// Bookmarks live on the server (data/bookmarks.json), so every device using it sees them.
+// Bookmarks and reading plans are kept on this device, in its browser: each device has
+// its own, seen by no one else (and lost with the browser's data). The calls are async,
+// as they were when the server kept them, and fail (throw) where the browser won't store.
+const deviceStore = {
+  get(key) {
+    try { return JSON.parse(localStorage.getItem(key)) ?? []; } catch { return []; }
+  },
+  set(key, items) {
+    localStorage.setItem(key, JSON.stringify(items));  // (throws where storage is refused)
+  },
+};
+const newId = () => `${Date.now().toString(16)}${Math.random().toString(16).slice(2, 6)}`;
+
 const bookmarksApi = {
   async list() {
-    const r = await fetch("/api/bookmarks");
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return (await r.json()).bookmarks;
+    return deviceStore.get("bookmarks");
   },
+  // A bookmark ({text, book, ref, title, label, snippet, plan?}), or the one already on that verse.
   async add(mark) {
-    const r = await fetch("/api/bookmarks", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(mark),
-    });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
+    const items = deviceStore.get("bookmarks");
+    const have = items.find((b) => b.text === mark.text && b.book === mark.book && b.ref === mark.ref);
+    if (have) return have;
+    const made = { ...mark, id: newId(), created: Math.floor(Date.now() / 1000) };
+    deviceStore.set("bookmarks", [made, ...items]);
+    return made;
   },
   async remove(id) {
-    const r = await fetch(`/api/bookmarks/${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
+    deviceStore.set("bookmarks", deviceStore.get("bookmarks").filter((b) => b.id !== id));
   },
 };
 
-// Reading plans live on the server too (data/plans.json): a text in so many days, a reading
-// a day ({portions: [{label, parts: [{text, book, v, label}]}], start, days, done}). A day
-// marked read while offline is kept here and sent when the plans are next fetched.
+// Reading plans: a text (or a Testament) in so many days, a reading a day ({portions:
+// [{label, parts: [{text, book, v, label}]}], start, days, done}). The server works out
+// the days (/api/plans/preview); the plan is kept here.
 const plansApi = {
-  pending() {
-    try { return JSON.parse(localStorage.getItem("planMarks")) ?? []; } catch { return []; }
-  },
-  keep(marks) {
-    try { localStorage.setItem("planMarks", JSON.stringify(marks)); } catch {}
-  },
-  async send(id, day, done) {
-    const r = await fetch(`/api/plans/${encodeURIComponent(id)}`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ day, done }),
-    });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  },
   async list() {
-    let left = [];
-    for (const m of this.pending()) {
-      try { await this.send(m.id, m.day, m.done); } catch (e) { if (e instanceof TypeError) left.push(m); }
-    }
-    this.keep(left);
-    const r = await fetch("/api/plans");
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const plans = (await r.json()).plans;
-    for (const m of left) {  // (shown as marked, though not yet sent)
-      const p = plans.find((q) => q.id === m.id);
-      if (p) p.done = m.done ? [...new Set([...p.done, m.day])] : p.done.filter((d) => d !== m.day);
-    }
-    return plans;
+    return deviceStore.get("plans");
   },
+  // The plan with a day marked read (or not).
   async mark(id, day, done = true) {
-    try {
-      return await this.send(id, day, done);
-    } catch (e) {
-      if (!(e instanceof TypeError)) throw e;
-      this.keep([...this.pending().filter((m) => m.id !== id || m.day !== day), { id, day, done }]);
-      return null;
-    }
+    const plans = deviceStore.get("plans");
+    const plan = plans.find((p) => p.id === id);
+    if (!plan) throw new Error("no such plan");
+    plan.done = done ? [...new Set([...plan.done, day])].sort((a, b) => a - b) : plan.done.filter((d) => d !== day);
+    deviceStore.set("plans", plans);
+    return plan;
   },
   async create(target, days, start) {
-    const r = await fetch("/api/plans", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target, days, start }),
-    });
+    const r = await fetch(`/api/plans/preview?${new URLSearchParams({ target, days })}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
+    const split = await r.json();
+    const plan = { id: newId(), target, title: split.title, start, days: split.portions.length,
+                   created: Math.floor(Date.now() / 1000), portions: split.portions, done: [],
+                   ...(split.text ? { text: split.text } : {}) };
+    deviceStore.set("plans", [...deviceStore.get("plans"), plan]);
+    return plan;
   },
   async remove(id) {
-    const r = await fetch(`/api/plans/${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
+    deviceStore.set("plans", deviceStore.get("plans").filter((p) => p.id !== id));
   },
 };
 

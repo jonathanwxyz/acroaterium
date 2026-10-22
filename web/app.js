@@ -2095,7 +2095,7 @@ async function toggleBookmark() {
       toast(`${tr("Bookmarked")} · ${label}`);
     }
   } catch {
-    return toast(navigator.onLine === false ? tr("Bookmarks need the connection") : tr("Couldn't save the bookmark"));
+    return toast(tr("Couldn't save the bookmark"));  // (the browser won't store: a private window, full)
   }
   showMarks();
   t.li.classList.remove("located");

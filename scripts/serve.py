@@ -38,14 +38,10 @@ Routes:
                        (the Ecumenical Patriarchate's, as the Greek Orthodox Archdiocese of
                        America's online chapel gives them), each a link to the passage in
                        the library; where the catalogue asks for it ("lectionary")
-  /api/bookmarks       JSON: the bookmarked verses (GET); POST one ({text, book, ref, …, plan?}) to add
-                       it, DELETE /api/bookmarks/<id> to remove it. Kept in data/bookmarks.json
-  /api/plans           JSON: the reading plans (GET), each a text (or a Testament) in so many
-                       days, a reading a day; POST {target, days, start} to start one (target: a
-                       slug, "<slug>:<from book>-<to book>", "collection:<name>" or
-                       "category:<name>"), POST /api/plans/<id> {day, done} to mark a
-                       day read (or not), DELETE /api/plans/<id> to end it. Kept in data/plans.json
-  /api/plans/preview?target=…&days=…  JSON: the days such a plan would have
+  /api/plans/preview?target=…&days=…  JSON: a reading plan's days: a text (or a Testament) in
+                       so many days, a reading a day (target: a slug, "<slug>:<from book>-<to
+                       book>", "collection:<name>" or "category:<name>"). The plans, and the
+                       bookmarks, are kept by each device, in its browser (web/shared.js)
   /api/compact         data/library_compact.sqlite (scripts/compact_library.py), the whole
                        library in one file, for an app to keep (with Range support; its
                        version, the start of its SHA-256, in X-Version and ETag; HEAD to ask
@@ -63,8 +59,6 @@ import re
 import urllib.parse
 import urllib.request
 import sqlite3
-import threading
-import time
 import unicodedata
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -78,8 +72,6 @@ RECORDINGS = ROOT / "recordings"
 LIBRARY = ROOT / "data" / "library.sqlite"
 LIBRARY_AUDIO = ROOT / "data" / "library_audio.sqlite"
 LIBRARY_COMPACT = ROOT / "data" / "library_compact.sqlite"
-BOOKMARKS = ROOT / "data" / "bookmarks.json"
-PLANS = ROOT / "data" / "plans.json"
 
 mimetypes.add_type("audio/ogg", ".opus")
 mimetypes.add_type("audio/webm", ".webm")
@@ -895,69 +887,11 @@ def word_groups(sharer_sets):
     return out
 
 
-# Bookmarks: verses marked in any text, newest first, in a JSON file (shared by every
-# device that uses this server).
-BOOKMARK_FIELDS = {"text": str, "book": int, "ref": str, "title": str, "label": str, "snippet": str}
-bookmarks_lock = threading.Lock()
-
-
-def load_bookmarks():
-    try:
-        return json.loads(BOOKMARKS.read_text(encoding="utf-8"))
-    except (FileNotFoundError, ValueError):
-        return []
-
-
-def save_bookmarks(items):
-    tmp = BOOKMARKS.with_suffix(".tmp")
-    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(BOOKMARKS)
-
-
-def add_bookmark(data):
-    """Add a bookmark (or return the one already on that verse); None if data is malformed."""
-    if not isinstance(data, dict):
-        return None
-    mark = {}
-    for key, kind in BOOKMARK_FIELDS.items():
-        value = data.get(key)
-        if not isinstance(value, kind) or (kind is str and len(value) > 300):
-            if key in ("text", "book", "ref"):
-                return None
-            value = None
-        mark[key] = value
-    # Made in a reading plan's day: which ({id, day, part}), so the library opens it there.
-    plan = data.get("plan")
-    if (isinstance(plan, dict) and isinstance(plan.get("id"), str) and re.fullmatch(r"[0-9a-f]{1,32}", plan["id"])
-            and all(isinstance(plan.get(k), int) for k in ("day", "part"))):
-        mark["plan"] = {k: plan[k] for k in ("id", "day", "part")}
-    with bookmarks_lock:
-        items = load_bookmarks()
-        for b in items:
-            if (b["text"], b["book"], b["ref"]) == (mark["text"], mark["book"], mark["ref"]):
-                return b
-        mark["id"] = f"{int(time.time() * 1000):x}"
-        mark["created"] = int(time.time())
-        items.insert(0, mark)
-        save_bookmarks(items)
-    return mark
-
-
-def delete_bookmark(mark_id):
-    with bookmarks_lock:
-        items = load_bookmarks()
-        kept = [b for b in items if b["id"] != mark_id]
-        if len(kept) == len(items):
-            return False
-        save_bookmarks(kept)
-    return True
-
-
 # Reading plans: a text (or a collection: a Testament) read in so many days. It's split
 # into that many readings of about the same length (in words), each ending where a chapter
 # or book ends if one is near, else at a verse, line or section; a reading a day from the
-# day it starts. Kept with the days read, in a JSON file like the bookmarks.
-plans_lock = threading.Lock()
+# day it starts. Worked out here (/api/plans/preview); each device keeps its own plans,
+# and its bookmarks, in its browser (shared.js).
 VERSE_REF = re.compile(r"\d+(?::\d+)?[a-z]?")  # a ref a selection can name (read.html ?v=)
 
 
@@ -1121,33 +1055,6 @@ def shortLabel(label, n):
     return m[1] if m and not m[1].isdigit() else str(n)
 
 
-def load_plans():
-    try:
-        return json.loads(PLANS.read_text(encoding="utf-8"))
-    except (FileNotFoundError, ValueError):
-        return []
-
-
-def save_plans(items):
-    tmp = PLANS.with_suffix(".tmp")
-    tmp.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(PLANS)
-
-
-def plan_request(data):
-    """(target, days, start) from a request, or None."""
-    if not isinstance(data, dict):
-        return None
-    target, days, start = data.get("target"), data.get("days"), data.get("start")
-    if not isinstance(target, str) or not isinstance(days, int) or not 1 <= days <= 3660:
-        return None
-    try:
-        datetime.date.fromisoformat(start)
-    except (TypeError, ValueError):
-        return None
-    return target, days, start
-
-
 def plan_preview(query):
     q = urllib.parse.parse_qs(query)
     try:
@@ -1160,52 +1067,6 @@ def plan_preview(query):
     split = split_plan(con, target, days)
     con.close()
     return split and {**split, "days": len(split["portions"])}
-
-
-def add_plan(data):
-    request = plan_request(data)
-    if not request or not LIBRARY.exists():
-        return None
-    target, days, start = request
-    con = sqlite3.connect(LIBRARY)
-    split = split_plan(con, target, days)
-    con.close()
-    if not split:
-        return None
-    plan = {"id": f"{int(time.time() * 1000):x}", "target": target, "title": split["title"],
-            "start": start, "days": len(split["portions"]), "created": int(time.time()),
-            "portions": split["portions"], "done": [], **({"text": split["text"]} if "text" in split else {})}
-    with plans_lock:
-        items = load_plans()
-        items.append(plan)
-        save_plans(items)
-    return plan
-
-
-def mark_plan(plan_id, data):
-    """Mark a day of a plan read ({day: 1…, done: true}) or not; the plan, or None."""
-    if not isinstance(data, dict) or not isinstance(data.get("day"), int):
-        return None
-    with plans_lock:
-        items = load_plans()
-        plan = next((p for p in items if p["id"] == plan_id), None)
-        if not plan or not 1 <= data["day"] <= plan["days"]:
-            return None
-        done = set(plan["done"])
-        (done.add if data.get("done", True) else done.discard)(data["day"])
-        plan["done"] = sorted(done)
-        save_plans(items)
-    return plan
-
-
-def delete_plan(plan_id):
-    with plans_lock:
-        items = load_plans()
-        kept = [p for p in items if p["id"] != plan_id]
-        if len(kept) == len(items):
-            return False
-        save_plans(kept)
-    return True
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -1257,10 +1118,6 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(offline_json(m[1], int(m[2])))
         elif m := re.fullmatch(r"/api/lectionary/(\d{4}-\d\d-\d\d)", self.path):
             self.send_json(lectionary_json(m[1]))
-        elif self.path == "/api/bookmarks":
-            self.send_json({"bookmarks": load_bookmarks()})
-        elif self.path == "/api/plans":
-            self.send_json({"plans": load_plans()})
         elif self.path.startswith("/api/plans/preview?"):
             self.send_json(plan_preview(self.path.split("?", 1)[1]))
         elif self.path.startswith("/audio/"):
@@ -1272,33 +1129,6 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_audio(path)
         else:
             super().do_GET()
-
-    def do_POST(self):
-        m = re.fullmatch(r"/api/plans/([0-9a-f]+)", self.path)
-        if self.path == "/api/bookmarks":
-            add = add_bookmark
-        elif self.path == "/api/plans":
-            add = add_plan
-        elif m:
-            add = lambda data: mark_plan(m[1], data)  # noqa: E731
-        else:
-            return self.send_error(HTTPStatus.NOT_FOUND)
-        try:
-            length = int(self.headers.get("Content-Length", 0))
-            data = json.loads(self.rfile.read(min(length, 1 << 16)))
-        except ValueError:
-            data = None
-        item = add(data)
-        if item is None:
-            return self.send_error(HTTPStatus.BAD_REQUEST)
-        self.send_json(item)
-
-    def do_DELETE(self):
-        m = re.fullmatch(r"/api/(bookmarks|plans)/([0-9a-f]+)", self.path)
-        if not m or not (delete_bookmark if m[1] == "bookmarks" else delete_plan)(m[2]):
-            return self.send_error(HTTPStatus.NOT_FOUND)
-        self.send_response(HTTPStatus.NO_CONTENT)
-        self.end_headers()
 
     def send_json(self, data):
         if data is None:
