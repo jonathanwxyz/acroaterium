@@ -35,7 +35,7 @@ def fetch(book):
         RAW.mkdir(parents=True, exist_ok=True)
         title = urllib.parse.quote(PAGE.format(BOOK_LETTERS[book - 1]))
         url = f"https://el.wikisource.org/w/index.php?title={title}&action=raw"
-        req = urllib.request.Request(url, headers={"User-Agent": "scrolling-reader/1.0 (personal study tool)"})
+        req = urllib.request.Request(url, headers={"User-Agent": "acroaterium/1.0 (personal study tool)"})
         with urllib.request.urlopen(req) as r:
             path.write_bytes(r.read())
     return path.read_text(encoding="utf-8")

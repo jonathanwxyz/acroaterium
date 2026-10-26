@@ -40,7 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "data" / "raw" / "wikisource"
 OUT = ROOT / "library" / "church_text.json"
 API = "https://el.wikisource.org/w/api.php?action=parse&prop=wikitext&format=json&redirects=1&page={page}"
-AGENT = {"User-Agent": "scrolling-reader/1.0 (personal study tool)"}
+AGENT = {"User-Agent": "acroaterium/1.0 (personal study tool)"}
 REVERT = 3.0  # log-likelihood going back to Rahlfs's wording must gain over a verse's audio
 # The library's books as Wikisource names their pages (the Psalms: all on one).
 BOOKS = {

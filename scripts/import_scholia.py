@@ -47,7 +47,7 @@ RUN_ON = re.compile(r"(?:^|(?<=[\s\]·.,;]))(\d{1,3})[ab]?\. (?=[*∗⌈〈⟨(]
 def fetch():
     if not RAW.exists():
         RAW.parent.mkdir(parents=True, exist_ok=True)
-        req = urllib.request.Request(URL, headers={"User-Agent": "scrolling-reader/1.0 (personal study tool)"})
+        req = urllib.request.Request(URL, headers={"User-Agent": "acroaterium/1.0 (personal study tool)"})
         with urllib.request.urlopen(req) as r:
             RAW.write_bytes(r.read())
     return ET.parse(RAW).getroot()

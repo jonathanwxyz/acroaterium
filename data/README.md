@@ -1,4 +1,4 @@
-# Iliad data
+# Data
 
 The reader (`scripts/serve.py`) reads two databases: `library.sqlite`, the texts, and
 `library_audio.sqlite`, their recordings. The Iliad is built first, on its own, in

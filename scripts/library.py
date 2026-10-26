@@ -109,7 +109,7 @@ DB = ROOT / "data" / "library.sqlite"
 ILIAD_DB = ROOT / "data" / "iliad.sqlite"
 AUDIO_DB = ROOT / "data" / "library_audio.sqlite"
 CACHE = ROOT / "data" / "raw" / "library"
-UA = {"User-Agent": "Mozilla/5.0 (scrolling-reader library builder; personal study tool)"}
+UA = {"User-Agent": "Mozilla/5.0 (acroaterium library builder; personal study tool)"}
 TEI = "{http://www.tei-c.org/ns/1.0}"
 GREEK_NUMERALS = " ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"  # (a work's books lettered Α–Ω, as Homer's)
 

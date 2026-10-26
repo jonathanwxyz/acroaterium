@@ -1,4 +1,4 @@
-# The reader on Android
+# Acroaterium on Android
 
 A [Capacitor](https://capacitorjs.com) app: a native shell that opens the reader as a
 server serves it (`scripts/serve.py`), and gives it what a browser on a phone can't:

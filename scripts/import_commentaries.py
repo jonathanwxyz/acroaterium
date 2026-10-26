@@ -53,7 +53,7 @@ def fetch():
     archive = RAW / "hopper-texts-GreekRoman.tar.gz"
     if not archive.exists():
         print("downloading Perseus's Greek and Roman texts (125 MB) ...")
-        req = urllib.request.Request(ARCHIVE_URL, headers={"User-Agent": "Mozilla/5.0 (scrolling-reader; personal study tool)"})
+        req = urllib.request.Request(ARCHIVE_URL, headers={"User-Agent": "Mozilla/5.0 (acroaterium; personal study tool)"})
         with urllib.request.urlopen(req) as r, archive.open("wb") as out:
             while chunk := r.read(1 << 20):
                 out.write(chunk)

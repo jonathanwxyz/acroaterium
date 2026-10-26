@@ -394,7 +394,7 @@ def lectionary_json(day):
     path = LECTIONARY_CACHE / f"{date.isoformat()}.xml"
     if not path.exists():
         try:
-            req = urllib.request.Request(LECTIONARY.format(d=date), headers={"User-Agent": "Mozilla/5.0 (scrolling reader)"})
+            req = urllib.request.Request(LECTIONARY.format(d=date), headers={"User-Agent": "Mozilla/5.0 (acroaterium)"})
             with urllib.request.urlopen(req, timeout=20) as r:
                 body = r.read()
             ElementTree.fromstring(body)  # only a whole answer is kept
