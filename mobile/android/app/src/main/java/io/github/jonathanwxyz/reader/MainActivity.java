@@ -7,7 +7,6 @@ import android.webkit.ServiceWorkerClient;
 import android.webkit.ServiceWorkerController;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
-import android.webkit.WebStorage;
 import android.webkit.WebView;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
@@ -30,23 +29,16 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * What another server left behind, one the app no longer opens (as after the site
-     * moved to a new address, or a build for another server): its downloaded recordings'
-     * files (AudioFiles) and its pages' storage (their caches: books, the library), which
-     * the pages of the server now opened can't see, nor so remove.
+     * The recordings another server's pages downloaded, one the app no longer opens (as
+     * after the site moved to a new address, or a build for another server): their records
+     * are in that server's pages' storage, so the pages of the server now opened can't see
+     * them, nor remove them. (That storage itself, its caches of books and the library,
+     * stays: WebView's WebStorage.deleteOrigin leaves the Cache API alone.)
      */
     private void forgetOtherServers() {
         String own = origin(getBridge().getServerUrl());
         if (own == null) return;
         new Thread(() -> new AudioFiles(this).removeNotFrom(own)).start();
-        WebStorage storage = WebStorage.getInstance();
-        storage.getOrigins(origins -> {
-            if (origins == null) return;
-            for (Object o : origins.keySet()) {
-                String origin = String.valueOf(o);
-                if (!own.equals(origin(origin))) storage.deleteOrigin(origin);
-            }
-        });
     }
 
     /** A URL's origin, scheme://host[:port], lower case; null if it hasn't one. */
