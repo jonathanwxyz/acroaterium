@@ -58,11 +58,18 @@ Format (scripts/compact_read.py reads it; an app's decoder follows that):
         auto.lemma        [lemma, headword, definition]
         auto.morph        [pos, morph]
 
+  Its version: the start of the SHA-256 of what it holds (content_version), 16 hex digits,
+  in the file's header: the first 8 as its application_id, the last 8 as its user_version
+  (big-endian, bytes 68-71 and 60-63). The same library built anywhere has the same
+  version, though zlib (zlib-ng or not) may compress its chunks to other bytes; serve.py
+  gives it as /api/compact's X-Version, and the app's build reads it for its own copy.
+
 The check restores the full databases from the compact one (compact_read.restore) and
 compares every row of every table with the originals (less the hidden texts'), then builds the API's JSON (with
 serve.py's own functions) from both for a broad sample and compares that too.
 """
 import argparse
+import hashlib
 import json
 import random
 import sqlite3
@@ -106,6 +113,28 @@ def not_hidden(name, cols, hidden):
 
 def pack(rows):
     return zlib.compress(json.dumps(rows, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8"), 9)
+
+
+def content_version(con):
+    """The start of the SHA-256 of every table's rows, in order, the chunks' as they are
+    uncompressed: the same for the same library, whatever zlib made of it."""
+    digest = hashlib.sha256()
+    for (name,) in con.execute("SELECT name FROM sqlite_master WHERE type = 'table' "
+                               "AND name NOT LIKE 'sqlite_%' ORDER BY name"):
+        cols = [r[1] for r in con.execute(f'PRAGMA table_info("{name}")')]
+        digest.update(f"{name}{cols!r}".encode())
+        order = ", ".join(f'"{c}"' for c in cols)
+        for row in con.execute(f'SELECT {order} FROM "{name}" ORDER BY {order}'):
+            if name == "chunks":
+                row = (*row[:3], zlib.decompress(row[3]))
+            digest.update(repr(row).encode())
+    return digest.hexdigest()[:16]
+
+
+def signed32(hex8):
+    """8 hex digits as the signed 32-bit integer SQLite keeps in its header."""
+    n = int(hex8, 16)
+    return n - (1 << 32) if n >= 1 << 31 else n
 
 
 def build(out=OUT):
@@ -176,6 +205,9 @@ def build(out=OUT):
     for src in srcs.values():
         src.close()
     dst.commit()
+    version = content_version(dst)
+    dst.execute(f"PRAGMA application_id = {signed32(version[:8])}")
+    dst.execute(f"PRAGMA user_version = {signed32(version[8:])}")
     dst.execute("VACUUM")
     dst.close()
     tmp.replace(out)

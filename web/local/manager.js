@@ -9,7 +9,8 @@
 // pieces at /__local/<version>/<k> (fetched by byte range, so a download cut short goes on
 // where it stopped), its record at /__local/meta once it's whole, and the sizes of the
 // server's recordings (/api/compact/sizes) at /__local/sizes. Its version is the server's
-// X-Version (the start of the file's SHA-256): when the server's changes, it's fetched anew.
+// X-Version (compact_library.py: the same library built anywhere has the same, though its
+// bytes and size may differ): when the server's changes, it's fetched anew.
 //
 // Loaded by the library page only where it's in use (home.js).
 window.localLibrary = (() => {
@@ -148,8 +149,9 @@ window.localLibrary = (() => {
           tell(meta?.done ? { state: "ready", size: meta.size } : { state: "none" });
           return;
         }
-        const want = { ...server };
-        const source = app && app.version === want.version ? "app" : "server";
+        // (The app's copy where it's that version: by its own size, maybe not the server's.)
+        const source = app && app.version === server.version ? "app" : "server";
+        const want = { ...(source === "app" ? app : server) };
         for (let tries = 0; ; tries++) {
           try {
             await fetchFile(want, source);

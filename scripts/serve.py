@@ -147,11 +147,19 @@ _compact_version = {}  # (size, mtime) -> the compact library's version
 
 
 def compact_version():
-    """The compact library's version: the start of its SHA-256 (the same file, built anywhere
-    or bundled in the app, has the same version: mobile/android/app/build.gradle)."""
+    """The compact library's version, as compact_library.py wrote it in the file's header
+    (the start of the SHA-256 of what it holds: the same library, built anywhere or bundled
+    in the app, has the same version: mobile/android/app/build.gradle); in a file from
+    before that, the start of the file's own SHA-256."""
     st = LIBRARY_COMPACT.stat()
     key = (st.st_size, st.st_mtime_ns)
     if key not in _compact_version:
+        with LIBRARY_COMPACT.open("rb") as f:
+            header = f.read(72)
+        if len(header) == 72 and (header[68:72] != bytes(4) or header[60:64] != bytes(4)):
+            _compact_version.clear()
+            _compact_version[key] = (header[68:72] + header[60:64]).hex()
+            return _compact_version[key]
         digest = hashlib.sha256()
         with LIBRARY_COMPACT.open("rb") as f:
             while chunk := f.read(1 << 20):
