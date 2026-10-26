@@ -69,7 +69,8 @@ def bundleLibrary = tasks.register("bundleLibrary") {
         }
         byte[] header = new byte[72]
         compactLibrary.withInputStream { input -> input.readNBytes(header, 0, 72) }
-        def version = ((header[68..71] + header[60..63]) as byte[]).encodeHex().toString()
+        def version = java.util.Arrays.copyOfRange(header, 68, 72).encodeHex().toString() +
+                      java.util.Arrays.copyOfRange(header, 60, 64).encodeHex().toString()
         if (version == "0" * 16) {
             def md = java.security.MessageDigest.getInstance("SHA-256")
             compactLibrary.withInputStream { input ->
