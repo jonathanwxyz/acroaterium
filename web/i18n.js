@@ -386,6 +386,7 @@ Object.assign(I18N.el, {
   "With their notes and parsing; no recordings": "Με τις σημειώσεις και την ανάλυσή τους· χωρίς ηχογραφήσεις",
   "With their notes and parsing; they come with the app": "Με τις σημειώσεις και την ανάλυσή τους· συνοδεύουν την εφαρμογή",
   "Remove the texts from this device": "Αφαίρεση των κειμένων από αυτή τη συσκευή",
+  "Hidden: listed only here, not on the live site": "Κρυφό: εμφανίζεται μόνο εδώ, όχι στον δημόσιο ιστότοπο",
   "Remove all recordings": "Αφαίρεση όλων των ηχογραφήσεων",
   "Try again": "Δοκιμάστε ξανά",
 });
@@ -720,6 +721,7 @@ Object.assign(I18N.grc, {
   "With their notes and parsing; no recordings": "Σὺν τοῖς σχολίοις καὶ τῇ ἀναλύσει· ἄνευ ἀκροαμάτων",
   "With their notes and parsing; they come with the app": "Σὺν τοῖς σχολίοις καὶ τῇ ἀναλύσει· σὺν τῇ ἐφαρμογῇ δίδοται",
   "Remove the texts from this device": "Ἄφελε τὰ κείμενα ἐκ τῆσδε τῆς συσκευῆς",
+  "Hidden: listed only here, not on the live site": "Κρυπτόν· ἐνθάδε μόνον δείκνυται, οὐκ ἐν τῷ δημοσίῳ ἱστοτόπῳ",
   "Remove all recordings": "Ἄφελε πάντα τὰ ἀκροάματα",
   "Try again": "Πείρασον αὖθις",
 });

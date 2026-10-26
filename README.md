@@ -61,6 +61,7 @@ Needs Python 3 (standard library only) and, for the audio, ffmpeg.
 
    ```
    python3 scripts/serve.py      # then http://localhost:8000/ (the Iliad: read.html?book=1)
+   python3 scripts/serve.py --show-hidden   # also list the hidden texts, greyed
    ```
 
 ### As an app on a phone

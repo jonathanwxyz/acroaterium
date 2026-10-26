@@ -3,6 +3,7 @@
 
     python3 scripts/serve.py [--port 8000]   then open http://localhost:8000/
     python3 scripts/serve.py --host 0.0.0.0  also reachable from other devices on the network
+    python3 scripts/serve.py --show-hidden   the library lists the hidden texts too, greyed
 
 Routes:
   /                    web/index.html, the library (and other files under web/; the
@@ -72,6 +73,7 @@ RECORDINGS = ROOT / "recordings"
 LIBRARY = ROOT / "data" / "library.sqlite"
 LIBRARY_AUDIO = ROOT / "data" / "library_audio.sqlite"
 LIBRARY_COMPACT = ROOT / "data" / "library_compact.sqlite"
+SHOW_HIDDEN = False  # --show-hidden: list the hidden texts too, marked (locally, never on the live site)
 
 mimetypes.add_type("audio/ogg", ".opus")
 mimetypes.add_type("audio/webm", ".webm")
@@ -126,6 +128,11 @@ def collection_of(con, column="collection"):
     return column if column in cols else "NULL"
 
 
+def listed(con):
+    """SQL for the texts the library lists: not the hidden ones, unless --show-hidden."""
+    return "1" if SHOW_HIDDEN else f"{collection_of(con, 'hidden')} IS NOT 1"
+
+
 def recording_sizes():
     """{file under recordings/: bytes} of the aligned recordings there are."""
     if not LIBRARY_AUDIO.exists():
@@ -163,10 +170,12 @@ def library_json():
         books.setdefault(text, []).append({"n": n, "label": label})
     texts, collections = {}, {}
     downloads = downloads_of()
-    for slug, title, author, category, reader, collection in con.execute(
-            f"SELECT slug, title, author, category, reader, {collection_of(con)} FROM texts"
-            f" WHERE {collection_of(con, 'hidden')} IS NOT 1 ORDER BY sort"):
+    for slug, title, author, category, reader, collection, hidden in con.execute(
+            f"SELECT slug, title, author, category, reader, {collection_of(con)}, {collection_of(con, 'hidden')}"
+            f" FROM texts WHERE {listed(con)} ORDER BY sort"):
         t = {"slug": slug, "title": title, "author": author, "reader": reader, "books": books.get(slug, [])}
+        if hidden:  # (listed only with --show-hidden)
+            t["hidden"] = True
         if slug in downloads:
             t["downloads"] = [{"n": i["n"], "size": i["size"]} for i in downloads[slug]]
         if collection:  # the texts of a collection (a Testament) go together, where its first one is
@@ -900,18 +909,18 @@ def plan_target(con, target):
     ("category:<name>": all its texts), a collection ("collection:<name>"), a text (its slug)
     or some of its books ("<slug>:3-5"; books, (from, to), else None for all); text: the
     title of the one text a plan is of, else None. None if there's no such."""
-    hidden = collection_of(con, "hidden")
+    shown = listed(con)
     for kind, column in (("category:", "category"), ("collection:", collection_of(con))):
         if target.startswith(kind):
             name = target[len(kind):]
-            rows = con.execute(f"SELECT slug, title, cite FROM texts WHERE {column} = ? AND {hidden} IS NOT 1 "
+            rows = con.execute(f"SELECT slug, title, cite FROM texts WHERE {column} = ? AND {shown} "
                                "ORDER BY sort", (name,)).fetchall()
             if not rows:
                 return None
             # (a category's name is in Greek and English, "Ὅμηρος · Homer": the Greek)
             return name.split(" · ")[0], [(*r, None) for r in rows], rows[0][1] if len(rows) == 1 else None
     m = re.fullmatch(r"([\w-]+)(?::(\d+)(?:-(\d+))?)?", target)
-    row = m and con.execute(f"SELECT slug, title, cite FROM texts WHERE slug = ? AND {hidden} IS NOT 1", (m[1],)).fetchone()
+    row = m and con.execute(f"SELECT slug, title, cite FROM texts WHERE slug = ? AND {shown}", (m[1],)).fetchone()
     if not row:
         return None
     if not m[2]:
@@ -1183,7 +1192,11 @@ def main():
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1",
                     help="address to listen on (0.0.0.0: reachable from other devices, e.g. a phone)")
+    ap.add_argument("--show-hidden", action="store_true",
+                    help="list the hidden texts too, marked (for working on them locally; never on the live site)")
     args = ap.parse_args()
+    global SHOW_HIDDEN
+    SHOW_HIDDEN = args.show_hidden
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Reader on http://localhost:{args.port}/  (Ctrl-C to stop)")
     try:

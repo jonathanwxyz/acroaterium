@@ -340,6 +340,7 @@ if (localAsked()) {
 // (The author is left out where the category is all one author's: its heading names him.)
 function workEntry(t, showAuthor = true) {
   const work = el("div", "work");
+  markHidden(work, t);
   const named = [el("span", "work-title", t.title), ...(t.author && showAuthor ? [el("span", "work-author", t.author)] : [])];
   if (t.books.length > 1) {
     const list = bookLinks(t, "book-list");
@@ -356,6 +357,13 @@ function workEntry(t, showAuthor = true) {
   return work;
 }
 
+// A hidden text, listed only by a local server (serve.py --show-hidden): greyed.
+function markHidden(e, t) {
+  if (!t.hidden) return;
+  e.classList.add("hidden-text");
+  e.title = tr("Hidden: listed only here, not on the live site");
+}
+
 // A collection (a Testament): its title row folds out its books; a book of several
 // chapters folds out those in turn, the one last read marked; a book in one goes to it.
 function collectionEntry(c) {
@@ -364,6 +372,7 @@ function collectionEntry(c) {
   const books = el("ul", "member-list");
   for (const t of c.texts) {
     const li = el("li", "member");
+    markHidden(li, t);
     const current = t === member && lastText(c.collection);
     if (t.books.length > 1) {
       const chapters = bookLinks(t, "chapters");

@@ -1722,6 +1722,7 @@ body.library { padding-top: env(safe-area-inset-top); }
 }
 .work-title { font-size: 1.15em; }
 .work-author { color: var(--muted); font-size: 0.8em; }
+.hidden-text .work-title, .hidden-text .member-row { color: var(--muted); }
 .fold-row {
   width: 100%;
   padding: 0;
