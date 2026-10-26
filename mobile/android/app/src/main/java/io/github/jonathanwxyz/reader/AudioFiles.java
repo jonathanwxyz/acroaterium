@@ -192,4 +192,11 @@ class AudioFiles {
         //noinspection ResultOfMethodCallIgnored
         record(url).delete();
     }
+
+    /** Remove every recording not from the given origin (scheme://host[:port]). */
+    synchronized void removeNotFrom(String origin) {
+        for (Entry e : list()) {
+            if (!origin.equals(MainActivity.origin(e.url))) remove(e.url);
+        }
+    }
 }
