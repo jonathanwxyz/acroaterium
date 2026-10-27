@@ -116,8 +116,14 @@ def plain(wiki):
     t = re.sub(r"</?[a-zA-Z][^<>]*>|'{2,}", " ", t)  # (HTML: < > alone are quotation marks)
     t = re.sub(r"«\s+", "«", re.sub(r"\s+»", "»", t.replace("<", "«").replace(">", "»")))
     t = re.sub(r"\(\s*Ἐκ τοῦ κώδ\.\s*\w+\)", " ", t)  # (a passage's label: from codex A)
-    t = re.sub(r"[\[\]†¨]", "", html.unescape(t))  # (stray marks: a passage bracketed, a slip)
-    return [w for w in t.split() if not re.fullmatch(r"\d+[α-ω]?", w)]
+    t = re.sub(r":?\s*\((?:Μασ|Κεφ)\.[^)]*\)\.?", " ", t)  # (the Hebrew's chapter: "(Μασ. ΙΣΤ, 4)")
+    t = re.sub(r"[\[\]†¨*]", "", html.unescape(t))  # (stray marks: a passage bracketed, a slip)
+    # A verse's number written out of its template: alone, after a dash or within a verse
+    # ("~41", "35·1", "18-2"), opening a parenthesis ("(14 ἡ μήτηρ"), or run into a word
+    # ("θράσους.19", "27καὶ").
+    t = re.sub(r"(?<!\S)[~—]?\d+(?:[·-]\d+)?[α-ω]?(?!\S)", " ", t)
+    t = re.sub(r"(?<=\()\d+\s+|(?<=[.,·;:])\d+(?=\s)|(?<!\S)\d+(?=[^\W\d_])", "", t)
+    return t.split()
 
 
 def chapters_of(slug):

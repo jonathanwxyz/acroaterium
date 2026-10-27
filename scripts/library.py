@@ -1026,10 +1026,28 @@ def auto_words(slug, segments, gold):
 CHURCH_TEXT = ROOT / "library" / "church_text.json"
 
 
+def same_word(old, new, plain):
+    """Whether new, in old's place in a verse, is old spelled a little otherwise (see
+    church_wording): "form" with or without a final ν (εἶδε, εἶδεν), "lemma" for one of
+    Rahlfs's names printed without accents (Ιωαχας, Ἰωάχαζ), whose parsing of the form
+    mayn't fit Wikisource's (Μανασση, Μανασσῆς); else None."""
+    a, b = plain(old), plain(new)
+    if a and b and (a + "ν" == b or b + "ν" == a):
+        return "form"
+    old_l, new_l = (re.sub(r"^[^\w]+", "", w) for w in (old, new))
+    if old_l[:1].isupper() and new_l[:1].isupper() and a[:1] == b[:1] \
+            and not any(unicodedata.combining(c) for c in unicodedata.normalize("NFD", old_l)) \
+            and difflib.SequenceMatcher(None, a, b, autojunk=False).ratio() >= 0.8:
+        return "lemma"
+    return None
+
+
 def church_wording(slug, segments, words, verbose):
     """Rahlfs's verses in the Church's edition, where the recording reads them so
     (library/church_text.json, from scripts/church_text.py: {slug: {"div:ref": verse}}).
-    A word changed loses its parsing; the rest keep theirs."""
+    A word changed loses its parsing, unless it's the same word spelled a little otherwise
+    in the same place (same_word): with or without a final ν, or one of Rahlfs's names
+    (its lemma, not its form's parsing); the rest keep theirs."""
     if not CHURCH_TEXT.exists():
         return segments, words
     changed = json.loads(CHURCH_TEXT.read_text()).get(slug, {})
@@ -1037,7 +1055,7 @@ def church_wording(slug, segments, words, verbose):
         return segments, words
     plain = lambda w: re.sub(r"[^\w]", "", "".join(c for c in unicodedata.normalize("NFD", w.lower())
                                                    if not unicodedata.combining(c)))
-    out, moved = [], {}  # moved: (div, seq) -> {old word index: new}
+    out, moved, unparsed = [], {}, set()  # moved: (div, seq) -> {old word index: new}; unparsed: its form's parsing dropped
     for s in segments:
         verse = changed.get(f"{s[0]}:{s[2]}")
         if verse is None:
@@ -1046,9 +1064,19 @@ def church_wording(slug, segments, words, verbose):
         old, new = s[3].split(), verse.split()
         sm = difflib.SequenceMatcher(None, [plain(w) for w in old], [plain(w) for w in new], autojunk=False)
         moved[(s[0], s[1])] = {i: j for a, b, n in sm.get_matching_blocks() for i, j in zip(range(a, a + n), range(b, b + n))}
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            if tag == "replace" and i2 - i1 == j2 - j1:
+                for i, j in zip(range(i1, i2), range(j1, j2)):
+                    how = same_word(old[i], new[j], plain)
+                    if how:
+                        moved[(s[0], s[1])][i] = j
+                    if how == "lemma":
+                        unparsed.add((s[0], s[1], i))
         out.append((*s[:3], verse, *s[4:]))
-    kept = [(ch, sq, moved[(ch, sq)][i], *rest) if (ch, sq) in moved else (ch, sq, i, *rest)
-            for ch, sq, i, *rest in words if (ch, sq) not in moved or i in moved[(ch, sq)]]
+    # (a word: div, seq, index, Strong's number, morphology, lemma, gloss)
+    kept = [(ch, sq, moved[(ch, sq)][i], strongs, None if (ch, sq, i) in unparsed else morph, *rest)
+            if (ch, sq) in moved else (ch, sq, i, strongs, morph, *rest)
+            for ch, sq, i, strongs, morph, *rest in words if (ch, sq) not in moved or i in moved[(ch, sq)]]
     if verbose:
         print(f"  {len(moved)} verses as read in church")
     return out, kept
