@@ -1171,7 +1171,7 @@ function renderCard(data) {
     }
     // Every word of the lemma in the library's texts (refs.html), where the lemma index has it.
     if (t.references) {
-      const a = el("a", "refs", `${tr("References")} ${t.references.n.toLocaleString(UI_LOCALE)}`);
+      const a = el("a", "refs", tr("References"));
       a.href = refsHref(t.references.lemma);
       lemma.append(a);
     }
