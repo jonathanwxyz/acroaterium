@@ -2003,20 +2003,15 @@ body.library { padding-top: env(safe-area-inset-top); }
 }
 @media (hover: hover) { #refs-back:hover { color: var(--text); } }
 .refs h1 { padding: 0 2.5rem; }
-#refs-texts { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: center; margin: 0 0 1.2rem; }
-#refs-texts[hidden] { display: none; }
-.refs-chip {
-  display: inline-flex; align-items: baseline; gap: 0.35rem;
-  font: inherit; font-size: 0.8em; color: var(--text); background: transparent;
-  border: 1px solid var(--rule); border-radius: 999px; padding: 0.1rem 0.6rem; cursor: pointer;
+#refs-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; align-items: center; margin: 0 0 0.6rem; }
+#refs-filter[hidden], #refs-filter [hidden] { display: none; }
+.refs-pick {
+  font: 14px system-ui, sans-serif; color: var(--text); background: var(--bg);
+  border: 1px solid var(--rule); border-radius: 8px; padding: 0.3rem 0.5rem; max-width: 100%;
 }
-.refs-chip-n { font: 11px system-ui, sans-serif; color: var(--muted); }
-.refs-select {
-  font: inherit; font-size: 0.85em; color: var(--text); background: var(--bg);
-  border: 1px solid var(--rule); border-radius: 8px; padding: 0.25rem 0.5rem; max-width: 100%;
-}
-.refs-chip[aria-pressed="true"] { color: var(--current-bar); border-color: var(--current-bar); }
-@media (hover: hover) { .refs-chip:hover { border-color: var(--current-bar); } }
+.refs-books { display: inline-flex; align-items: center; gap: 0.35rem; }
+.refs-to { font: 13px system-ui, sans-serif; color: var(--muted); }
+#refs-within { margin: 0 auto 0.4rem; }
 .refs-text {
   display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
   font-weight: 400; font-size: 1.1em; margin: 1.6rem 0 0.3rem;

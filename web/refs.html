@@ -40,8 +40,9 @@
   }
   // Start fetching the references now, while the scripts load (refs.js picks this up).
   {
-    const q = new URLSearchParams(location.search), lemma = q.get("lemma") || "", text = q.get("text");
-    window.refsRequest = fetch(`/api/references/${encodeURIComponent(lemma)}?${new URLSearchParams(text ? { text } : {})}`);
+    const q = new URLSearchParams(location.search), lemma = q.get("lemma") || "", within = q.get("in") || q.get("text");
+    window.refsRequest = fetch(`/api/references/${encodeURIComponent(lemma)}?${new URLSearchParams(within ? { in: within } : {})}`);
+    window.libraryRequest = fetch("/api/library");  // (its parts, to narrow the references to)
   }
 </script>
 <link rel="stylesheet" href="style.css">
@@ -126,7 +127,8 @@
 <main>
   <h1 id="refs-lemma" lang="grc"></h1>
   <p class="sub" id="refs-count"></p>
-  <nav id="refs-texts" aria-label="Texts" hidden></nav>
+  <nav id="refs-filter" aria-label="Where" hidden></nav>
+  <p id="refs-within" class="sub" hidden></p>
   <div id="refs-list" aria-live="polite"></div>
   <p id="refs-status" class="notice" hidden></p>
   <button id="refs-more" type="button" hidden>More</button>

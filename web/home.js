@@ -422,7 +422,6 @@ function lectionaryEntry(l) {
 }
 
 // A category's name: in Greek and English ("Ὅμηρος · Homer"), just the Greek in a Greek interface.
-const categoryName = (name) => (UI_LANG === "en" ? name : name.split(" · ")[0]);
 
 function render(data) {
   library = data;

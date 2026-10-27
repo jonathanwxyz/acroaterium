@@ -397,6 +397,8 @@ Object.assign(I18N.el, {
   "Back": "Πίσω",
   "References need a connection to the server.": "Οι παραπομπές χρειάζονται σύνδεση με τον διακομιστή.",
   "No references to this lemma.": "Δεν υπάρχουν παραπομπές σε αυτό το λήμμα.",
+  "Where": "Πού",
+  "{n} in {where}": "{n} σε: {where}",
 });
 Object.assign(I18N.grc, {
   "Reader": "Ἀναγνώστης",
@@ -740,6 +742,8 @@ Object.assign(I18N.grc, {
   "Back": "Πάλιν",
   "References need a connection to the server.": "Τὰ χωρία δεῖται συνδέσεως πρὸς τὸν διακομιστήν.",
   "No references to this lemma.": "Οὐκ ἔστι χωρία τοῦδε τοῦ λήμματος.",
+  "Where": "Ποῦ",
+  "{n} in {where}": "{n} ἐν· {where}",
 });
 
 translatePage();

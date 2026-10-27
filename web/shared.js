@@ -78,10 +78,15 @@ function readerHref(slug, book, v) {
   if (v) q.set("v", v);
   return `read.html?${q}`;
 }
+// A category's name ("Ὅμηρος · Homer"): in Greek alone, in a Greek interface.
+const categoryName = (name) => (UI_LANG === "en" ? name : name.split(" · ")[0]);
+
 // The references to a lemma (refs.html): every word of it in the library, by text.
-function refsHref(lemma, text) {
+// (within: part of the library only, as a reading plan names it: "category:<name>",
+// "collection:<name>", a text's slug, or "<slug>:3-5")
+function refsHref(lemma, within) {
   const q = new URLSearchParams({ lemma });
-  if (text) q.set("text", text);
+  if (within) q.set("in", within);
   return `refs.html?${q}`;
 }
 

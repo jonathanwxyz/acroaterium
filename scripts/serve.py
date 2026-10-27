@@ -24,8 +24,9 @@ Routes:
   /api/lexword/<slug>/<n>/<seq>/<i>  JSON: the parsing of word i (whitespace chunk) of a
                        segment, for the word card (the Iliad's treebank, with Gaza's word;
                        the New Testament: Robinson's parsing, Dodson's lexicon; ...)
-  /api/references/<lemma>?offset=&limit=&text=  JSON: the verses of every listed text with
-                       a word of that lemma (as a word card's "references" gives it), by text
+  /api/references/<lemma>?offset=&limit=&in=  JSON: the verses of every listed text with
+                       a word of that lemma (as a word card's "references" gives it), by text;
+                       in: part of the library only, named as a reading plan's target
   /api/book/<n>, /api/word/<b>/<l>/<i>, /api/scholia/<b>/<l>  the Iliad's, as they were
                        before it joined the library (/api/text/iliad, /api/lexword/iliad,
                        /api/notes/iliad), for clients that still ask for them
@@ -850,15 +851,18 @@ def lexword_json(slug, n, seq, index):
 
 def references_json(lemma, query):
     """Every word of a lemma (as the lemma index spells it: a card's "references") in the
-    texts the library lists: {lemma, n, texts: [{slug, title, short, cite, books, n}], hits: [{slug, div,
-    label, seq, ref, words: [word index, ...], content}], offset, more}, a verse (segment)
-    a hit, in the library's order, from offset (limit verses; text: in that text only)."""
+    texts the library lists: {lemma, n, texts: [{slug, title, short, cite, books, n}], within,
+    hits: [{slug, div, label, seq, ref, words: [word index, ...], content}], offset, more}, a
+    verse (segment) a hit, in the library's order, from offset (limit verses). in: only
+    those of part of the library, as a reading plan names it (plan_target: a category, a
+    collection, a text, or some of its books; text=<slug> as in=<slug>), and within: {title,
+    n, texts: {slug: n}}, the lemma's words there; else within is null."""
     if not LIBRARY.exists():
         return None
     q = urllib.parse.parse_qs(query)
     offset = max(0, int(q.get("offset", ["0"])[0] or 0))
     limit = min(500, max(1, int(q.get("limit", ["100"])[0] or 100)))
-    only = q.get("text", [None])[0]
+    target = q.get("in", q.get("text", [None]))[0]
     con = sqlite3.connect(LIBRARY)
     try:
         row = con.execute("SELECT id, n FROM lemmas WHERE lemma = ?", (unicodedata.normalize("NFC", lemma),)).fetchone()
@@ -871,11 +875,23 @@ def references_json(lemma, query):
             "(SELECT count(*) FROM divisions d WHERE d.text = w.text), count(*) FROM lemma_words w "
             f"JOIN texts t ON t.slug = w.text WHERE w.lemma = ? AND {shown} GROUP BY w.text ORDER BY t.sort",
             (lid,)).fetchall()
+        where, params, within = "1", [], None
+        if target:
+            part = plan_target(con, target)
+            if not part:
+                return None
+            title, members, _ = part
+            places = [(slug, books) for slug, _, _, books in members]
+            where = " OR ".join("(w.text = ?" + (" AND w.div BETWEEN ? AND ?)" if books else ")") for _, books in places)
+            params = [x for slug, books in places for x in (slug, *(books or ()))]
+            counts = dict(con.execute(f"SELECT w.text, count(*) FROM lemma_words w JOIN texts t ON t.slug = w.text "
+                                      f"WHERE w.lemma = ? AND {shown} AND ({where}) GROUP BY w.text", (lid, *params)))
+            within = {"title": title, "n": sum(counts.values()), "texts": counts}
         verses = con.execute(
             f"SELECT w.text, w.div, w.seq, group_concat(DISTINCT w.word_index) FROM lemma_words w "
-            f"JOIN texts t ON t.slug = w.text WHERE w.lemma = ? AND {shown} AND (? IS NULL OR w.text = ?) "
+            f"JOIN texts t ON t.slug = w.text WHERE w.lemma = ? AND {shown} AND ({where}) "
             "GROUP BY w.text, w.div, w.seq ORDER BY t.sort, w.div, w.seq LIMIT ? OFFSET ?",
-            (lid, only, only, limit + 1, offset)).fetchall()
+            (lid, *params, limit + 1, offset)).fetchall()
         hits = []
         for slug, div, seq, indexes in verses[:limit]:
             ref, content = con.execute("SELECT ref, content FROM segments WHERE text = ? AND div = ? AND seq = ?",
@@ -890,7 +906,7 @@ def references_json(lemma, query):
     return {"lemma": unicodedata.normalize("NFC", lemma), "n": sum(t[5] for t in texts),
             "texts": [{"slug": t[0], "title": t[1], "short": t[2], "cite": t[3], "books": t[4], "n": t[5]}
                       for t in texts],
-            "hits": hits, "offset": offset, "more": len(verses) > limit}
+            "within": within, "hits": hits, "offset": offset, "more": len(verses) > limit}
 
 
 def parsing_json(slug, n, seq, index):
