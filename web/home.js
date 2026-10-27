@@ -9,7 +9,7 @@ const plansBox = document.getElementById("plans");
 // books', the bookmarks' words and the plans' readings, their Greek only (a book's number
 // stays as it is); not the interface's own words.
 const NAMES = ".library h1, .work-title, .work-author, .member-row, .book-list a, .book-list-name, .chapters a, "
-  + ".mark-label, .mark-snippet, .plan-reading";
+  + ".mark-label, .mark-snippet, .plan-reading, .lemma-result-name";
 keepCarved(document.querySelector("main"), (n) => n.parentElement.closest(NAMES), carveGreek);
 
 // The page's name, Ἀκροατήριον: its meaning in its tooltip, and in a passing message when
@@ -870,3 +870,90 @@ window.addEventListener("pageshow", (e) => {
     .catch(() => {});
   refreshDownloads();
 });
+
+// Search: a lemma as it's typed, accents, breathings and capitals aside (/api/lemmas: λογ,
+// ΛΟΓ), a few suggested at a time, commonest first, each with its words in the library and
+// its meaning; the one chosen (tapped, or picked with the arrows and Enter: the first,
+// without) opens its references (refs.html). The lemmas are the server's: offline, it says so.
+{
+  const form = document.getElementById("lemma-search");
+  const input = document.getElementById("lemma-input");
+  const results = document.getElementById("lemma-results");
+  let found = [], active = -1, asked = 0, timer = null;
+
+  const open = (yes) => {
+    results.hidden = !yes;
+    input.setAttribute("aria-expanded", String(yes));
+    if (!yes) setActive(-1);
+  };
+  function setActive(i) {
+    active = i;
+    [...results.children].forEach((li, k) => li.setAttribute("aria-selected", String(k === i)));
+    if (i >= 0) {
+      input.setAttribute("aria-activedescendant", results.children[i].id);
+      results.children[i].scrollIntoView({ block: "nearest" });
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  }
+  const go = (lemma) => { location.href = refsHref(lemma); };
+
+  function draw(items, note) {
+    found = items;
+    results.replaceChildren();
+    items.forEach((x, k) => {
+      const li = el("li", "lemma-result");
+      li.id = `lemma-result-${k}`;
+      li.setAttribute("role", "option");
+      const top = el("span", "lemma-result-top");
+      top.append(el("span", "lemma-result-name", x.lemma), el("span", "lemma-result-n", x.n.toLocaleString(UI_LOCALE)));
+      li.append(top);
+      if (x.definition) li.append(el("span", "lemma-result-def", x.definition));
+      li.lang = "grc";
+      li.addEventListener("click", () => go(x.lemma));
+      results.append(li);
+    });
+    if (note) results.append(el("li", "lemma-result-note", note));
+    setActive(-1);
+    open(items.length > 0 || !!note);
+  }
+
+  async function ask() {
+    const q = input.value.trim(), n = ++asked;
+    if (!q) return draw([]);
+    try {
+      const r = await fetch(`/api/lemmas?${new URLSearchParams({ q, limit: 10 })}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const items = await r.json();
+      if (n === asked) draw(items, items.length ? null : tr("No lemma begins so."));
+    } catch {
+      if (n === asked) draw([], tr("Searching needs a connection to the server."));
+    }
+  }
+
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(ask, 120);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!found.length) return;
+      e.preventDefault();
+      if (results.hidden) open(true);
+      const step = e.key === "ArrowDown" ? 1 : -1;  // (round from the last to the first, and back)
+      setActive(active < 0 ? (step > 0 ? 0 : found.length - 1) : (active + step + found.length) % found.length);
+    } else if (e.key === "Escape" && !results.hidden) {
+      e.preventDefault();
+      open(false);
+    }
+  });
+  input.addEventListener("focus", () => { if (found.length) open(true); });
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const pick = found[active] ?? found[0];
+    if (pick) go(pick.lemma);
+    else ask();
+  });
+  // A tap elsewhere closes the suggestions.
+  document.addEventListener("pointerdown", (e) => { if (!form.contains(e.target)) open(false); });
+}

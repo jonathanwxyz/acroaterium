@@ -24,6 +24,8 @@ Routes:
   /api/lexword/<slug>/<n>/<seq>/<i>  JSON: the parsing of word i (whitespace chunk) of a
                        segment, for the word card (the Iliad's treebank, with Gaza's word;
                        the New Testament: Robinson's parsing, Dodson's lexicon; ...)
+  /api/lemmas?q=…&limit=  JSON: the lemmas beginning with what's typed, accents and capitals
+                       aside, commonest first (the library's search), each with its count
   /api/references/<lemma>?offset=&limit=&in=  JSON: the verses of every listed text with
                        a word of that lemma (as a word card's "references" gives it), by text;
                        in: part of the library only, named as a reading plan's target
@@ -909,6 +911,30 @@ def references_json(lemma, query):
             "within": within, "hits": hits, "offset": offset, "more": len(verses) > limit}
 
 
+def lemmas_json(query):
+    """The lemmas the library's search suggests for what's typed (q): those beginning so,
+    whatever the accents, breathings and capitals (λογ, ΛΟΓ: λόγος, λογίζομαι, ...), the
+    one spelled so first, then the commonest: [{lemma, n, definition}], at most limit."""
+    if not LIBRARY.exists():
+        return None
+    q = urllib.parse.parse_qs(query)
+    typed = "".join(c for c in unicodedata.normalize("NFD", q.get("q", [""])[0].strip().lower())
+                    if not unicodedata.combining(c)).replace("ς", "σ")  # (library.py's search_key)
+    limit = min(50, max(1, int(q.get("limit", ["12"])[0] or 12)))
+    if not typed:
+        return []
+    con = sqlite3.connect(LIBRARY)
+    try:
+        rows = con.execute("SELECT l.lemma, l.n, d.definition FROM lemmas l LEFT JOIN lemma_defs d ON d.lemma = l.lemma "
+                           "WHERE l.bare >= ? AND l.bare < ? ORDER BY l.bare = ? DESC, l.n DESC, l.lemma LIMIT ?",
+                           (typed, typed + "\U0010ffff", typed, limit)).fetchall()
+    except sqlite3.OperationalError:  # a library built before the lemma index (or its search)
+        return None
+    finally:
+        con.close()
+    return [{"lemma": lemma, "n": n, "definition": definition} for lemma, n, definition in rows]
+
+
 def parsing_json(slug, n, seq, index):
     """A word's card as lexword_json gives it, but each token's lemma as its parsing table
     spells it ("_lemma"), not its references."""
@@ -1221,6 +1247,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(offline_json(m[1], int(m[2])))
         elif m := re.fullmatch(r"/api/lectionary/(\d{4}-\d\d-\d\d)", self.path):
             self.send_json(lectionary_json(m[1]))
+        elif m := re.fullmatch(r"/api/lemmas(?:\?(.*))?", self.path):
+            self.send_json(lemmas_json(m[1] or ""))
         elif m := re.fullmatch(r"/api/references/([^/?]+)(?:\?(.*))?", self.path):
             self.send_json(references_json(urllib.parse.unquote(m[1]), m[2] or ""))
         elif self.path.startswith("/api/plans/preview?"):

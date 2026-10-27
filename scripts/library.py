@@ -1556,6 +1556,13 @@ def lemma_key(match):
     return key
 
 
+def search_key(word):
+    """A lemma as the library's search finds it (serve.py's lemmas_json, the same): in small
+    letters, without accents, breathings or other marks, σ for ς (Λόγος, λογος: λογοσ)."""
+    bare = "".join(c for c in unicodedata.normalize("NFD", word.lower()) if not unicodedata.combining(c))
+    return bare.replace("ς", "σ")
+
+
 NOT_ONE_NAME = {"Ὀλυμπία", "Ὀλύμπια"}  # (names alike but for their accents: the place, the games)
 
 
@@ -1621,7 +1628,8 @@ def lemma_index(con):
         CREATE TABLE lemmas (            -- a lemma as the references know it (lemma_index)
             id     INTEGER PRIMARY KEY,
             lemma  TEXT NOT NULL UNIQUE,
-            n      INTEGER NOT NULL);    -- its words, in every text
+            n      INTEGER NOT NULL,     -- its words, in every text
+            bare   TEXT NOT NULL);       -- as searched for (search_key: λογοσ)
         CREATE TABLE lemma_forms (       -- each lemma as the parsing tables spell it (λέγω3, Ιωαχας)
             form   TEXT PRIMARY KEY,
             lemma  INTEGER NOT NULL REFERENCES lemmas);
@@ -1634,7 +1642,8 @@ def lemma_index(con):
             part       INTEGER NOT NULL,
             PRIMARY KEY (lemma, text, div, seq, word_index, part)) WITHOUT ROWID;
     """)
-    con.executemany("INSERT INTO lemmas VALUES (?, ?, ?)", [(i, k, counts[i]) for k, i in ids.items()])
+    con.executemany("INSERT INTO lemmas VALUES (?, ?, ?, ?)", [(i, k, counts[i], search_key(k)) for k, i in ids.items()])
+    con.execute("CREATE INDEX lemmas_bare ON lemmas (bare)")
     con.executemany("INSERT INTO lemma_forms VALUES (?, ?)", [(f, ids[k]) for f, k in keys.items() if k])
     con.executemany("INSERT INTO lemma_words VALUES (?, ?, ?, ?, ?, ?)", words)
     print(f"lemma index: {len(words)} words under {len(ids)} lemmas "

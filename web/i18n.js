@@ -398,6 +398,10 @@ Object.assign(I18N.el, {
   "References need a connection to the server.": "Οι παραπομπές χρειάζονται σύνδεση με τον διακομιστή.",
   "No references to this lemma.": "Δεν υπάρχουν παραπομπές σε αυτό το λήμμα.",
   "Where": "Πού",
+  "Search a lemma": "Αναζήτηση λήμματος",
+  "Lemmas": "Λήμματα",
+  "No lemma begins so.": "Κανένα λήμμα δεν αρχίζει έτσι.",
+  "Searching needs a connection to the server.": "Η αναζήτηση χρειάζεται σύνδεση με τον διακομιστή.",
   "{n} in {where}": "{n} σε: {where}",
 });
 Object.assign(I18N.grc, {
@@ -743,6 +747,10 @@ Object.assign(I18N.grc, {
   "References need a connection to the server.": "Τὰ χωρία δεῖται συνδέσεως πρὸς τὸν διακομιστήν.",
   "No references to this lemma.": "Οὐκ ἔστι χωρία τοῦδε τοῦ λήμματος.",
   "Where": "Ποῦ",
+  "Search a lemma": "Ζήτει λῆμμα",
+  "Lemmas": "Λήμματα",
+  "No lemma begins so.": "Οὐδὲν λῆμμα οὕτως ἄρχεται.",
+  "Searching needs a connection to the server.": "Ἡ ζήτησις δεῖται συνδέσεως πρὸς τὸν διακομιστήν.",
   "{n} in {where}": "{n} ἐν· {where}",
 });
 

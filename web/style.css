@@ -1697,6 +1697,29 @@ body.library { padding-top: env(safe-area-inset-top); }
 .library h1 { font-weight: 400; font-size: 1.6em; margin: 0.6rem auto 0.2rem; text-align: center; width: fit-content; }  /* (only as wide as the name: what a tap on it takes) */
 .library .sub { text-align: center; color: var(--muted); font: 13px system-ui, sans-serif; margin: 0 auto 1.5rem; width: fit-content; }
 .library h1:has(+ .sub[hidden]) { margin-bottom: 1.7rem; }  /* (a Greek interface: no English under it) */
+/* The search for a lemma (home.js), under the name: suggestions drop down beneath it. */
+#lemma-search { position: relative; max-width: 26rem; margin: 0 auto 1.4rem; }
+#lemma-input {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 1em; color: var(--text);
+  background: var(--bg); border: 1px solid var(--rule); border-radius: 999px; padding: 0.35rem 1rem;
+}
+#lemma-input::placeholder { font: 15px system-ui, sans-serif; color: var(--muted); }
+#lemma-input:focus { outline: none; border-color: var(--current-bar); }
+#lemma-results {
+  position: absolute; z-index: 3; left: 0; right: 0; top: calc(100% + 0.3rem);
+  margin: 0; padding: 0.25rem 0; list-style: none; max-height: 60vh; overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--rule); border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+}
+#lemma-results[hidden] { display: none; }
+.lemma-result { padding: 0.35rem 0.9rem; cursor: pointer; }
+.lemma-result[aria-selected="true"] { background: color-mix(in srgb, var(--current-bg) 70%, transparent); }
+@media (hover: hover) { .lemma-result:hover { background: color-mix(in srgb, var(--current-bg) 70%, transparent); } }
+.lemma-result-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.lemma-result-n { font: 12px system-ui, sans-serif; color: var(--muted); }
+.lemma-result-def { display: block; font: 13px system-ui, sans-serif; color: var(--muted);
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lemma-result-note { padding: 0.35rem 0.9rem; font: italic 14px system-ui, sans-serif; color: var(--muted); }
 .category { margin: 2rem 0 0; }
 .category > h2 {
   font: 600 12px system-ui, sans-serif;
