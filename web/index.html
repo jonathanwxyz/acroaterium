@@ -53,6 +53,16 @@
 </head>
 <body class="library">
 <div class="library-tools">
+  <div id="search-picker">
+    <button id="search-button" title="Search a lemma" aria-label="Search a lemma" aria-haspopup="dialog" aria-expanded="false" aria-controls="search-panel"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M15 15l5 5"/></svg></button>
+    <div id="search-panel" role="dialog" aria-label="Search a lemma" hidden>
+      <form id="lemma-search" role="search" autocomplete="off">
+        <input id="lemma-input" type="search" lang="grc" placeholder="Search a lemma" aria-label="Search a lemma"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lemma-results" spellcheck="false" enterkeyhint="search">
+        <ul id="lemma-results" role="listbox" aria-label="Lemmas" hidden></ul>
+      </form>
+    </div>
+  </div>
   <div id="size-picker">
     <button id="size-button" title="Text, font and theme" aria-label="Text, font and theme" aria-haspopup="dialog" aria-expanded="false" aria-controls="size-menu">Aa</button>
     <div id="size-menu" role="dialog" aria-label="Text, font and theme" hidden>
@@ -124,11 +134,6 @@
 <main>
   <h1 title="Ἀκροατήριον, a hall for listening: where a reading or a lecture is heard (from ἀκροάομαι, to listen)">Ἀκροατήριον</h1>
   <p class="sub" data-en-only title="Ἀκροατήριον, a hall for listening: where a reading or a lecture is heard (from ἀκροάομαι, to listen)">Acroaterium</p>
-  <form id="lemma-search" role="search" autocomplete="off">
-    <input id="lemma-input" type="search" lang="grc" placeholder="Search a lemma" aria-label="Search a lemma"
-           role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lemma-results" spellcheck="false" enterkeyhint="search">
-    <ul id="lemma-results" role="listbox" aria-label="Lemmas" hidden></ul>
-  </form>
   <p id="downloads" hidden></p>
   <p id="local-library" hidden></p>
   <section id="plans" class="category" hidden></section>

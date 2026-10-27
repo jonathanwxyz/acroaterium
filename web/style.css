@@ -804,7 +804,7 @@ main {
 
 /* Text size menu (Aa): text and interface, each stepped smaller or larger. */
 #size-picker { position: relative; flex: none; display: flex; }  /* flex: no line box (and descent) around the button */
-#size-button {
+#size-button, #search-button {
   height: 1.85rem;
   padding: 0 0.45rem;
   font: 15px var(--greek);
@@ -814,8 +814,9 @@ main {
   border-radius: 0.95rem;
   cursor: pointer;
 }
-#size-button[aria-expanded="true"] { color: var(--text); border-color: var(--current-bar); }
-@media (hover: hover) { #size-button:hover { color: var(--text); border-color: var(--current-bar); } }
+#size-button[aria-expanded="true"], #search-button[aria-expanded="true"] { color: var(--text); border-color: var(--current-bar); }
+@media (hover: hover) { :is(#size-button, #search-button):hover { color: var(--text); border-color: var(--current-bar); } }
+#search-button { display: flex; align-items: center; }
 #size-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -1697,29 +1698,32 @@ body.library { padding-top: env(safe-area-inset-top); }
 .library h1 { font-weight: 400; font-size: 1.6em; margin: 0.6rem auto 0.2rem; text-align: center; width: fit-content; }  /* (only as wide as the name: what a tap on it takes) */
 .library .sub { text-align: center; color: var(--muted); font: 13px system-ui, sans-serif; margin: 0 auto 1.5rem; width: fit-content; }
 .library h1:has(+ .sub[hidden]) { margin-bottom: 1.7rem; }  /* (a Greek interface: no English under it) */
-/* The search for a lemma (home.js), under the name: suggestions drop down beneath it. */
-#lemma-search { position: relative; max-width: 26rem; margin: 0 auto 1.4rem; }
+/* The search for a lemma (home.js): a button by the text menu's (Aa), opening a panel with the
+   box, and the suggestions under it. */
+#search-picker { flex: none; display: flex; }  /* (not positioned: the panel lines up with the tools' right edge) */
+#search-panel {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 7;
+  width: min(24rem, calc(100vw / var(--ui-scale, 1) - 32px)); box-sizing: border-box; padding: 0.5rem;
+  background: var(--bg); border: 1px solid var(--rule); border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+}
+#search-panel[hidden] { display: none; }
+#lemma-search { margin: 0; }
 #lemma-input {
   width: 100%; box-sizing: border-box; font: inherit; font-size: 1em; color: var(--text);
   background: var(--bg); border: 1px solid var(--rule); border-radius: 999px; padding: 0.35rem 1rem;
 }
 #lemma-input::placeholder { font: 15px system-ui, sans-serif; color: var(--muted); }
 #lemma-input:focus { outline: none; border-color: var(--current-bar); }
-#lemma-results {
-  position: absolute; z-index: 3; left: 0; right: 0; top: calc(100% + 0.3rem);
-  margin: 0; padding: 0.25rem 0; list-style: none; max-height: 60vh; overflow-y: auto;
-  background: var(--bg); border: 1px solid var(--rule); border-radius: 12px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
-}
+#lemma-results { margin: 0.4rem 0 0; padding: 0; list-style: none; max-height: 60vh; overflow-y: auto; }
 #lemma-results[hidden] { display: none; }
-.lemma-result { padding: 0.35rem 0.9rem; cursor: pointer; }
+.lemma-result { padding: 0.35rem 0.5rem; border-radius: 6px; cursor: pointer; }
 .lemma-result[aria-selected="true"] { background: color-mix(in srgb, var(--current-bg) 70%, transparent); }
 @media (hover: hover) { .lemma-result:hover { background: color-mix(in srgb, var(--current-bg) 70%, transparent); } }
 .lemma-result-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
 .lemma-result-n { font: 12px system-ui, sans-serif; color: var(--muted); }
 .lemma-result-def { display: block; font: 13px system-ui, sans-serif; color: var(--muted);
                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lemma-result-note { padding: 0.35rem 0.9rem; font: italic 14px system-ui, sans-serif; color: var(--muted); }
+.lemma-result-note { padding: 0.35rem 0.5rem; font: italic 14px system-ui, sans-serif; color: var(--muted); }
 .category { margin: 2rem 0 0; }
 .category > h2 {
   font: 600 12px system-ui, sans-serif;

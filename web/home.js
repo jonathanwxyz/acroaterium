@@ -9,7 +9,7 @@ const plansBox = document.getElementById("plans");
 // books', the bookmarks' words and the plans' readings, their Greek only (a book's number
 // stays as it is); not the interface's own words.
 const NAMES = ".library h1, .work-title, .work-author, .member-row, .book-list a, .book-list-name, .chapters a, "
-  + ".mark-label, .mark-snippet, .plan-reading, .lemma-result-name";
+  + ".mark-label, .mark-snippet, .plan-reading";
 keepCarved(document.querySelector("main"), (n) => n.parentElement.closest(NAMES), carveGreek);
 
 // The page's name, Ἀκροατήριον: its meaning in its tooltip, and in a passing message when
@@ -871,11 +871,15 @@ window.addEventListener("pageshow", (e) => {
   refreshDownloads();
 });
 
-// Search: a lemma as it's typed, accents, breathings and capitals aside (/api/lemmas: λογ,
-// ΛΟΓ), a few suggested at a time, commonest first, each with its words in the library and
-// its meaning; the one chosen (tapped, or picked with the arrows and Enter: the first,
-// without) opens its references (refs.html). The lemmas are the server's: offline, it says so.
+// Search (the magnifier by the text menu, opening a panel): a lemma as it's typed, accents,
+// breathings and capitals aside (/api/lemmas: λογ, ΛΟΓ), a few suggested at a time,
+// commonest first, each with its words in the library and its meaning; the one chosen
+// (tapped, or picked with the arrows and Enter: the first, without) opens its references
+// (refs.html). The lemmas are the server's: offline, it says so.
 {
+  const picker = document.getElementById("search-picker");
+  const button = document.getElementById("search-button");
+  const panel = document.getElementById("search-panel");
   const form = document.getElementById("lemma-search");
   const input = document.getElementById("lemma-input");
   const results = document.getElementById("lemma-results");
@@ -942,9 +946,10 @@ window.addEventListener("pageshow", (e) => {
       if (results.hidden) open(true);
       const step = e.key === "ArrowDown" ? 1 : -1;  // (round from the last to the first, and back)
       setActive(active < 0 ? (step > 0 ? 0 : found.length - 1) : (active + step + found.length) % found.length);
-    } else if (e.key === "Escape" && !results.hidden) {
+    } else if (e.key === "Escape") {
       e.preventDefault();
-      open(false);
+      if (!results.hidden) open(false);
+      else showPanel(false);
     }
   });
   input.addEventListener("focus", () => { if (found.length) open(true); });
@@ -954,6 +959,20 @@ window.addEventListener("pageshow", (e) => {
     if (pick) go(pick.lemma);
     else ask();
   });
-  // A tap elsewhere closes the suggestions.
-  document.addEventListener("pointerdown", (e) => { if (!form.contains(e.target)) open(false); });
+  // The panel: the button opens it (at the box, ready to type) and closes it, as do a tap
+  // elsewhere and Escape.
+  function showPanel(yes) {
+    panel.hidden = !yes;
+    button.setAttribute("aria-expanded", String(yes));
+    if (yes) {
+      input.focus();
+      input.select();
+      if (found.length) open(true);
+    } else {
+      open(false);
+    }
+  }
+  button.addEventListener("click", () => showPanel(panel.hidden));
+  document.addEventListener("pointerdown", (e) => { if (!panel.hidden && !picker.contains(e.target)) showPanel(false); });
+  keepCarved(panel, (n) => n.parentElement.closest(".lemma-result-name"), carveGreek);
 }
