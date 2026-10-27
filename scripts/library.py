@@ -1575,12 +1575,13 @@ def lemma_index(con):
     takes the spelling of its words as printed (Ἰωάχαζ); a name accented otherwise in
     another parsing, with its commonest accents."""
     from import_shortdefs import matcher
-    key = lemma_key(matcher())
+    match = matcher()
+    key = lemma_key(match)
     listed = "text IN (SELECT slug FROM texts WHERE hidden IS NOT 1)"  # (as compact_library.py restores it)
     rows = con.execute(f"""
-        SELECT text, div, seq, word_index, part, lemma FROM treebank WHERE {listed}
-        UNION ALL SELECT text, div, seq, word_index, 0, lemma FROM auto_words WHERE {listed}
-        UNION ALL SELECT w.text, w.div, w.seq, w.word_index, 0, coalesce(w.lemma, l.lemma)
+        SELECT text, div, seq, word_index, part, lemma, NULL FROM treebank WHERE {listed}
+        UNION ALL SELECT text, div, seq, word_index, 0, lemma, definition FROM auto_words WHERE {listed}
+        UNION ALL SELECT w.text, w.div, w.seq, w.word_index, 0, coalesce(w.lemma, l.lemma), coalesce(w.gloss, l.gloss)
                   FROM words w LEFT JOIN lexicon l USING (strongs) WHERE w.{listed}""").fetchall()
     keys = {lemma: key(lemma) for lemma in {r[5] for r in rows}}
     marked = lambda s: any(unicodedata.combining(c) for c in unicodedata.normalize("NFD", s))
@@ -1596,7 +1597,7 @@ def lemma_index(con):
     # printed, mostly, where that's a little otherwise at most.
     segments = {(t, d, q): c.split() for t, d, q, c in con.execute("SELECT text, div, seq, content FROM segments")}
     printed = {}
-    for text, div, seq, index, part, lemma in rows:
+    for text, div, seq, index, part, lemma, _ in rows:
         k = keys[lemma]
         if k and k[0].isupper() and not marked(k):
             words = segments.get((text, div, seq), [])
@@ -1621,15 +1622,24 @@ def lemma_index(con):
     keys = {lemma: commonest.get(k, k) for lemma, k in keys.items()}
     ids = {k: i for i, k in enumerate(sorted({k for k in keys.values() if k}), 1)}
     words = sorted({(ids[keys[lemma]], text, div, seq, index, part)
-                    for text, div, seq, index, part, lemma in rows if keys[lemma]})
+                    for text, div, seq, index, part, lemma, _ in rows if keys[lemma]})
     counts = Counter(row[0] for row in words)
+    # Its meaning: the short definitions' (as the word cards'), else the gloss its words have
+    # most often (the New Testament's lexicon's, the Septuagint's, the lemmatiser's).
+    glosses = {}
+    for *_, lemma, gloss in rows:
+        if keys[lemma] and gloss:
+            glosses.setdefault(keys[lemma], Counter())[gloss] += 1
+    definitions = {k: (m[0] if (m := match(k)) and m[0] else None)
+                   or (glosses[k].most_common(1)[0][0] if k in glosses else None) for k in ids}
     con.executescript("""
         DROP TABLE IF EXISTS lemma_words; DROP TABLE IF EXISTS lemma_forms; DROP TABLE IF EXISTS lemmas;
         CREATE TABLE lemmas (            -- a lemma as the references know it (lemma_index)
             id     INTEGER PRIMARY KEY,
             lemma  TEXT NOT NULL UNIQUE,
             n      INTEGER NOT NULL,     -- its words, in every text
-            bare   TEXT NOT NULL);       -- as searched for (search_key: λογοσ)
+            bare   TEXT NOT NULL,        -- as searched for (search_key: λογοσ)
+            definition TEXT);            -- its meaning, briefly
         CREATE TABLE lemma_forms (       -- each lemma as the parsing tables spell it (λέγω3, Ιωαχας)
             form   TEXT PRIMARY KEY,
             lemma  INTEGER NOT NULL REFERENCES lemmas);
@@ -1642,7 +1652,8 @@ def lemma_index(con):
             part       INTEGER NOT NULL,
             PRIMARY KEY (lemma, text, div, seq, word_index, part)) WITHOUT ROWID;
     """)
-    con.executemany("INSERT INTO lemmas VALUES (?, ?, ?, ?)", [(i, k, counts[i], search_key(k)) for k, i in ids.items()])
+    con.executemany("INSERT INTO lemmas VALUES (?, ?, ?, ?, ?)",
+                    [(i, k, counts[i], search_key(k), definitions[k]) for k, i in ids.items()])
     con.execute("CREATE INDEX lemmas_bare ON lemmas (bare)")
     con.executemany("INSERT INTO lemma_forms VALUES (?, ?)", [(f, ids[k]) for f, k in keys.items() if k])
     con.executemany("INSERT INTO lemma_words VALUES (?, ?, ?, ?, ?, ?)", words)

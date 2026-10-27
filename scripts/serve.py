@@ -853,7 +853,7 @@ def lexword_json(slug, n, seq, index):
 
 def references_json(lemma, query):
     """Every word of a lemma (as the lemma index spells it: a card's "references") in the
-    texts the library lists: {lemma, n, texts: [{slug, title, short, cite, books, n}], within,
+    texts the library lists: {lemma, definition, n, texts: [{slug, title, short, cite, books, n}], within,
     hits: [{slug, div, label, seq, ref, words: [word index, ...], content}], offset, more}, a
     verse (segment) a hit, in the library's order, from offset (limit verses). in: only
     those of part of the library, as a reading plan names it (plan_target: a category, a
@@ -867,10 +867,10 @@ def references_json(lemma, query):
     target = q.get("in", q.get("text", [None]))[0]
     con = sqlite3.connect(LIBRARY)
     try:
-        row = con.execute("SELECT id, n FROM lemmas WHERE lemma = ?", (unicodedata.normalize("NFC", lemma),)).fetchone()
+        row = con.execute("SELECT id, definition FROM lemmas WHERE lemma = ?", (unicodedata.normalize("NFC", lemma),)).fetchone()
         if not row:
             return None
-        lid = row[0]
+        lid, definition = row
         shown = listed(con)  # (texts' columns: lemma_words has none of those names)
         texts = con.execute(
             f"SELECT w.text, t.title, {collection_of(con, 'short')}, t.cite, "
@@ -905,7 +905,7 @@ def references_json(lemma, query):
         return None
     finally:
         con.close()
-    return {"lemma": unicodedata.normalize("NFC", lemma), "n": sum(t[5] for t in texts),
+    return {"lemma": unicodedata.normalize("NFC", lemma), "definition": definition, "n": sum(t[5] for t in texts),
             "texts": [{"slug": t[0], "title": t[1], "short": t[2], "cite": t[3], "books": t[4], "n": t[5]}
                       for t in texts],
             "within": within, "hits": hits, "offset": offset, "more": len(verses) > limit}
@@ -925,8 +925,8 @@ def lemmas_json(query):
         return []
     con = sqlite3.connect(LIBRARY)
     try:
-        rows = con.execute("SELECT l.lemma, l.n, d.definition FROM lemmas l LEFT JOIN lemma_defs d ON d.lemma = l.lemma "
-                           "WHERE l.bare >= ? AND l.bare < ? ORDER BY l.bare = ? DESC, l.n DESC, l.lemma LIMIT ?",
+        rows = con.execute("SELECT lemma, n, definition FROM lemmas "
+                           "WHERE bare >= ? AND bare < ? ORDER BY bare = ? DESC, n DESC, lemma LIMIT ?",
                            (typed, typed + "\U0010ffff", typed, limit)).fetchall()
     except sqlite3.OperationalError:  # a library built before the lemma index (or its search)
         return None

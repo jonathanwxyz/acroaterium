@@ -13,6 +13,7 @@ let within = Q.get("in") ?? Q.get("text");  // the part chosen, or null: all
 const PAGE = 100;  // verses fetched at a time
 
 const heading = document.getElementById("refs-lemma");
+const definition = document.getElementById("refs-definition");
 const count = document.getElementById("refs-count");
 const filter = document.getElementById("refs-filter");
 const withinLine = document.getElementById("refs-within");
@@ -74,6 +75,8 @@ function citation(t, hit) {
 }
 
 function drawCount(data) {
+  definition.textContent = data.definition ?? "";
+  definition.hidden = !data.definition;
   texts = data.texts;
   counts = new Map(texts.map((t) => [t.slug, t.n]));
   count.textContent = texts.length === 1 ? tr("{n} words in 1 text", { n: num(data.n) })
