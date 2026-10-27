@@ -456,7 +456,23 @@
     }
 
     // ---- A word's card ----
+    // Each token's lemma with its references in every text ({lemma, n}, as the server's
+    // /api/references knows it), where the compact library has the lemma index's lemmas.
     async lexwordJson(slug, n, seq, index) {
+      const card = await this.parsingJson(slug, n, seq, index);
+      for (const token of card?.tokens ?? []) {
+        const form = token._lemma;
+        delete token._lemma;
+        const ref = this.db.file.tables.lemma_forms && form != null ? await this.db.byKey("lemma_forms", [form]) : null;
+        const lemma = ref && await this.db.byKey("lemmas", [ref.lemma]);
+        if (lemma) token.references = { lemma: lemma.lemma, n: lemma.n };
+      }
+      return card;
+    }
+
+    // A word's card, but each token's lemma as its parsing table spells it (_lemma), not
+    // its references.
+    async parsingJson(slug, n, seq, index) {
       const seg = await this.db.segment(slug, n, seq);
       if (!seg) return null;
       const chunks = pySplit(seg.content);
@@ -484,6 +500,7 @@
             role: relationLabel(p.relation),
             head: truthy(p.head) ? p.head : null,
             root: p.head === "",
+            _lemma: p.lemma,
           });
         }
         return { word, ...extra, tokens };
@@ -499,6 +516,7 @@
       const lex = strongs == null ? null : await this.db.byKey("lexicon", [strongs]);
       let lemma = lex?.lemma ?? null, glossW = lex?.gloss ?? null, definition = lex?.definition ?? null;
       const ownLemma = row.lemma, ownGloss = row.gloss;
+      const indexed = truthy(ownLemma) ? ownLemma : lemma;  // (as the lemma index has it)
       const short = await this.lemmaDef(ownLemma);
       if (truthy(ownLemma)) {
         // The Septuagint: its own lemma; Strong's (and Dodson's entry) only where it's the same word.
@@ -516,6 +534,7 @@
         tokens: [{
           form: word, lemma, strongs, gloss: glossW, definition: truthy(definition) ? definition : glossW,
           morph: truthy(morph) ? (catss ? catssMorph(morph) : robinsonMorph(morph)) : [], code: morph,
+          _lemma: indexed,
         }],
       };
     }
@@ -546,6 +565,7 @@
         definition: r.definition,
         morph: morpheusMorph(r.pos, JSON.parse(r.morph ?? "[]")),
         note,
+        _lemma: r.lemma,
       };
     }
   }

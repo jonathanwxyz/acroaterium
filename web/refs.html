@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="grc">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#fdf6e3">
+<meta name="description" content="Every use of a word's lemma in the library's Greek texts.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-title" content="Acroaterium">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>References - Acroaterium</title>
+<script>
+  try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+  // And the accent (amber unless another was chosen).
+  try { const a = localStorage.getItem("accent"); if (["red", "purple", "blue"].includes(a)) document.documentElement.dataset.accent = a; } catch {}
+  // Text and interface sizes (the reader's Aa menu), likewise; the library uses the interface one.
+  try {
+    for (const [key, prop] of [["textScale", "--text-scale"], ["uiScale", "--ui-scale"]]) {
+      const v = parseFloat(localStorage.getItem(key));
+      if (v > 0) document.documentElement.style.setProperty(prop, v);
+    }
+  } catch {}
+  // The script: minuscule, as printed, or majuscule in scriptio continua (app.js turns the text).
+  try { if (localStorage.getItem("letters") === "capitals") document.documentElement.dataset.letters = "capitals"; } catch {}
+  // And the font for the Greek (Gentium unless another was chosen).
+  {
+    let font = "gentium";
+    try { const f = localStorage.getItem("font"); if (["garamond", "didot", "neohellenic", "porson", "alegreya", "complutum", "decker", "system"].includes(f)) document.documentElement.dataset.font = font = f; } catch {}
+    // Fetch its Greek at once, rather than once the stylesheet has been read.
+    const file = { gentium: "gentium-book-plus-400", garamond: "eb-garamond-400", didot: "gfs-didot-400", neohellenic: "gfs-neohellenic-400", porson: "gfs-porson-400", alegreya: "alegreya-400", decker: "gfs-decker2-400", complutum: "gfs-complutum-400" }[font];
+    for (const part of file ? ["greek", "greek-ext"] : []) {  // (the system's: none to fetch)
+      const link = Object.assign(document.createElement("link"),
+        { rel: "preload", as: "font", type: "font/woff2", crossOrigin: "anonymous", href: `fonts/${file}-${part}.woff2` });
+      document.head.append(link);
+    }
+  }
+  // Start fetching the references now, while the scripts load (refs.js picks this up).
+  {
+    const q = new URLSearchParams(location.search), lemma = q.get("lemma") || "", text = q.get("text");
+    window.refsRequest = fetch(`/api/references/${encodeURIComponent(lemma)}?${new URLSearchParams(text ? { text } : {})}`);
+  }
+</script>
+<link rel="stylesheet" href="style.css">
+<script defer src="native.js"></script>
+<script defer src="i18n.js"></script>
+<script defer src="theme.js"></script>
+<script defer src="shared.js"></script>
+<script defer src="offline.js"></script>  <!-- (downloads queued in the library go on here too) -->
+<script defer src="refs.js"></script>
+</head>
+<body class="library refs">
+<a id="refs-back" href="index.html" title="Back" aria-label="Back"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/></svg></a>
+<div class="library-tools">
+  <div id="size-picker">
+    <button id="size-button" title="Text, font and theme" aria-label="Text, font and theme" aria-haspopup="dialog" aria-expanded="false" aria-controls="size-menu">Aa</button>
+    <div id="size-menu" role="dialog" aria-label="Text, font and theme" hidden>
+      <div class="size-row" data-key="textScale" data-prop="--text-scale">
+        <span class="size-name">Text</span>
+        <span class="size-steps">
+          <button class="size-step" data-step="-1" aria-label="Smaller text">−</button>
+          <output class="size-value">100%</output>
+          <button class="size-step" data-step="1" aria-label="Larger text">+</button>
+        </span>
+      </div>
+      <div class="size-row" data-key="uiScale" data-prop="--ui-scale">
+        <span class="size-name">Interface</span>
+        <span class="size-steps">
+          <button class="size-step" data-step="-1" aria-label="Smaller interface">−</button>
+          <output class="size-value">100%</output>
+          <button class="size-step" data-step="1" aria-label="Larger interface">+</button>
+        </span>
+      </div>
+      <div class="font-row" role="group" aria-label="Font">
+        <span class="size-name">Font</span>
+        <select class="font-select" aria-label="Font">
+          <option value="alegreya">Alegreya</option>
+          <option value="complutum">Complutum</option>
+          <option value="decker">Decker</option>
+          <option value="didot">Didot</option>
+          <option value="garamond">Garamond</option>
+          <option value="gentium" selected>Gentium</option>
+          <option value="neohellenic">Neohellenic</option>
+          <option value="porson">Porson</option>
+          <option value="system">System</option>
+        </select>
+      </div>
+      <div class="font-row letters-row" role="group" aria-label="Script">
+        <span class="size-name">Script</span>
+        <span class="font-choices">
+          <button class="letters-choice" data-letters="book" aria-pressed="false" title="Minuscule: small letters, accents and spaces, as printed" aria-label="Minuscule" lang="grc">Μικρά</button>
+          <button class="letters-choice" data-letters="capitals" aria-pressed="false" title="Majuscule, in scriptio continua: capitals only, without accents, spaces or punctuation" aria-label="Majuscule" lang="grc">ΚΕΦΑΛΑΙΑ</button>
+        </span>
+      </div>
+      <div class="font-row theme-row" role="group" aria-label="Theme">
+        <span class="size-name">Theme</span>
+        <span class="font-choices">
+          <button class="theme-choice" data-theme="auto" aria-pressed="false" title="Automatic (as the system)" aria-label="Automatic"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path fill="currentColor" d="M12 4a8 8 0 0 1 0 16z"/></svg></button>
+          <button class="theme-choice" data-theme="light" aria-pressed="false" title="Light" aria-label="Light"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg></button>
+          <button class="theme-choice" data-theme="dark" aria-pressed="false" title="Dark" aria-label="Dark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+        </span>
+      </div>
+      <div class="font-row accent-row" role="group" aria-label="Accent">
+        <span class="size-name">Accent</span>
+        <span class="font-choices">
+          <button class="accent-choice" data-accent="red" aria-pressed="false" title="Red" aria-label="Red"><span class="swatch"></span></button>
+          <button class="accent-choice" data-accent="amber" aria-pressed="false" title="Amber" aria-label="Amber"><span class="swatch"></span></button>
+          <button class="accent-choice" data-accent="purple" aria-pressed="false" title="Purple" aria-label="Purple"><span class="swatch"></span></button>
+          <button class="accent-choice" data-accent="blue" aria-pressed="false" title="Blue" aria-label="Blue"><span class="swatch"></span></button>
+        </span>
+      </div>
+      <div class="font-row lang-row" role="group" aria-label="Language">
+        <span class="size-name">Language</span>
+        <span class="font-choices">
+          <button class="lang-choice" data-lang="en" aria-pressed="false" lang="en">English</button>
+          <button class="lang-choice" data-lang="el" aria-pressed="false" lang="el">Ελληνικά</button>
+          <button class="lang-choice" data-lang="grc" aria-pressed="false" lang="grc" title="Ἀρχαία ἑλληνική">Ἀρχαῖα</button>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+<main>
+  <h1 id="refs-lemma" lang="grc"></h1>
+  <p class="sub" id="refs-count"></p>
+  <nav id="refs-texts" aria-label="Texts" hidden></nav>
+  <div id="refs-list" aria-live="polite"></div>
+  <p id="refs-status" class="notice" hidden></p>
+  <button id="refs-more" type="button" hidden>More</button>
+</main>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

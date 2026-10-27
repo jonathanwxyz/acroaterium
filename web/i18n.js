@@ -389,6 +389,14 @@ Object.assign(I18N.el, {
   "Hidden: listed only here, not on the live site": "Κρυφό: εμφανίζεται μόνο εδώ, όχι στον δημόσιο ιστότοπο",
   "Remove all recordings": "Αφαίρεση όλων των ηχογραφήσεων",
   "Try again": "Δοκιμάστε ξανά",
+  "References": "Παραπομπές",
+  "References - Acroaterium": "Παραπομπές - Ἀκροατήριον",
+  "{n} words in {texts} texts": "{n} λέξεις σε {texts} κείμενα",
+  "{n} words in 1 text": "{n} λέξεις σε 1 κείμενο",
+  "More": "Περισσότερα",
+  "Back": "Πίσω",
+  "References need a connection to the server.": "Οι παραπομπές χρειάζονται σύνδεση με τον διακομιστή.",
+  "No references to this lemma.": "Δεν υπάρχουν παραπομπές σε αυτό το λήμμα.",
 });
 Object.assign(I18N.grc, {
   "Reader": "Ἀναγνώστης",
@@ -724,6 +732,14 @@ Object.assign(I18N.grc, {
   "Hidden: listed only here, not on the live site": "Κρυπτόν· ἐνθάδε μόνον δείκνυται, οὐκ ἐν τῷ δημοσίῳ ἱστοτόπῳ",
   "Remove all recordings": "Ἄφελε πάντα τὰ ἀκροάματα",
   "Try again": "Πείρασον αὖθις",
+  "References": "Χωρία",
+  "References - Acroaterium": "Χωρία - Ἀκροατήριον",
+  "{n} words in {texts} texts": "{n} λέξεις ἐν {texts} κειμένοις",
+  "{n} words in 1 text": "{n} λέξεις ἐν ἑνὶ κειμένῳ",
+  "More": "Πλείονα",
+  "Back": "Πάλιν",
+  "References need a connection to the server.": "Τὰ χωρία δεῖται συνδέσεως πρὸς τὸν διακομιστήν.",
+  "No references to this lemma.": "Οὐκ ἔστι χωρία τοῦδε τοῦ λήμματος.",
 });
 
 translatePage();

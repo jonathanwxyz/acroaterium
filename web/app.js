@@ -1169,6 +1169,12 @@ function renderCard(data) {
       a.rel = "noopener";
       lemma.append(a);
     }
+    // Every word of the lemma in the library's texts (refs.html), where the lemma index has it.
+    if (t.references) {
+      const a = el("a", "refs", `${tr("References")} ${t.references.n.toLocaleString(UI_LOCALE)}`);
+      a.href = refsHref(t.references.lemma);
+      lemma.append(a);
+    }
     // The New Testament's words: Strong's number, and Robinson's code under the parsing.
     if (t.strongs) lemma.append(el("code", "strongs", `G${t.strongs}`));
     box.append(lemma);

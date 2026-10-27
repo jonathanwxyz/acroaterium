@@ -1535,6 +1535,112 @@ def build_notes(slug, specs, segments, form):
     return sources, rows
 
 
+# ---------------------------------------------------------------- lemma index
+
+def lemma_key(match):
+    """key(lemma) -> the lemma as the references know it, or None (a treebank's "???"): the
+    short definitions' headword (match: import_shortdefs.matcher(), which knows the lemma
+    aliases), else the lemma itself without a homograph's number (λέγω3) or a stray mark
+    before it, its graves acute."""
+    def key(lemma):
+        if not lemma:
+            return None
+        lemma = unicodedata.normalize("NFC", re.sub(r"\d+$", "", lemma.strip()))
+        lemma = re.sub(r"^[^Ͱ-Ͽἀ-῿]+", "", lemma)
+        if not re.search(r"[Ͱ-Ͽἀ-῿]", lemma):
+            return None
+        m = match(lemma)
+        if m and m[1]:
+            return m[1]
+        return unicodedata.normalize("NFC", unicodedata.normalize("NFD", lemma).replace("̀", "́"))
+    return key
+
+
+NOT_ONE_NAME = {"Ὀλυμπία", "Ὀλύμπια"}  # (names alike but for their accents: the place, the games)
+
+
+def lemma_index(con):
+    """lemmas, lemma_forms, lemma_words: every parsed word of the texts listed (a hand-made
+    treebank's, the New Testament's or the Septuagint's, the lemmatiser's) under one
+    spelling of its lemma, for the references to a lemma in every text. (The compact library
+    keeps lemmas and lemma_forms, for the word cards, but not lemma_words: it rebuilds them.) A lemma printed without accents (the Septuagint's
+    names: Ιωαχας) goes with the one accented lemma of its letters, where there's one, else
+    takes the spelling of its words as printed (Ἰωάχαζ); a name accented otherwise in
+    another parsing, with its commonest accents."""
+    from import_shortdefs import matcher
+    key = lemma_key(matcher())
+    listed = "text IN (SELECT slug FROM texts WHERE hidden IS NOT 1)"  # (as compact_library.py restores it)
+    rows = con.execute(f"""
+        SELECT text, div, seq, word_index, part, lemma FROM treebank WHERE {listed}
+        UNION ALL SELECT text, div, seq, word_index, 0, lemma FROM auto_words WHERE {listed}
+        UNION ALL SELECT w.text, w.div, w.seq, w.word_index, 0, coalesce(w.lemma, l.lemma)
+                  FROM words w LEFT JOIN lexicon l USING (strongs) WHERE w.{listed}""").fetchall()
+    keys = {lemma: key(lemma) for lemma in {r[5] for r in rows}}
+    marked = lambda s: any(unicodedata.combining(c) for c in unicodedata.normalize("NFD", s))
+    bare = lambda s: "".join(c for c in unicodedata.normalize("NFD", s) if not unicodedata.combining(c))
+    accented = {}
+    for k in set(keys.values()):
+        if k and marked(k):
+            accented.setdefault(bare(k), set()).add(k)
+    for lemma, k in keys.items():
+        if k and not marked(k) and len(accented.get(k, ())) == 1:
+            keys[lemma] = next(iter(accented[k]))
+    # A name still without accents (Rahlfs's Ιωαχας, printed Ἰωάχαζ): as its words are
+    # printed, mostly, where that's a little otherwise at most.
+    segments = {(t, d, q): c.split() for t, d, q, c in con.execute("SELECT text, div, seq, content FROM segments")}
+    printed = {}
+    for text, div, seq, index, part, lemma in rows:
+        k = keys[lemma]
+        if k and k[0].isupper() and not marked(k):
+            words = segments.get((text, div, seq), [])
+            if index < len(words):
+                form = re.sub(r"^[^\w]+|[^\w]+$", "", words[index])
+                printed.setdefault(k, Counter())[unicodedata.normalize(
+                    "NFC", unicodedata.normalize("NFD", form).replace("\u0300", "\u0301"))] += 1
+    for k, forms in printed.items():
+        form, n = forms.most_common(1)[0]
+        if marked(form) and 2 * n >= sum(forms.values()) and bare(form)[:1] == k[:1] \
+                and difflib.SequenceMatcher(None, bare(form).lower(), k.lower()).ratio() >= 0.8:
+            keys = {lemma: form if v == k else v for lemma, v in keys.items()}
+    # A name accented otherwise in another parsing (Ἰουδά, Ἰούδα): under its commonest accents.
+    words_of = Counter(keys[r[5]] for r in rows)
+    unaccented = lambda s: unicodedata.normalize("NFC", "".join(
+        c for c in unicodedata.normalize("NFD", s) if c not in "\u0300\u0301\u0342"))
+    names = {}
+    for k in words_of:
+        if k and k[0].isupper() and k not in NOT_ONE_NAME:
+            names.setdefault(unaccented(k), []).append(k)
+    commonest = {k: max(ks, key=lambda x: (words_of[x], x)) for ks in names.values() for k in ks}
+    keys = {lemma: commonest.get(k, k) for lemma, k in keys.items()}
+    ids = {k: i for i, k in enumerate(sorted({k for k in keys.values() if k}), 1)}
+    words = sorted({(ids[keys[lemma]], text, div, seq, index, part)
+                    for text, div, seq, index, part, lemma in rows if keys[lemma]})
+    counts = Counter(row[0] for row in words)
+    con.executescript("""
+        DROP TABLE IF EXISTS lemma_words; DROP TABLE IF EXISTS lemma_forms; DROP TABLE IF EXISTS lemmas;
+        CREATE TABLE lemmas (            -- a lemma as the references know it (lemma_index)
+            id     INTEGER PRIMARY KEY,
+            lemma  TEXT NOT NULL UNIQUE,
+            n      INTEGER NOT NULL);    -- its words, in every text
+        CREATE TABLE lemma_forms (       -- each lemma as the parsing tables spell it (λέγω3, Ιωαχας)
+            form   TEXT PRIMARY KEY,
+            lemma  INTEGER NOT NULL REFERENCES lemmas);
+        CREATE TABLE lemma_words (       -- the words of each lemma (part: as in treebank)
+            lemma      INTEGER NOT NULL REFERENCES lemmas,
+            text       TEXT NOT NULL,
+            div        INTEGER NOT NULL,
+            seq        INTEGER NOT NULL,
+            word_index INTEGER NOT NULL,
+            part       INTEGER NOT NULL,
+            PRIMARY KEY (lemma, text, div, seq, word_index, part)) WITHOUT ROWID;
+    """)
+    con.executemany("INSERT INTO lemmas VALUES (?, ?, ?)", [(i, k, counts[i]) for k, i in ids.items()])
+    con.executemany("INSERT INTO lemma_forms VALUES (?, ?)", [(f, ids[k]) for f, k in keys.items() if k])
+    con.executemany("INSERT INTO lemma_words VALUES (?, ?, ?, ?, ?, ?)", words)
+    print(f"lemma index: {len(words)} words under {len(ids)} lemmas "
+          f"({sum(1 for k in keys.values() if not k)} lemmas left out)")
+
+
 # ---------------------------------------------------------------- build
 
 def main():
@@ -1793,6 +1899,7 @@ def main():
     for t in cat["texts"]:  # the Iliad: its contents, from data/iliad.sqlite
         if t.get("reader") == "iliad" and ILIAD_DB.exists():
             iliad_into_library(con, t["slug"], verbose=args.v)
+    lemma_index(con)
     con.commit()
     con.close()
     print(f"{len(rows_t)} texts, {len(rows_d)} divisions, {len(rows_s)} segments, {len(rows_n)} notes, "

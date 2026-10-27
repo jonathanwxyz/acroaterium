@@ -19,6 +19,7 @@ The format, in short (compact_library.py's docstring has it in full):
   dicts       (kind, id) -> value: JSON; a chunk's column named "<kind>_id" holds the id of a
               value in dicts of that kind (a lemma, a morphology code, ...)
   schema      the full databases' CREATE statements, to rebuild them (restore)
+  (the lemma index's words, DERIVED, are left out, and made again from the parsing by restore)
 """
 import json
 import sqlite3
@@ -67,6 +68,11 @@ FULL = {
                                                          "para_word"]),
     "units": ("audio", "units", ["text", "div", "seq", "piece", "content", "start", "speech_end", "end", "score", "cut"]),
 }
+
+
+# Tables the compact library doesn't keep, but rebuilds from the rest: the lemma index's
+# words (library.py's lemma_index; its lemmas and lemma_forms are kept, for the word cards).
+DERIVED = {"lemma_words"}
 
 
 def unpack(blob):
@@ -144,7 +150,7 @@ def restore(compact_path, out_dir):
     for db, name, sql in lib.con.execute("SELECT db, name, sql FROM schema ORDER BY rowid"):
         cons[db].execute(sql)
     for db, name in lib.con.execute("SELECT db, name FROM schema WHERE type = 'table' ORDER BY rowid").fetchall():
-        if name in {t for _, t, _ in FULL.values()}:
+        if name in {t for _, t, _ in FULL.values()} or name in DERIVED:
             continue
         cols = [r[1] for r in cons[db].execute(f'PRAGMA table_info("{name}")')]
         quoted = ", ".join(f'"{c}"' for c in cols)
@@ -154,6 +160,9 @@ def restore(compact_path, out_dir):
         for text, div in lib.places(kind):
             cons[db].executemany(f'INSERT INTO "{table}" ({", ".join(cols)}) VALUES ({", ".join("?" * len(cols))})',
                                  lib.full_rows(kind, text, div))
+    if any(name in DERIVED for (name,) in lib.con.execute("SELECT name FROM schema WHERE type = 'table'")):
+        from library import lemma_index
+        lemma_index(cons["library"])
     for con in cons.values():
         con.commit()
         con.close()

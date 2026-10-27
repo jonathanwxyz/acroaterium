@@ -18,14 +18,14 @@
 // from the file (local/library.js, reading only the pages it needs: local/sqlite.js),
 // before the network is asked; anything not made here, or failing, goes to the server.
 importScripts("local/sqlite.js", "local/library.js");
-const VERSION = "v124";
+const VERSION = "v125";
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 const FONTS = "fonts";  // kept across versions
 const OFFLINE = "offline";  // downloaded texts' books (and their records), kept across versions
 const AUDIO = "audio";  // downloaded recordings, in pieces, kept across versions
 const LOCAL = "local-library";  // the whole library kept on this device (local/manager.js), kept across versions
-const SHELL_FILES = ["./", "index.html", "home.js", "read.html", "app.js", "i18n.js", "theme.js", "shared.js", "offline.js", "native.js", "style.css", "local/manager.js",
+const SHELL_FILES = ["./", "index.html", "home.js", "read.html", "app.js", "refs.html", "refs.js", "i18n.js", "theme.js", "shared.js", "offline.js", "native.js", "style.css", "local/manager.js",
                      "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-180.png", "icons/icon-32.png"];
 
 self.addEventListener("install", (e) => {
@@ -203,6 +203,9 @@ self.addEventListener("fetch", (e) => {
   } else if (request.mode === "navigate" && url.pathname === "/read.html") {
     // The reader is one page whatever the text and book (?text=…&book=N): one cache key.
     e.respondWith(cachedThenRevalidated(e, SHELL, new URL("read.html", self.registration.scope).href));
+  } else if (request.mode === "navigate" && url.pathname === "/refs.html") {
+    // The references are one page whatever the lemma (?lemma=…): one cache key.
+    e.respondWith(cachedThenRevalidated(e, SHELL, new URL("refs.html", self.registration.scope).href));
   } else if (url.pathname.startsWith("/api/")) {
     e.respondWith(api(request));
   } else {

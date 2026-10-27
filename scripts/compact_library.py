@@ -24,6 +24,9 @@ Format (scripts/compact_read.py reads it; an app's decoder follows that):
   The small tables, as they are, under their own names and with the same columns:
       texts, divisions, categories, settings, note_sources, translation_credits,
       lexicon, lemma_defs (library.sqlite) and recordings (library_audio.sqlite).
+      lemmas and lemma_forms too (the word cards' references), but not lemma_words
+      (compact_read.DERIVED), which is made from the parsing again (library.py's
+      lemma_index); only its schema.
 
   chunks(kind TEXT, text TEXT, div INTEGER, rows BLOB), primary key (kind, text, div)
       (an ordinary rowid table with 1 KB pages: chunks are kilobytes each)
@@ -80,7 +83,7 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compact_read import CHUNK_COLUMNS, DICTS, FULL, restore  # noqa: E402
+from compact_read import CHUNK_COLUMNS, DERIVED, DICTS, FULL, restore  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 LIBRARY = ROOT / "data" / "library.sqlite"
@@ -156,7 +159,7 @@ def build(out=OUT):
         for type_, name, sql in src.execute("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL "
                                             "AND name NOT LIKE 'sqlite_%' ORDER BY type DESC, rowid"):
             dst.execute("INSERT INTO schema VALUES (?, ?, ?, ?)", (db, type_, name, sql))
-            if type_ == "table" and name not in chunked:
+            if type_ == "table" and name not in chunked and name not in DERIVED:
                 dst.execute(sql)
                 cols = [r[1] for r in src.execute(f'PRAGMA table_info("{name}")')]
                 where, params = not_hidden(name, cols, hidden)

@@ -78,6 +78,12 @@ function readerHref(slug, book, v) {
   if (v) q.set("v", v);
   return `read.html?${q}`;
 }
+// The references to a lemma (refs.html): every word of it in the library, by text.
+function refsHref(lemma, text) {
+  const q = new URLSearchParams({ lemma });
+  if (text) q.set("text", text);
+  return `refs.html?${q}`;
+}
 
 // Where reading got to in each book of the Iliad was kept as place:book<N> before the Iliad
 // joined the library: now place:iliad:<N>, as every text's. Moved over once.

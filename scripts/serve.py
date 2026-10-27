@@ -24,6 +24,8 @@ Routes:
   /api/lexword/<slug>/<n>/<seq>/<i>  JSON: the parsing of word i (whitespace chunk) of a
                        segment, for the word card (the Iliad's treebank, with Gaza's word;
                        the New Testament: Robinson's parsing, Dodson's lexicon; ...)
+  /api/references/<lemma>?offset=&limit=&text=  JSON: the verses of every listed text with
+                       a word of that lemma (as a word card's "references" gives it), by text
   /api/book/<n>, /api/word/<b>/<l>/<i>, /api/scholia/<b>/<l>  the Iliad's, as they were
                        before it joined the library (/api/text/iliad, /api/lexword/iliad,
                        /api/notes/iliad), for clients that still ask for them
@@ -804,7 +806,7 @@ def automatic_parsing(slug, n, seq, index):
     if confidence is not None and confidence < 0.6 and other and other != lemma.rstrip("0123456789"):
         note = f"Automatic parsing, uncertain: perhaps {other}."  # (not where it's only which λέγω)
     return {"form": None, "lemma": headword or lemma.rstrip("0123456789"), "definition": definition,
-            "morph": morpheus_morph(pos, json.loads(morph or "[]")), "note": note}
+            "morph": morpheus_morph(pos, json.loads(morph or "[]")), "note": note, "_lemma": lemma}
 
 
 def treebank_match(con):
@@ -827,7 +829,73 @@ def paraphrase_word(con, slug, n, seq, index):
 def lexword_json(slug, n, seq, index):
     """A library text's word: its parsing (the Iliad's and others': a hand-made treebank's;
     the New Testament: Robinson's, with Dodson's lexicon; the Septuagint: CATSS's, with its
-    own lemmas and glosses) for the reader's card."""
+    own lemmas and glosses) for the reader's card; each token's lemma with its references
+    in every text ("references": {lemma, n}, for /api/references), where it has some."""
+    card = parsing_json(slug, n, seq, index)
+    if card and card.get("tokens"):
+        con = sqlite3.connect(LIBRARY)
+        try:
+            for token in card["tokens"]:
+                row = con.execute("SELECT l.lemma, l.n FROM lemma_forms f JOIN lemmas l ON l.id = f.lemma "
+                                  "WHERE f.form = ?", (token.pop("_lemma", None) or "",)).fetchone()
+                if row:
+                    token["references"] = {"lemma": row[0], "n": row[1]}
+        except sqlite3.OperationalError:  # a library built before the lemma index
+            for token in card["tokens"]:
+                token.pop("_lemma", None)
+        finally:
+            con.close()
+    return card
+
+
+def references_json(lemma, query):
+    """Every word of a lemma (as the lemma index spells it: a card's "references") in the
+    texts the library lists: {lemma, n, texts: [{slug, title, short, cite, books, n}], hits: [{slug, div,
+    label, seq, ref, words: [word index, ...], content}], offset, more}, a verse (segment)
+    a hit, in the library's order, from offset (limit verses; text: in that text only)."""
+    if not LIBRARY.exists():
+        return None
+    q = urllib.parse.parse_qs(query)
+    offset = max(0, int(q.get("offset", ["0"])[0] or 0))
+    limit = min(500, max(1, int(q.get("limit", ["100"])[0] or 100)))
+    only = q.get("text", [None])[0]
+    con = sqlite3.connect(LIBRARY)
+    try:
+        row = con.execute("SELECT id, n FROM lemmas WHERE lemma = ?", (unicodedata.normalize("NFC", lemma),)).fetchone()
+        if not row:
+            return None
+        lid = row[0]
+        shown = listed(con)  # (texts' columns: lemma_words has none of those names)
+        texts = con.execute(
+            f"SELECT w.text, t.title, {collection_of(con, 'short')}, t.cite, "
+            "(SELECT count(*) FROM divisions d WHERE d.text = w.text), count(*) FROM lemma_words w "
+            f"JOIN texts t ON t.slug = w.text WHERE w.lemma = ? AND {shown} GROUP BY w.text ORDER BY t.sort",
+            (lid,)).fetchall()
+        verses = con.execute(
+            f"SELECT w.text, w.div, w.seq, group_concat(DISTINCT w.word_index) FROM lemma_words w "
+            f"JOIN texts t ON t.slug = w.text WHERE w.lemma = ? AND {shown} AND (? IS NULL OR w.text = ?) "
+            "GROUP BY w.text, w.div, w.seq ORDER BY t.sort, w.div, w.seq LIMIT ? OFFSET ?",
+            (lid, only, only, limit + 1, offset)).fetchall()
+        hits = []
+        for slug, div, seq, indexes in verses[:limit]:
+            ref, content = con.execute("SELECT ref, content FROM segments WHERE text = ? AND div = ? AND seq = ?",
+                                       (slug, div, seq)).fetchone()
+            label = con.execute("SELECT label FROM divisions WHERE text = ? AND n = ?", (slug, div)).fetchone()
+            hits.append({"slug": slug, "div": div, "label": label[0] if label else None, "seq": seq, "ref": ref,
+                         "words": sorted(map(int, str(indexes).split(","))), "content": content})
+    except sqlite3.OperationalError:  # a library built before the lemma index
+        return None
+    finally:
+        con.close()
+    return {"lemma": unicodedata.normalize("NFC", lemma), "n": sum(t[5] for t in texts),
+            "texts": [{"slug": t[0], "title": t[1], "short": t[2], "cite": t[3], "books": t[4], "n": t[5]}
+                      for t in texts],
+            "hits": hits, "offset": offset, "more": len(verses) > limit}
+
+
+def parsing_json(slug, n, seq, index):
+    """A word's card as lexword_json gives it, but each token's lemma as its parsing table
+    spells it ("_lemma"), not its references."""
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
@@ -859,7 +927,7 @@ def lexword_json(slug, n, seq, index):
             "form": form if len(parts) > 1 or match else word, "lemma": lemma, "definition": definition,
             **({"match": match} if match else {}),
             "morph": postag_morph(postag), "relation": relation, "role": relation_label(relation),
-            "head": head or None, "root": head == ""}
+            "head": head or None, "root": head == "", "_lemma": lemma}
             for form, lemma, postag, relation, head, definition, match in parts]}
     if extra:  # (the Iliad: a word the treebank leaves out)
         return {"word": word, **extra, "tokens": []}
@@ -869,6 +937,7 @@ def lexword_json(slug, n, seq, index):
             return {"word": word, "tokens": [auto]}
         return {"word": word, "tokens": [], "note": "Not parsed (the parsing doesn't have this word here)."}
     strongs, morph, lemma, gloss, definition, own_lemma, own_gloss, short = row
+    indexed = own_lemma or lemma  # (as the lemma index has it)
     if own_lemma:  # the Septuagint: its own lemma; Strong's (and Dodson's entry) only where it's the same word
         if not lemma or letters(lemma) != letters(own_lemma):
             strongs = definition = None
@@ -876,7 +945,8 @@ def lexword_json(slug, n, seq, index):
     catss = own_lemma is not None
     return {"word": word, "tokens": [{
         "form": word, "lemma": lemma, "strongs": strongs, "gloss": gloss, "definition": definition or gloss,
-        "morph": (catss_morph if catss else robinson_morph)(morph) if morph else [], "code": morph}]}
+        "morph": (catss_morph if catss else robinson_morph)(morph) if morph else [], "code": morph,
+        "_lemma": indexed}]}
 
 
 def word_groups(sharer_sets):
@@ -1135,6 +1205,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(offline_json(m[1], int(m[2])))
         elif m := re.fullmatch(r"/api/lectionary/(\d{4}-\d\d-\d\d)", self.path):
             self.send_json(lectionary_json(m[1]))
+        elif m := re.fullmatch(r"/api/references/([^/?]+)(?:\?(.*))?", self.path):
+            self.send_json(references_json(urllib.parse.unquote(m[1]), m[2] or ""))
         elif self.path.startswith("/api/plans/preview?"):
             self.send_json(plan_preview(self.path.split("?", 1)[1]))
         elif self.path.startswith("/audio/"):
