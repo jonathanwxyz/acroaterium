@@ -2,6 +2,9 @@ lemma	see	definition
 # Treebank lemmas whose entry in the short-definition list is spelled differently
 # (Homeric or Ionic form, AGDT variant). Give either `see` (a lemma in the list) or
 # `definition` (our own, only where the list has no suitable entry).
+# The lemma index (library.py: the references) goes by `see` too, for a lemma as the parsing
+# spells it or as the index would know it: a lemma another parsing has under another
+# name joins it (below the first entries).
 κεῖνος	ἐκεῖνος	
 ἠέλιος	ἥλιος	
 μίγνυμι	μείγνυμι	
@@ -11,3 +14,84 @@ lemma	see	definition
 Κλυταιμνήστρη	Κλυταιμνήστρα	
 ἀργυρόπεζος	ἀργυρόπεζα	
 ἕ		him, her, it (3rd person pronoun, acc.; gen. οὗ, dat. οἷ)
+# The Septuagint's pronouns, lemmatised by case: under ἐγώ and σύ, as the New Testament's and the treebanks' (and LSJ: ἡμεῖς, ὑμεῖς with them).
+μου	ἐγώ	
+μοι	ἐγώ	
+μέ	ἐγώ	
+ἐμοῦ	ἐγώ	
+ἐμοί	ἐγώ	
+ἐμέ	ἐγώ	
+ἡμεῖς	ἐγώ	
+ἡμῶν	ἐγώ	
+ἡμῖν	ἐγώ	
+ἡμᾶς	ἐγώ	
+σοῦ	σύ	
+σοί	σύ	
+σέ	σύ	
+ὑμεῖς	σύ	
+ὑμῶν	σύ	
+ὑμῖν	σύ	
+ὑμᾶς	σύ	
+# The Koine's spellings: γίνομαι, γινώσκω (and compounds), -πίπλημι, -νύω.
+γίνομαι	γίγνομαι	
+γινώσκω	γιγνώσκω	
+διαγινώσκω	διαγιγνώσκω	
+καταγινώσκω	καταγιγνώσκω	
+μεταγίνομαι	μεταγίγνομαι	
+παραγίνομαι	παραγίγνομαι	
+περιγίνομαι	περιγίγνομαι	
+προγίνομαι	προγίγνομαι	
+συγγίνομαι	συγγίγνομαι	
+συγγινώσκω	συγγιγνώσκω	
+ἀναγινώσκω	ἀναγιγνώσκω	
+ἀπογινώσκω	ἀπογιγνώσκω	
+ἐπιγίνομαι	ἐπιγίγνομαι	
+ἐπιγινώσκω	ἐπιγιγνώσκω	
+ἐμπίπλημι	ἐμπίμπλημι	
+δεικνύω	δείκνυμι	
+ζευγνύω	ζεύγνυμι	
+ὀμνύω	ὄμνυμι	
+# Names spelled otherwise in another parsing (under the spelling the texts print, or the commoner).
+Δαβίδ	Δαυίδ	
+Μωσεύς	Μωυσῆς	
+Μωσῆς	Μωυσῆς	
+Σολομών	Σαλωμών	
+Λευΐς	Λευΐ	
+Ἰεριχώ	Ἱεριχώ	
+ᾅδης	ᾍδης	
+Ἀΐδης	ᾍδης	
+Ἅιδης	ᾍδης	
+Αἵδης	ᾍδης	
+Ἅγιος	ἅγιος	
+Ἔρως	ἔρως	
+βορρᾶς	Βορέας	
+# The New Testament's lexicon's headwords that LSJ has under another: a verb's middle (πορεύομαι), a
+# suppletive aorist (φάγω), an adverb (μόνον), a contracted form (νοῦς).
+ἐξομολογέω	ἐξομολογέομαι	
+ἄρχομαι	ἄρχω	
+φοβέομαι	φοβέω	
+ἅπτομαι	ἅπτω	
+ἀποκρίνομαι	ἀποκρίνω	
+ἐντέλλομαι	ἐντέλλω	
+πορεύομαι	πορεύω	
+ἐκπορεύομαι	ἐκπορεύω	
+εἰσπορεύομαι	εἰσπορεύω	
+διαπορεύομαι	διαπορεύω	
+ἐπιλαμβάνομαι	ἐπιλαμβάνω	
+διατίθεμαι	διατίθημι	
+βδελύσσω	βδελύσσομαι	
+θέλω	ἐθέλω	
+φάγω	ἐσθίω	
+κύκλῳ	κύκλος	
+μόνον	μόνος	
+ἐναντίον	ἐναντίος	
+πλησίον	πλησίος	
+ἐνώπιον	ἐνώπιος	
+εὐθέως	εὐθύς	
+πρότερον	πρότερος	
+πρῶτον	πρῶτος	
+ταχύ	ταχύς	
+πετεινόν	πετεινός	
+νῶτος	νῶτον	
+νοῦς	νόος	
+χειμάρρους	χειμάρροος	

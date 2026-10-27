@@ -1574,7 +1574,7 @@ def lemma_index(con):
     names: Ιωαχας) goes with the one accented lemma of its letters, where there's one, else
     takes the spelling of its words as printed (Ἰωάχαζ); a name accented otherwise in
     another parsing, with its commonest accents."""
-    from import_shortdefs import matcher
+    from import_shortdefs import load_aliases, matcher
     match = matcher()
     key = lemma_key(match)
     listed = "text IN (SELECT slug FROM texts WHERE hidden IS NOT 1)"  # (as compact_library.py restores it)
@@ -1584,6 +1584,14 @@ def lemma_index(con):
         UNION ALL SELECT w.text, w.div, w.seq, w.word_index, 0, coalesce(w.lemma, l.lemma), coalesce(w.gloss, l.gloss)
                   FROM words w LEFT JOIN lexicon l USING (strongs) WHERE w.{listed}""").fetchall()
     keys = {lemma: key(lemma) for lemma in {r[5] for r in rows}}
+    # A lemma another parsing has under another name (data/lemma_aliases.tsv: the Septuagint's
+    # μου, ἐγώ; the New Testament's πορεύομαι, πορεύω): with it, as spelled (ἡμῶν, which
+    # would be taken for ἥμων) or as known here.
+    see = {lemma: other for lemma, (other, _) in load_aliases().items() if other}
+    for lemma, k in keys.items():
+        name = next((n for n in (re.sub(r"\d+$", "", (lemma or "").strip()), k) if n in see), None)
+        if k and name:
+            keys[lemma] = key(see[name])
     marked = lambda s: any(unicodedata.combining(c) for c in unicodedata.normalize("NFD", s))
     bare = lambda s: "".join(c for c in unicodedata.normalize("NFD", s) if not unicodedata.combining(c))
     accented = {}
