@@ -6,17 +6,21 @@ wording differs from Rahlfs's in many places ("τοῖς ὀφθαλμοῖς α
 "εἶδεν"); the text of Greek Wikisource's Old Testament (el.wikisource.org, "Η Αγία Γραφή")
 is that wording. This takes it into the library's verses (Rahlfs's chapters and verse
 numbers): each chapter lined up by its words (chapters numbered otherwise, Susanna, Bel,
-Sirach's prologue, matched by content), and where a verse begins otherwise in its division,
-the words to a sentence's end go with the verse before. Rahlfs's wording is kept only where
+Sirach's prologue, matched by content; a verse that ends one of theirs and opens the next of
+ours, Genesis 31:55 as Rahlfs's 32:1, moved to it), and where a verse begins otherwise in its
+division, the words to a sentence's end go with the verse before. Rahlfs's wording is kept only where
 the recording's audio clearly says the reader follows it (a misprint, a place the reading
 departs): by the alignment model's likelihood of each over the verse. The books' wikitext
 is fetched once, into data/raw/wikisource/; the verses go to library/church_text.json, which
-scripts/library.py applies (realign after).
+scripts/library.py applies (realign after). A name left without accents (Rahlfs's Αδαμ, where
+the reader follows Rahlfs, or a capital) is accented as Wikisource accents it elsewhere, or spelled as Wikisource spells it in that chapter
+where that's a little otherwise (Ιωαχας: Ἰωάχαζ).
 
-    .venv/bin/python scripts/church_text.py [--jobs N] [--fetch-only] [slug ...]
+    .venv/bin/python scripts/church_text.py [--jobs N] [--fetch-only] [--library DB] [slug ...]
 """
 import argparse
 import difflib
+import functools
 import html
 import json
 import os
@@ -57,6 +61,25 @@ BOOKS = {
     "haggai": "Αγγαίος", "zechariah": "Ζαχαρίας", "malachi": "Μαλαχίας", "isaiah": "Ησαΐας",
     "jeremiah": "Ιερεμίας", "baruch": "Βαρούχ", "lamentations": "Θρήνοι Ιερεμίου",
     "letterofjeremiah": "Επιστολή Ιερεμίου", "ezekiel": "Ιεζεκιήλ", "daniel": "Δανιήλ (Θεοδοτίων)",
+}
+
+# Names accented by hand where Wikisource has none like them to go by: as it spells them in
+# that verse (Σαδουχ: Σαδὼκ), or, where it hasn't the name, Rahlfs's spelling accented
+# (Σελνα: Σελνὰ). {slug: {"div:ref": {as printed: as it should read}}}, each found once.
+NAMES = {
+    "1chronicles": {"6:42": {"Σελνα": "Σελνὰ"}, "6:44": {"Ατταν": "Ἀττὰν"}},
+    "1esdras": {"9:27": {"Ωβαδιος": "Ἰωαβδίος"}, "9:34": {"Καραβασιων": "Ραβασίων"}},
+    "1maccabees": {"11:39": {"Ιμαλκουε": "Εἰμαλκουαὶ"}},
+    "2kingdoms": {"23:36": {"Ιγααλ": "Γάαλ"}},
+    "3kingdoms": {"4:4": {"Σαδουχ": "Σαδὼκ"}, "4:10": {"Ρησφαρα": "Ρησφαρά"}},
+    "3maccabees": {"3:8": {"Ελληνες": "Ἕλληνες"}, "5:1": {"Ερμωνα": "Ἕρμωνα"}, "5:18": {"Ερμωνα": "Ἕρμωνα"},
+                   "5:37": {"Ερμωνα": "Ἕρμωνα"}},
+    "4kingdoms": {"4:8": {"Σουμαν": "Σωμάν"}},
+    "ezra": {"2:33": {"Λοδ, Αρωθ": "Λοδαδὶ"}, "2:42": {"Σαβαου": "Σωβαΐ"}, "2:50": {"Μαωνιμ": "Μοουνίμ"},
+             "2:54": {"Νασουε": "Νασθιέ"}, "10:36": {"Ουιεχωα, Ιεραμωθ": "Οὐουανία, Μαριμώθ"}},
+    "isaiah": {"9:11": {"Ελληνας": "Ἕλληνας"}},
+    "jeremiah": {"47:8": {"Ωφε": "Ἰωφὲ", "Μοχατι": "Μωχαθί"}},
+    "nehemiah": {"3:10": {"Ατους": "Ἀττοὺθ"}, "7:32": {"Βηθηλ": "Βαιθὴλ"}},
 }
 
 
@@ -163,6 +186,82 @@ def tidy(word, ours=None):
     return word
 
 
+ACUTE, GRAVE = "́", "̀"
+
+
+@functools.cache
+def name_forms():
+    """{norm: spelling}: each word of Wikisource's Septuagint as it's accented there most
+    often, with acutes for its graves (Ἀδάμ; and Ὅρασις for a slip, Ὃρασις); a word found
+    only in lower case capitalised (Ὥσπερ, for a chapter's first word in capitals)."""
+    counts = ({}, {})  # (capitalised, lower case)
+    for slug in BOOKS:
+        for words in chapters_of(slug).values():
+            for w in words:
+                core = re.sub(r"^[^\w]+|[^\w]+$", "", tidy(w))
+                if len(core) > 1 and not core.isupper() and marked(core):
+                    core = acute(core)
+                    seen = counts[core[0].islower()].setdefault(norm(core), {})
+                    seen[core] = seen.get(core, 0) + 1
+    lower = {k: max(v, key=v.get) for k, v in counts[1].items()}
+    return {k: v[0].upper() + v[1:] for k, v in lower.items()} | {k: max(v, key=v.get) for k, v in counts[0].items()}
+
+
+def marked(word):
+    return any(unicodedata.combining(c) for c in unicodedata.normalize("NFD", word))
+
+
+def oxytone(word, old, new):
+    """word with an accent old on its last syllable as new (a grave before the next word,
+    an acute before a stop)."""
+    d = unicodedata.normalize("NFD", word)
+    at = d.rfind(old)
+    if at < 0 or re.search(r"[αεηιουω]", d[at + 1:].lower()):
+        return word
+    return unicodedata.normalize("NFC", d[:at] + new + d[at + 1:])
+
+
+def acute(word):
+    return unicodedata.normalize("NFC", unicodedata.normalize("NFD", word).replace(GRAVE, ACUTE))
+
+
+def spelled_like(word, chapter):
+    """The name in their chapter (its words) that word (Rahlfs's, without accents) is,
+    spelled a little otherwise (Ιωαχας: Ἰωάχαζ; Φαλλετια: Φαλεττία): the likest of its
+    capitalised words, alike in four fifths of its letters, beginning with the same letter
+    and no more than two longer or shorter. None if there's none."""
+    key, best, score = norm(word), None, 0.8
+    for w in chapter:
+        core = re.sub(r"^[^\w]+|[^\w]+$", "", tidy(w))
+        if len(core) > 1 and core[0].isupper() and not core.isupper() and marked(core):
+            other = norm(core)
+            if other[0] == key[0] and abs(len(other) - len(key)) <= 2:
+                ratio = difflib.SequenceMatcher(None, key, other, autojunk=False).ratio()
+                if ratio >= score:
+                    best, score = acute(core), ratio
+    return best
+
+
+def accent_names(words, chapter=()):
+    """A verse's words, each capitalised one printed without accent or breathing (Rahlfs's
+    Αδαμ, Ελιφας, kept where the reader follows Rahlfs, or a capital Wikisource didn't
+    accent) as Wikisource accents that name elsewhere (Ἀδάμ, Ἐλιφάς), or, where it has no
+    name of those letters, as it spells the name in this chapter (chapter: their words), if
+    a little otherwise (Ιωαχας: Ἰωάχαζ): grave on its last syllable before the next word,
+    as in a sentence."""
+    forms, out = name_forms(), []
+    for k, w in enumerate(words):
+        m = re.fullmatch(r"([^\w]*)(\w+)([^\w]*)", w)
+        if m and len(m[2]) > 1 and m[2][0].isupper() and not m[2].isupper() and not marked(m[2]):
+            core = forms.get(norm(m[2])) or spelled_like(m[2], chapter)
+            if core:
+                if not m[3] and k < len(words) - 1:
+                    core = oxytone(core, ACUTE, GRAVE)
+                w = m[1] + core + m[3]
+        out.append(w)
+    return out
+
+
 def church_verse(theirs, ours, lp):
     """The Church's wording of a verse (theirs), but Rahlfs's (ours) at each place the audio
     (lp) clearly says the reader follows it (a misprint, a place the reading departs): (the
@@ -240,17 +339,35 @@ def spread(rows, words):
     return out
 
 
-def book(slug):
+def edges(rows, words):
+    """Their words before our chapter's first and after its last ([lead], [trail]): a verse
+    the two editions put in different chapters (Genesis 31:55 is Rahlfs's 32:1)."""
+    ours = [norm(w) for _, _, content in rows for w in content.split()]
+    ops = difflib.SequenceMatcher(None, ours, [norm(w) for w in words], autojunk=False).get_opcodes()
+    lead = words[:ops[0][4]] if ops[0][0] == "insert" else []
+    trail = words[ops[-1][3]:] if ops[-1][0] == "insert" and len(ops) > 1 else []
+    return lead, trail
+
+
+def belongs(piece, ours, theirs):
+    """Whether words left over at the edge of their chapter (piece) are the opening or close
+    of ours (our neighbouring chapter's words there) that theirs (its own chapter's words
+    there) lacks."""
+    piece = [norm(w) for w in piece]
+    return similarity(piece, [norm(w) for w in ours]) >= 0.6 and similarity(piece, [norm(w) for w in theirs]) < 0.5
+
+
+def book(slug, library):
     """One book: ({"div:ref": verse} as the Church's edition has it, report)."""
-    lib = sqlite3.connect(ROOT / "data" / "library.sqlite")
+    lib = sqlite3.connect(library)
     aud = sqlite3.connect(ROOT / "data" / "library_audio.sqlite")
     theirs_by_ch = chapters_of(slug)
     ours_by_ch = {}
     for div, seq, ref, content in lib.execute(
             "SELECT div, seq, ref, content FROM segments WHERE text = ? AND seq > 0 ORDER BY div, seq", (slug,)):
         ours_by_ch.setdefault(div, []).append((seq, ref, content))
-    changed, report = {}, {"verses": 0, "differ": 0, "places": 0, "reverted": 0, "chapters": []}
-    lp_cache = {}
+    changed, report = {}, {"verses": 0, "differ": 0, "places": 0, "reverted": 0, "moved": 0, "chapters": []}
+    chosen = {}
     for div, rows in ours_by_ch.items():
         key = [norm(w) for _, _, content in rows for w in content.split()]
         # Their chapter: the one numbered so, unless another matches far better (numbered otherwise).
@@ -271,6 +388,28 @@ def book(slug):
         if not best or score < 0.5:
             report["chapters"].append(f"{div}: no match")
             continue
+        chosen[div] = list(best)
+    # A verse at the end of their chapter that opens our next (or at the start of theirs that
+    # closes our last): moved to the chapter that has it, rather than left with this one's
+    # last (first) verse, where the audio would only take it out again.
+    for div in list(chosen):
+        lead, trail = edges(ours_by_ch[div], chosen[div])
+        after, before = chosen.get(div + 1), chosen.get(div - 1)
+        if trail and after is not None:
+            opening = [w for _, _, content in ours_by_ch[div + 1] for w in content.split()][:len(trail) + 10]
+            if belongs(trail, opening, after[:len(trail) + 10]):
+                chosen[div] = chosen[div][:-len(trail)]
+                chosen[div + 1] = trail + after
+                report["moved"] += 1
+        if lead and before is not None:
+            close = [w for _, _, content in ours_by_ch[div - 1] for w in content.split()][-len(lead) - 10:]
+            if belongs(lead, close, before[-len(lead) - 10:]):
+                chosen[div] = chosen[div][len(lead):]
+                chosen[div - 1] = before + lead
+                report["moved"] += 1
+    lp_cache = {}
+    for div, best in chosen.items():
+        rows = ours_by_ch[div]
         theirs = spread(rows, best)
         rec = aud.execute("SELECT file FROM recordings WHERE text = ? AND div = ?", (slug, div)).fetchone()
         if rec and rec[0] not in lp_cache:
@@ -278,22 +417,25 @@ def book(slug):
         for k, (seq, ref, content) in enumerate(rows):
             report["verses"] += 1
             ours = content.split()
-            if not theirs[k] or theirs[k] == ours:
-                continue
-            words, places = theirs[k], []
+            words, places = theirs[k] or ours, []
             # (The verse's own speech: not the next one's first words, which a word misplaced
             # at its end would match.)
             span = aud.execute("SELECT min(start), max(speech_end) FROM units WHERE text = ? AND div = ? AND seq = ?",
                                (slug, div, seq)).fetchone() if rec else (None,)
-            if [norm(w) for w in ours] != [norm(w) for w in theirs[k]] and span[0] is not None:
+            if [norm(w) for w in ours] != [norm(w) for w in words] and span[0] is not None:
                 lp = lp_cache[rec[0]]
                 window = lp[max(0, int((span[0] - 0.25) / A.FRAME_S)):int((span[1] + 0.25) / A.FRAME_S)]
-                words, places = church_verse(theirs[k], ours, window)
+                words, places = church_verse(words, ours, window)
                 report["differ"] += 1
             report["places"] += len(places)
             report["reverted"] += sum(p[2] > REVERT for p in places)
-            if words != ours:
-                changed[f"{div}:{ref}"] = " ".join(words)
+            verse = " ".join(accent_names(words, best))
+            for old, new in NAMES.get(slug, {}).get(f"{div}:{ref}", {}).items():
+                if verse.count(old) != 1:
+                    report["chapters"].append(f"{div}:{ref}: {old} found {verse.count(old)} times")
+                verse = verse.replace(old, new, 1)
+            if verse != " ".join(ours):
+                changed[f"{div}:{ref}"] = verse
     return slug, changed, report
 
 
@@ -302,12 +444,14 @@ def main():
     ap.add_argument("slugs", nargs="*", help="only these books")
     ap.add_argument("--jobs", "-j", type=int, default=max(1, (os.cpu_count() or 2) // 2))
     ap.add_argument("--fetch-only", action="store_true")
+    ap.add_argument("--library", type=Path, default=ROOT / "data" / "library.sqlite",
+                    help="a library built without library/church_text.json (Rahlfs's verses)")
     args = ap.parse_args()
     slugs = args.slugs or list(BOOKS)
-    lib = sqlite3.connect(ROOT / "data" / "library.sqlite")
+    lib = sqlite3.connect(args.library)
     if not args.fetch_only and lib.execute("SELECT 1 FROM settings WHERE key = 'church_text'").fetchone():
-        sys.exit("data/library.sqlite was built with library/church_text.json: move it aside and run "
-                 "scripts/library.py first, so the verses compared are Rahlfs's")
+        sys.exit(f"{args.library} was built with library/church_text.json: move it aside and run "
+                 "scripts/library.py first (or give --library), so the verses compared are Rahlfs's")
     lib.close()
     for slug in slugs:  # (fetched one at a time, gently, before the work in parallel)
         n = len(chapters_of(slug))
@@ -315,19 +459,21 @@ def main():
     if args.fetch_only:
         return
     out = json.loads(OUT.read_text()) if OUT.exists() and args.slugs else {}
-    total = {"verses": 0, "differ": 0, "places": 0, "reverted": 0}
+    total = {"verses": 0, "differ": 0, "places": 0, "reverted": 0, "moved": 0}
     with ProcessPoolExecutor(args.jobs) as pool:
-        for slug, changed, report in pool.map(book, slugs):
+        for slug, changed, report in pool.map(functools.partial(book, library=args.library), slugs):
             out[slug] = changed
             for k in total:
                 total[k] += report[k]
             print(f"{slug}: {report['differ']} of {report['verses']} verses differ in wording; at {report['reverted']} "
-                  f"of {report['places']} places the reader follows Rahlfs; {len(changed)} verses changed"
+                  f"of {report['places']} places the reader follows Rahlfs; {report['moved']} verses moved across a chapter's "
+                  f"end; {len(changed)} verses changed"
                   + (f"  ({'; '.join(report['chapters'])})" if report["chapters"] else ""), flush=True)
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1, sort_keys=True))
     print(f"all: {total['differ']} of {total['verses']} verses differ in wording; at {total['reverted']} of "
-          f"{total['places']} places the reader follows Rahlfs; {sum(map(len, out.values()))} verses changed "
+          f"{total['places']} places the reader follows Rahlfs; {total['moved']} verses moved across a chapter's end; "
+          f"{sum(map(len, out.values()))} verses changed "
           f"-> {OUT.relative_to(ROOT)}")
 
 
