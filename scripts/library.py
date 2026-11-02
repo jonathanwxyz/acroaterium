@@ -603,6 +603,8 @@ def gap_rows(div, mine, theirs):
 #   perseus  a Perseus translation of a text cited by Stephanus sections (the Loeb's
 #           Plato, public domain where published before 1931; Perseus's encoding CC BY-SA
 #           4.0), a passage under each paragraph of the Greek, see stephanus_passages()
+#   vulgate  the Clementine Vulgate (public domain), eBible.org's verse-per-line edition
+#           ("book": MAT, MAR, ... as for web; "lang": "la"), see translation()
 #   gutenberg  Polylas's modern Greek Homer (public domain) from Project Gutenberg, a line
 #           under each line ("ebooks": [the volumes' numbers]), see translation_lines()
 #   didot   the Latin of the Firmin-Didot Homer (Paris, 1838; public domain) from Project
@@ -612,6 +614,7 @@ def gap_rows(div, mine, theirs):
 # Latin under "Latin".
 WEB_ZIP = "https://ebible.org/Scriptures/engwebp_vpl.zip"
 BRENTON_ZIP = "https://ebible.org/Scriptures/eng-Brenton_vpl.zip"
+VULGATE_ZIP = "https://ebible.org/Scriptures/latVUC_vpl.zip"
 VAMVAS = "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/formats/csv/GreVamvas.csv"
 _vpl = {}
 _vamvas = None
@@ -642,6 +645,11 @@ def brenton_verses():
     return vpl_verses(BRENTON_ZIP, "eng-Brenton_vpl")
 
 
+def vulgate_verses():
+    """{(book, chapter, verse): Latin} of the Clementine Vulgate."""
+    return vpl_verses(VULGATE_ZIP, "latVUC_vpl")
+
+
 def vamvas_verses():
     """{(book, chapter, verse): modern Greek} of Vamvas's translation."""
     global _vamvas
@@ -663,8 +671,11 @@ def translation(spec, segments):
       "chapters": {"13": ["SUS", 1]}: a chapter the translation has as a book of its own
         (Brenton's Susanna and Bel, Daniel's 13 and 14 here);
       "refs": {"1:πρ. 1": "1:1", "1:1": null}: a verse of ours ("div:ref") read at another
-        place of the translation's, or at none (Brenton's Sirach: the prologue as 1:1)."""
-    verses = {"web": web_verses, "vamvas": vamvas_verses, "brenton": brenton_verses}.get(spec["type"])
+        place of the translation's, or at none (Brenton's Sirach: the prologue as 1:1), or
+        at several, joined ("6:51": ["6:51", "6:52"]: the Vulgate cuts the verse in two;
+        these are the translation's own numbers, not "moved")."""
+    verses = {"web": web_verses, "vamvas": vamvas_verses, "brenton": brenton_verses,
+              "vulgate": vulgate_verses}.get(spec["type"])
     if not verses:
         sys.exit(f"unknown translation type {spec['type']!r}")
     verses = verses()
@@ -682,6 +693,11 @@ def translation(spec, segments):
         if f"{div}:{ref}" in refs:
             target = refs[f"{div}:{ref}"]
             if target is None:
+                continue
+            if isinstance(target, list):  # (several of the translation's verses, joined)
+                parts = [verses.get((spec["book"], *map(int, t.split(":")))) for t in target]
+                if all(parts):
+                    out.append((div, seq, spec["lang"], " ".join(parts)))
                 continue
             c, v = map(int, target.split(":"))
         elif m := re.fullmatch(r"(\d+):(\d+)", ref):
