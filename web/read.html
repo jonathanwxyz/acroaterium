@@ -169,7 +169,7 @@
     const q = new URLSearchParams(location.search), book = Number(q.get("book") || 1);
     const meta = JSON.parse(localStorage.getItem(`meta:${q.get("text") || "iliad"}`));
     if (!meta?.features) throw 0;
-    for (const f of ["audio", "paraphrase", "modern", "translation", "scholia", "words"]) {
+    for (const f of ["audio", "paraphrase", "modern", "latin", "translation", "scholia", "words"]) {
       document.body.classList.toggle(`no-${f}`, !meta.features.includes(f));
     }
     document.body.classList.toggle("prose-text", meta.form === "prose");
@@ -254,6 +254,7 @@
     <label class="toggle"><input type="checkbox" id="show-paraphrase" checked> paraphrase</label>
     <label class="toggle"><input type="checkbox" id="show-modern"> μετάφραση</label>
     <label class="toggle"><input type="checkbox" id="show-translation"> translation</label>
+    <label class="toggle"><input type="checkbox" id="show-latin"> Latin</label>
     <label class="toggle" title="Ancient scholia on the current verse (S)"><input type="checkbox" id="show-scholia"> σχόλια</label>
     <label class="toggle"><input type="checkbox" id="follow" checked> follow</label>
   </div>

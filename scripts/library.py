@@ -605,7 +605,11 @@ def gap_rows(div, mine, theirs):
 #           4.0), a passage under each paragraph of the Greek, see stephanus_passages()
 #   gutenberg  Polylas's modern Greek Homer (public domain) from Project Gutenberg, a line
 #           under each line ("ebooks": [the volumes' numbers]), see translation_lines()
-# The reader shows English under the "translation" switch, modern Greek under "μετάφραση".
+#   didot   the Latin of the Firmin-Didot Homer (Paris, 1838; public domain) from Project
+#           Gutenberg, a line under each line ("ebook": 52692 the Iliad, 52693 the Odyssey;
+#           "lang": "la"), see didot_lines()
+# The reader shows English under the "translation" switch, modern Greek under "μετάφραση",
+# Latin under "Latin".
 WEB_ZIP = "https://ebible.org/Scriptures/engwebp_vpl.zip"
 BRENTON_ZIP = "https://ebible.org/Scriptures/eng-Brenton_vpl.zip"
 VAMVAS = "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/formats/csv/GreVamvas.csv"
@@ -1004,6 +1008,39 @@ def translation_lines(spec, segments):
                 share = mine[k * len(mine) // (g1 - g0):(k + 1) * len(mine) // (g1 - g0)]
                 if share and (book, g0 + k + 1) in seq_of:
                     out.append((book, seq_of[(book, g0 + k + 1)], spec["lang"], " ".join(share)))
+    return out
+
+
+def didot_lines(spec, segments):
+    """(div, seq, language, text): the Latin of the Firmin-Didot Homer (1838) as Project
+    Gutenberg transcribed it ("type": "didot", "ebook": 52692 the Iliad, 52693 the Odyssey),
+    a line under each line, by its number. Each book's verse follows "TEXT:", a line
+    indented six spaces (eight where a speech begins; seven or nine, slips), every fifth
+    numbered; one too long for the page goes on indented ten. The transcriber's notes
+    ([TR1] ...) follow the verse, and their markers in it are dropped. Words the translator
+    supplied are in italics, _so_, as the reader shows them."""
+    seq_of = {(div, int(ref)): seq for div, seq, ref, *_ in segments if seq > 0 and ref.isdigit()}
+    text = get(GUTENBERG.format(spec["ebook"]), f"gutenberg/pg{spec['ebook']}.txt").replace("\r", "")
+    text = text.split("*** START", 1)[1].split("*** END", 1)[0]
+    out, errors = [], []
+    for book, part in enumerate(text.split("\nTEXT:\n")[1:], 1):
+        lines = []
+        for raw in re.split(r"\n(?:ARGUMENT:| \[TR\d+\])", part)[0].split("\n"):
+            if not raw.strip() or re.match(r"\s*(Iliadis|Odysse[æa]e?) [IVXL]+\.", raw):  # (the next book's title)
+                continue
+            if m := re.match(r"\s*(\d+)\s{2,}(\S.*)", raw):
+                if int(m[1]) != len(lines) + 1:
+                    errors.append(f"{book}.{m[1]} is line {len(lines) + 1}")
+                lines.append(m[2])
+            elif re.match(r" {10,}\S", raw) and lines:
+                lines[-1] += " " + raw.strip()
+            elif re.match(r" {6,9}\S", raw):
+                lines.append(raw.strip())
+        for n, line in enumerate(lines, 1):
+            if (book, n) in seq_of:
+                out.append((book, seq_of[(book, n)], spec["lang"], re.sub(r"\s*\[TR\d+\]", "", line)))
+    if errors:
+        print("  translation: line numbers out of step:", *errors[:10], sep="\n    ")
     return out
 
 
@@ -1703,6 +1740,15 @@ def iliad(verbose):
     return "verse", "line", [(b, f"Ῥαψῳδία {GREEK_NUMERALS[b]}") for b in books], []
 
 
+def iliad_lines():
+    """The Iliad's verses (data/iliad.sqlite) as segments: (book, line, "line", verse, None, 1)."""
+    con = sqlite3.connect(ILIAD_DB)
+    rows = [(b, line, str(line), homer, None, 1) for b, line, homer in con.execute(
+        "SELECT book, line, homer FROM verses ORDER BY book, line")]
+    con.close()
+    return rows
+
+
 ILIAD_NOTES_CREDIT = ("Scholia: Dindorf & Maass, Scholia Graeca in Homeri Iliadem (1875–88), via "
                       "First1KGreek, CC BY-SA 4.0 · Leaf, Seymour, Benner: via Perseus, CC BY-SA 3.0")
 ILIAD_TRANSLATION_CREDITS = {"en": "English: A. T. Murray (Loeb, 1924), via Perseus",
@@ -1774,9 +1820,12 @@ def iliad_into_library(con, slug="iliad", audio_db=AUDIO_DB, verbose=False):
     a recording per book, the AAC one where there are several) into audio_db."""
     upgrade_schema(con)
     il = sqlite3.connect(ILIAD_DB)
-    for table in ("segments", "translations", "translation_passages", "translation_credits", "note_sources",
-                  "notes", "treebank", "paraphrase_links"):
+    for table in ("segments", "translation_passages", "note_sources", "notes", "treebank", "paraphrase_links"):
         con.execute(f"DELETE FROM {table} WHERE text = ?", (slug,))
+    # (its translations replace only its own: the catalogue may give it others, the Latin)
+    con.execute("DELETE FROM translations WHERE text = ? AND lang IN ('en', 'el', 'paraphrase')", (slug,))
+    con.execute(f"DELETE FROM translation_credits WHERE text = ? AND lang IN ({', '.join('?' * len(ILIAD_TRANSLATION_CREDITS))})",
+                (slug, *ILIAD_TRANSLATION_CREDITS))
     books = dict(il.execute("SELECT book, title FROM books"))
     con.execute("DELETE FROM divisions WHERE text = ?", (slug,))
     con.executemany("INSERT INTO divisions VALUES (?, ?, ?)",
@@ -2241,24 +2290,30 @@ def main():
             rows_tb += [(t["slug"], *r) for r in found]
             words_total = sum(1 for s in segs if s[1] > 0 for w in s[3].split() if tb_key(w))
             print(f"  treebank: {len({r[:3] for r in found})} of {words_total} words parsed ({100 * len({r[:3] for r in found}) / max(1, words_total):.1f}%)")
+        # (the Iliad's verses come in after the build: its translations go by data/iliad.sqlite's lines)
+        tsegs = iliad_lines() if reader == "iliad" and t.get("translations") else segs
         for spec in t.get("translations", []):
             if spec["type"] == "murray":
-                found, split_lines = translation_passages(spec, segs)
+                found, split_lines = translation_passages(spec, tsegs)
                 rows_tp += [(t["slug"], *row) for row in found]
                 rows_tr += [(t["slug"], *row) for row in split_lines]
                 print(f"  translation: {len(found)} passages" + (f", {len(split_lines)} lines split from them" if split_lines else ""))
             elif spec["type"] == "perseus":
-                found = stephanus_passages(spec, spec.get("work", t["source"].get("work", "")), segs)
+                found = stephanus_passages(spec, spec.get("work", t["source"].get("work", "")), tsegs)
                 rows_tp += [(t["slug"], *row) for row in found]
                 print(f"  translation: {len(found)} passages")
+            elif spec["type"] == "didot":
+                found = didot_lines(spec, tsegs)
+                rows_tr += [(t["slug"], *row) for row in found]
+                print(f"  translation: {len(found)} lines")
             elif spec["type"] == "gutenberg":
-                found = translation_lines(spec, segs)
+                found = translation_lines(spec, tsegs)
                 rows_tr += [(t["slug"], *row) for row in found]
                 print(f"  translation: {len(found)} lines")
             elif spec["type"] == "parallel":  # (the source's own English: its passages, above)
                 pass
             else:
-                rows_tr += [(t["slug"], *row) for row in translation(spec, segs)]
+                rows_tr += [(t["slug"], *row) for row in translation(spec, tsegs)]
             rows_tc.append((t["slug"], spec["lang"], spec.get("credit")))
         gold = {r[1:4] for r in rows_w[gold_from[0]:]} | {r[1:4] for r in rows_tb[gold_from[1]:]}
         found = auto_words(t["slug"], segs, gold)

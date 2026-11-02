@@ -930,6 +930,7 @@ body:not(.focused) #verses > li { content-visibility: auto; contain-intrinsic-si
 .credit { margin: 0.4rem 0 0; color: var(--muted); font-family: system-ui, sans-serif; font-size: 12px; }
 body:not(.show-translation) #translation-credit { display: none; }
 body:not(.show-modern) #modern-credit { display: none; }
+body:not(.show-latin) #latin-credit { display: none; }
 
 /* Murray's English, one passage (~5 lines) after the verses it translates. */
 .trans {
@@ -957,6 +958,17 @@ body:not(.show-translation) .trans { display: none; }
 }
 .verse.current .mt { color: color-mix(in srgb, var(--current-bar) 75%, var(--text)); }
 body:not(.show-modern) .verse .mt { display: none; }
+
+/* The Didot Latin, one line per verse; words the translator supplied in italics. */
+.verse .la {
+  grid-column: 2;
+  margin-top: 0.15rem;
+  font-size: 0.8em;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.verse.current .la { color: var(--text); }
+body:not(.show-latin) .verse .la { display: none; }
 
 /* Murray's English for a single line (where split), under the verse. */
 .verse .en {
@@ -1601,9 +1613,9 @@ body.focused .verse.f-cur .seek-icon { display: none; }
    position box (for jumping to a line or section). */
 body.no-audio .playback, body.no-audio .timeline, body.no-audio .side,
 body.no-audio .toggle:has(#focused), body.no-audio .toggle:has(#hold-on-hover), body.no-audio .toggle:has(#follow), body.no-audio #end-mode,
-body.no-paraphrase .toggle:has(#show-paraphrase), body.no-modern .toggle:has(#show-modern),
+body.no-paraphrase .toggle:has(#show-paraphrase), body.no-modern .toggle:has(#show-modern), body.no-latin .toggle:has(#show-latin),
 body.no-translation .toggle:has(#show-translation), body.no-scholia .toggle:has(#show-scholia) { display: none; }
-body.no-audio.no-paraphrase.no-modern.no-translation.no-scholia .controls { display: none; }
+body.no-audio.no-paraphrase.no-modern.no-latin.no-translation.no-scholia .controls { display: none; }
 body.features-unknown .controls { visibility: hidden; }  /* (a text not opened before: until its book comes) */
 body.no-audio .transport { display: flex; justify-content: center; }
 body.no-audio #position { width: 8rem; margin-left: 0; border-color: var(--rule); }
@@ -1666,7 +1678,7 @@ body.prose-text .toggle:has(#focused) { display: none; }
 @media (max-width: 520px) { .part-head { grid-template-columns: 2.2rem 1fr; column-gap: 0.5rem; } }  /* (as a verse's) */
 /* No position box (a part is found by its heading); without it and anything else to show, no bar. */
 body.named-parts.no-audio #position { display: none; }
-body.named-parts.no-audio.no-paraphrase.no-modern.no-translation.no-scholia #player { display: none; }
+body.named-parts.no-audio.no-paraphrase.no-modern.no-latin.no-translation.no-scholia #player { display: none; }
 .ref-mark {
   font: 11px system-ui, sans-serif;
   color: var(--muted);

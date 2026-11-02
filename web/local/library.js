@@ -352,7 +352,7 @@
       const passages = (await this.db.rows("translation_passages", slug, n)).filter((r) => r.lang === "en")
         .sort(bySeq("seq_from")).map((r) => ({ from: r.seq_from, to: r.seq_to, text: r.content,
                                                ...(r.word_to != null ? { wordTo: r.word_to } : {}) }));
-      const { en: english, el: modern, paraphrase } = translated;
+      const { en: english, el: modern, paraphrase } = translated, latin = translated.la ?? new Map();
       // An edition's column where a segment begins (Migne's): a table a compact file made before it hasn't.
       const marks = new Map();
       try {
@@ -369,6 +369,7 @@
         if (marks.has(seq)) v.mark = marks.get(seq);
         if (english.has(seq)) v.english = english.get(seq);
         if (modern.has(seq)) v.modern = modern.get(seq);
+        if (latin.has(seq)) v.latin = latin.get(seq);
         if (paraphrase.has(seq)) v.paraphrase = paraphrase.get(seq);
         if (glosses.has(seq)) v.glosses = glosses.get(seq);
         if (groups.has(seq)) v.groups = groups.get(seq);
@@ -379,6 +380,7 @@
       });
       const credits = truthy(t.credit) ? [{ text: t.credit }] : [];
       if (modern.size && truthy(translationCredits.el)) credits.push({ text: translationCredits.el, id: "modern-credit" });
+      if (latin.size && truthy(translationCredits.la)) credits.push({ text: translationCredits.la, id: "latin-credit" });
       if ((english.size || passages.length) && truthy(translationCredits.en)) {
         credits.push({ text: translationCredits.en, id: "translation-credit" });
       }
@@ -409,7 +411,7 @@
         features: [
           ...(hasNotes ? ["scholia"] : []), ...(recording ? ["audio"] : []), ...(paraphrase.size ? ["paraphrase"] : []),
           ...(hasWords ? ["words"] : []), ...(english.size || passages.length ? ["translation"] : []),
-          ...(modern.size ? ["modern"] : []),
+          ...(modern.size ? ["modern"] : []), ...(latin.size ? ["latin"] : []),
         ],
         notesCredit: t.notes_credit,
         books: books.length > 1 ? books : [],

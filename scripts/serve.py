@@ -490,8 +490,8 @@ def text_json(slug, n):
             pass
     except sqlite3.OperationalError:  # a library built before there were any
         has_words = None
-    translated, translation_credits = {"en": {}, "el": {}, "paraphrase": {}}, {}
-    try:  # a translated verse under each verse: English, modern Greek
+    translated, translation_credits = {"en": {}, "el": {}, "la": {}, "paraphrase": {}}, {}
+    try:  # a translated verse under each verse: English, modern Greek, Latin
         for seq, lang, content in con.execute("SELECT seq, lang, content FROM translations WHERE text = ? AND div = ?",
                                               (slug, n)):
             translated.setdefault(lang, {})[seq] = content
@@ -511,7 +511,7 @@ def text_json(slug, n):
                 "ORDER BY seq_from", (slug, n))]
         except sqlite3.OperationalError:
             passages = []
-    english, modern, paraphrase = translated["en"], translated["el"], translated["paraphrase"]
+    english, modern, latin, paraphrase = translated["en"], translated["el"], translated["la"], translated["paraphrase"]
     try:  # a part's label in English, beside the Greek (the prayers: "cite": label)
         ref_labels = dict(con.execute("SELECT ref, label FROM ref_labels WHERE text = ? AND lang = 'en'", (slug,)))
     except sqlite3.OperationalError:  # a library built before there were any
@@ -537,6 +537,8 @@ def text_json(slug, n):
             v["english"] = english[seq]
         if seq in modern:
             v["modern"] = modern[seq]
+        if seq in latin:
+            v["latin"] = latin[seq]
         if seq in paraphrase:  # a paraphrase under the verse (Gaza's), and its word for each word
             v["paraphrase"] = paraphrase[seq]
         if seq in glosses:
@@ -553,6 +555,8 @@ def text_json(slug, n):
     # Shown while their translation is (as for the Iliad's).
     if modern and translation_credits.get("el"):
         credits.append({"text": translation_credits["el"], "id": "modern-credit"})
+    if latin and translation_credits.get("la"):
+        credits.append({"text": translation_credits["la"], "id": "latin-credit"})
     if (english or passages) and translation_credits.get("en"):
         credits.append({"text": translation_credits["en"], "id": "translation-credit"})
     if recording and recording[1]:
@@ -580,7 +584,7 @@ def text_json(slug, n):
             "features": (["scholia"] if has_notes else []) + (["audio"] if recording else [])
                         + (["paraphrase"] if paraphrase else [])
                         + (["words"] if has_words else []) + (["translation"] if english or passages else [])
-                        + (["modern"] if modern else []),
+                        + (["modern"] if modern else []) + (["latin"] if latin else []),
             "notesCredit": notes_credit, "books": books if len(books) > 1 else [],
             "audio": f"/audio/{urllib.parse.quote(recording[0])}" if recording else None,
             # The recording reads other books too (a book of the Bible, its chapters in one

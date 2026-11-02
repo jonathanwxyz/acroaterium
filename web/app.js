@@ -52,7 +52,7 @@ if (!PARAMS.has("text") || CARRY_AT) {
 const apiFor = (n, text = TEXT) => `/api/text/${encodeURIComponent(text)}/${n}`;
 const API = apiFor(BOOK);
 let hasScholia = false;  // known once the book has loaded
-const FEATURES = ["audio", "paraphrase", "modern", "translation", "scholia", "words"];
+const FEATURES = ["audio", "paraphrase", "modern", "latin", "translation", "scholia", "words"];
 // Speaker icon shown beside a verse on hover: clicking the row (not a word) goes to it.
 const SEEK_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">' +
   '<path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4z"/>' +
@@ -75,6 +75,7 @@ const follow = document.getElementById("follow");
 const showParaphrase = document.getElementById("show-paraphrase");
 const showTranslation = document.getElementById("show-translation");
 const showModern = document.getElementById("show-modern");
+const showLatin = document.getElementById("show-latin");
 const gloss = document.getElementById("gloss");
 const holdOnHover = document.getElementById("hold-on-hover");
 const focused = document.getElementById("focused");
@@ -378,6 +379,13 @@ function renderVerse(data, has) {
       mt.lang = "el";
       mt.textContent = v.modern;
       li.append(mt);
+    }
+    if (v.latin) {  // (the Didot Latin: words the translator supplied, _so_, in italics)
+      const la = document.createElement("span");
+      la.className = "la";
+      la.lang = "la";
+      v.latin.split(/_([^_]+)_/).forEach((part, k) => la.append(k % 2 ? el("i", "", part) : part));
+      li.append(la);
     }
     if (v.english) {
       const en = document.createElement("span");
@@ -961,6 +969,15 @@ function applyModern() {
 try { showModern.checked = localStorage.getItem("showModern") === "1"; } catch {}
 showModern.addEventListener("change", applyModern);
 applyModern();
+
+function applyLatin() {
+  document.body.classList.toggle("show-latin", showLatin.checked);
+  try { localStorage.setItem("showLatin", showLatin.checked ? "1" : "0"); } catch {}
+  if (current >= 0 && follow.checked) centerRow(verses[current].el);
+}
+try { showLatin.checked = localStorage.getItem("showLatin") === "1"; } catch {}
+showLatin.addEventListener("change", applyLatin);
+applyLatin();
 showParaphrase.addEventListener("change", applyParaphrase);
 applyParaphrase();
 
