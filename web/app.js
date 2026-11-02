@@ -231,7 +231,9 @@ function applyRange(data) {
   const fromStart = from === cites.findIndex((c) => c != null), toEnd = to === cites.findLastIndex((c) => c != null);
   // (from the book's start: with its titles, read before it)
   data.verses = data.verses.slice(fromStart ? 0 : from, to + 1);
-  data.translation = (data.translation ?? []).filter((p) => p.to >= Number(first) && p.from <= Number(last));
+  const [lo, hi] = [data.verses.find((v) => v.line > 0)?.line, data.verses.at(-1).line];  // (prose: by its segments)
+  data.translation = (data.translation ?? []).filter((p) => (prose ? p.to >= lo && p.from <= hi
+    : p.to >= Number(first) && p.from <= Number(last)));
   RANGE = { from: first, to: last };
   const verse = data.cite === "verse";  // the Bible: chapter:verse, in its chapter
   const span = first === last ? first : `${first}–${last}`;
@@ -394,18 +396,24 @@ function renderVerse(data, has) {
 
   // Each English passage goes after the last verse it translates.
   const verseEl = new Map(data.verses.map((v, i) => [v.line, list.children[i]]));
+  addPassages(data, (p) => verseEl.get(p.to) ?? verseEl.get(Math.max(...[...verseEl.keys()].filter((l) => l <= p.to))), true);
+}
+
+// The English in passages (Murray's Homer; a parallel text's paragraphs), each after the row
+// that ends it (after(p)); verse names the lines it covers.
+function addPassages(data, after, numbered) {
   for (const p of data.translation ?? []) {
-    const after = verseEl.get(p.to) ?? verseEl.get(Math.max(...[...verseEl.keys()].filter((l) => l <= p.to)));
-    if (!after) continue;
-    const li = document.createElement("li");
-    li.className = "trans";
+    const row = after(p);
+    if (!row) continue;
+    const li = el("li", "trans");
     li.lang = "en";
-    const lines = document.createElement("span");
-    lines.className = "lines";
-    lines.textContent = p.from === p.to ? `${p.from}` : `${p.from}–${p.to}`;
-    li.append(lines, p.text);
-    li.addEventListener("click", () => seekTo(verses.findIndex((v) => v.line === p.from)));
-    after.after(li);
+    if (numbered) li.append(el("span", "lines", p.from === p.to ? `${p.from}` : `${p.from}–${p.to}`));
+    li.append(p.text);
+    li.addEventListener("click", () => {
+      const i = verses.findIndex((v) => v.line >= p.from);
+      if (i >= 0) seekTo(i);
+    });
+    row.after(li);
     passages.push({ ...p, el: li });
   }
 }
@@ -451,6 +459,7 @@ function renderProse(data, has) {
     if (v.ref && v.ref !== lastRef) refsIn.push(v.ref);
     if (v.speaker) text.append(el("span", "speaker", v.speaker), " ");
     const seg = el("span", "seg");
+    if (v.mark) seg.append(el("span", "ref-mark edition-mark", v.mark), " ");  // (an edition's column: Migne's)
     let sectionRef = null;
     if (v.ref && v.ref !== lastRef) {
       if (labelled) {}  // (its heading names it)
@@ -497,6 +506,9 @@ function renderProse(data, has) {
   close();
   list.append(frag);
   verses.sort((a, b) => a.start - b.start);
+  // A parallel text's English: each passage after the paragraph it ends in.
+  const paras = [...list.querySelectorAll(".prose-para")];
+  addPassages(data, (p) => paras.find((li) => Number(li.dataset.from) <= p.to && p.to <= Number(li.dataset.to)), false);
 }
 
 // Prose with a recording: a tap in the paragraph's margin (beside the text, not on it, where

@@ -352,6 +352,11 @@
       const passages = (await this.db.rows("translation_passages", slug, n)).filter((r) => r.lang === "en")
         .sort(bySeq("seq_from")).map((r) => ({ from: r.seq_from, to: r.seq_to, text: r.content }));
       const { en: english, el: modern, paraphrase } = translated;
+      // An edition's column where a segment begins (Migne's): a table a compact file made before it hasn't.
+      const marks = new Map();
+      try {
+        for (const r of await this.db.table("ref_marks")) if (r.text === slug && r.div === n) marks.set(r.seq, r.mark);
+      } catch { /* (none) */ }
       const [glosses, groups] = await this.paraphraseGlosses(slug, n);
       const [recording, timed] = await this.libraryAudio(slug, n);
       const verses = rows.map((r) => {
@@ -360,6 +365,7 @@
         if (truthy(r.speaker)) v.speaker = r.speaker;
         if (truthy(r.para)) v.para = true;
         if (notes.has(seq)) v.scholia = notes.get(seq);
+        if (marks.has(seq)) v.mark = marks.get(seq);
         if (english.has(seq)) v.english = english.get(seq);
         if (modern.has(seq)) v.modern = modern.get(seq);
         if (paraphrase.has(seq)) v.paraphrase = paraphrase.get(seq);

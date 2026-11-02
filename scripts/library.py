@@ -49,6 +49,11 @@ Sources (downloads are cached in data/raw/library/):
   prayers     a service or prayers in a local text file ("file"), in parts labelled as
               Stephanus sections are numbered ("cite": label), the labels in Greek and
               English (ref_labels); see prayers()
+  parallel    a text with its English beside it, in a table in a local HTML file ("file"),
+              cited by chapter as a section, to chapter "until"; the English in passages
+              (translation_passages), an edition's column numbers as marks (ref_marks);
+              see parallel(). Its "translations": [{"type": "parallel", "lang": "en",
+              "credit": ...}]
 A text's "fixes" correct slips in its source: [{"ref": "17a", "find": "<as printed>",
 "replace": "<as it should read>"}] (the text at that section; it must match once).
 A text's "heading" is a title read before the text ("Πλάτωνος Ἀπολογία Σωκράτους"), or a list of lines
@@ -84,7 +89,8 @@ hidden, eyebrow), divisions (text, n, label:
 a book, or the whole work), segments (text, div, seq, ref: line number or section,
 content, speaker, para: 1 where a paragraph or speech begins), note_sources (text, id,
 siglum, name, lang, sort), notes (text, div, pos_from, pos_to: the segments (seq) a note
-covers, source, seq, body, parts: JSON styled runs as in import_commentaries.py).
+covers, source, seq, body, parts: JSON styled runs as in import_commentaries.py),
+ref_marks (text, div, seq, mark: an edition's column where a segment begins, Migne's).
 """
 import argparse
 import csv
@@ -100,6 +106,7 @@ import urllib.request
 import unicodedata
 import zipfile
 from collections import Counter
+from html.parser import HTMLParser
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -1240,6 +1247,225 @@ def prayers(src, verbose, title, labels_out):
     return "prose", "label", [(1, title)], segments
 
 
+# ---------------------------------------------------------------- parallel (a local HTML table)
+
+class _Node:
+    def __init__(self, tag, attrs, parent):
+        self.tag, self.attrs, self.kids, self.parent = tag, dict(attrs), [], parent
+
+    def find(self, tag):
+        for k in self.kids:
+            if isinstance(k, _Node):
+                if k.tag == tag:
+                    yield k
+                yield from k.find(tag)
+
+    def runs(self):
+        """(text, class) for each piece of text, with the class of the element it is in."""
+        for k in self.kids:
+            if isinstance(k, str):
+                yield k, self.attrs.get("class", "")
+            else:
+                yield from k.runs()
+
+
+class _Tree(HTMLParser):
+    """An HTML file as a tree of _Nodes (enough for a word processor's export)."""
+    VOID = {"br", "img", "meta", "hr", "link", "col", "input"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.root = self.cur = _Node("root", [], None)
+        self.style = ""
+
+    def handle_starttag(self, tag, attrs):
+        node = _Node(tag, attrs, self.cur)
+        self.cur.kids.append(node)
+        if tag not in self.VOID:
+            self.cur = node
+
+    def handle_endtag(self, tag):
+        node = self.cur
+        while node is not None and node.tag != tag:
+            node = node.parent
+        if node is not None:
+            self.cur = node.parent
+
+    def handle_data(self, data):
+        if self.cur.tag == "style":
+            self.style += data
+        else:
+            self.cur.kids.append(data)
+
+
+# Gale & Church's pairing of paragraphs by length: how often each kind of pair is (Greek
+# paragraphs, English paragraphs), and the spread of the length ratio.
+PAIRINGS = {(1, 1): 0.89, (1, 2): 0.045, (2, 1): 0.045, (2, 2): 0.011, (1, 3): 0.004, (3, 1): 0.004}
+PAIRING_VARIANCE = 6.8
+
+
+def pair_paragraphs(greek, english, opens, ratio):
+    """Pairs (g0, g1, e0, e1) of Greek paragraphs g0..g1-1 and English e0..e1-1, the likeliest
+    by their lengths (greek, english: lengths); an English paragraph in opens (a chapter's
+    first) begins its pair."""
+    import math
+    n, m, inf = len(greek), len(english), float("inf")
+    best = [[inf] * (m + 1) for _ in range(n + 1)]
+    back = [[None] * (m + 1) for _ in range(n + 1)]
+    best[0][0] = 0
+    for i in range(n + 1):
+        for j in range(m + 1):
+            if best[i][j] == inf:
+                continue
+            for (a, b), prior in PAIRINGS.items():
+                if i + a > n or j + b > m or any(k in opens for k in range(j + 1, j + b)):
+                    continue
+                lg, le = sum(greek[i:i + a]), sum(english[j:j + b])
+                d = abs(le - lg * ratio) / math.sqrt(lg * PAIRING_VARIANCE)
+                cost = best[i][j] - math.log(max(math.erfc(d / math.sqrt(2)), 1e-300)) - math.log(prior)
+                if cost < best[i + a][j + b]:
+                    best[i + a][j + b], back[i + a][j + b] = cost, (a, b)
+    if best[n][m] == inf:
+        return None
+    pairs, i, j = [], n, m
+    while i or j:
+        a, b = back[i][j]
+        pairs.append((i - a, i, j - b, j))
+        i, j = i - a, j - b
+    return pairs[::-1]
+
+
+def parallel(src, verbose, title, passages_out, marks_out):
+    """A text with its English beside it, from a local HTML file ("file", under the project):
+    a word processor's export (Google Docs) of a table, the Greek in its first column and the
+    English in its second, a passage to a row, in paragraphs. An English paragraph opening
+    with a number ("8. Thus ...", "[8.] Thus ...") begins that chapter: the segments' ref (a
+    section), the Greek of the pair it's in too. The first row's paragraphs up to its last
+    heading (set in a colour of its own: the title, "Προοίμιον"), or where there's none, up to
+    the first numbered one, are left out, the catalogue's "heading" giving what's read of them;
+    what follows, before chapter 1, has no ref. Rows from chapter "until" + 1 on are left out,
+    and rows without Greek (an inset) or without English (a work untranslated after it). A
+    Greek paragraph broken off mid-sentence (ending without a stop) is joined to the next; a
+    colon in the Greek is a raised dot (·).
+
+    An edition's column numbers in the Greek (standalone numerals: Migne's, 840) are taken out
+    of the text, the segment breaking there, and kept as marks on the segment after
+    (marks_out: (div, seq, mark)); the first from the heading's "(Migne 26.837)". So is the
+    Greek's own section number opening a paragraph ("βʹ. Ὡς οὖν": βʹ), where the English
+    numbers its sections otherwise. A note in square brackets in Latin letters ("[cf. Herod
+    ii. 168]") is left out.
+
+    Within a row, the Greek and English paragraphs are paired by their lengths
+    (pair_paragraphs), a pair being an English passage (passages_out: (div, seq_from,
+    seq_to, "en", text)), without its chapter's number."""
+    tree = _Tree()
+    tree.feed((ROOT / src["file"]).read_text(encoding="utf-8"))
+    until = src.get("until")
+    nfc = lambda x: unicodedata.normalize("NFC", x)
+    # Each class's colour: the body text's is the commonest; a paragraph all in another is a heading.
+    colour = {c: m[1].lower() for c, m in ((c, re.search(r"(?<![-\w])color:(#\w+)", body))
+                                            for c, body in re.findall(r"\.(c\d+)\{([^}]*)\}", tree.style)) if m}
+    weight = Counter()
+
+    def paragraphs(cell):
+        out = []
+        for p in cell.find("p"):
+            runs = [(t, next((colour[c] for c in cls.split() if c in colour), None)) for t, cls in p.runs()]
+            for t, col in runs:
+                weight[col] += len(t.strip())
+            text = nfc(re.sub(r"\s+", " ", "".join(t for t, _ in runs).replace("\xa0", " ")).strip())
+            if text:
+                out.append((text, {col for t, col in runs if t.strip()}))
+        return out
+
+    rows = []
+    for tr in tree.root.find("tr"):
+        cells = [c for c in tr.kids if isinstance(c, _Node) and c.tag == "td"]
+        rows.append([paragraphs(c) for c in cells[:2]] if len(cells) >= 2 else [[], []])
+    body = weight.most_common(1)[0][0]
+    heading = lambda colours: bool(colours - {None}) and body not in colours
+
+    chapter_of = lambda text: int(m[1]) if (m := re.match(r"\[?(\d+)\.\]?\s", text)) else None
+    section = re.compile(r"([α-ω]{1,3}ʹ)\.\s+")  # (the numeral sign: U+0374, ʹ after NFC)
+    segments, mark, ref = [], None, None
+    pages = re.compile(r"(?<!\S)(\d{3,4})(?!\S)([,.;·]?)")
+    greek_all, english_all = 0, 0
+    kept = []
+    for k, (greek, english) in enumerate(rows):
+        if k == 0:  # the front matter: to the last heading in each column
+            g_from = max((i for i, (_, c) in enumerate(greek) if heading(c)), default=None)
+            e_from = max((i for i, (_, c) in enumerate(english) if heading(c)), default=None)
+            if g_from is None:  # (no headings: to the first numbered paragraph)
+                g_from = next((i for i, (t, _) in enumerate(greek) if section.match(t)), 0) - 1
+            if e_from is None:
+                e_from = next((i for i, (t, _) in enumerate(english) if chapter_of(t) is not None), 0) - 1
+            if g_from >= 0 and (m := re.search(r"\(Migne \d+\.(\d+)\)", greek[g_from][0])):
+                mark = m[1]
+            greek, english = greek[g_from + 1:], english[e_from + 1:]
+        greek = [t for t, _ in greek]
+        english = [t for t, _ in english]
+        if not greek or not english:
+            if (greek or english) and verbose:
+                print(f"  row {k + 1}: no {'Greek' if english else 'English'}, left out ({(greek or english)[0][:40]}…)")
+            continue
+        chapters = [n for t in english if (n := chapter_of(t)) is not None]
+        if until and chapters and chapters[0] > until:
+            break
+        if until and any(n > until for n in chapters):
+            sys.exit(f"{src['file']}: row {k + 1} runs past chapter {until} (chapters {chapters}): not supported")
+        joined = []  # (a paragraph broken off mid-sentence: joined to the next)
+        for t in greek:
+            if joined and re.search(r"[\w’']$", pages.sub("", joined[-1]).rstrip()):
+                joined[-1] += " " + t
+            else:
+                joined.append(t)
+        kept.append((joined, english))
+        greek_all += sum(map(len, joined))
+        english_all += sum(map(len, english))
+
+    ratio = english_all / greek_all
+    for greek, english in kept:
+        opens = {j for j, t in enumerate(english) if chapter_of(t) is not None}
+        pairs = pair_paragraphs([len(t) for t in greek], [len(t) for t in english], opens, ratio)
+        if pairs is None:
+            sys.exit(f"{src['file']}: can't pair the paragraphs of the row beginning {greek[0][:40]!r}")
+        for g0, g1, e0, e1 in pairs:
+            if (n := chapter_of(english[e0])) is not None:
+                ref = str(n)
+            first = len(segments) + 1
+            for i in range(g0, g1):
+                text = greek[i].replace("∆", "Δ").replace(":", "·")  # (the increment sign, for a capital delta)
+                if m := section.match(text):
+                    mark = f"{mark} {m[1]}" if mark else m[1]
+                    text = text[m.end():]
+                text = re.sub(r"\s*\[[^\]]*[A-Za-z][^\]]*\]", "", text)
+                pieces, at = [], 0
+                for m in pages.finditer(text):
+                    pieces.append((text[at:m.start()] + m[2]).strip())
+                    pieces.append(m[1])
+                    at = m.end()
+                pieces.append(text[at:].strip())
+                para = 1
+                for p, piece in enumerate(pieces):
+                    if p % 2:  # a column number: the next segment's mark
+                        mark = piece
+                        continue
+                    if not piece:
+                        continue
+                    segments.append((1, len(segments) + 1, ref, piece, None, para))
+                    if mark:
+                        marks_out.append((1, len(segments), mark))
+                        mark = None
+                    para = 0
+            text = " ".join(english[e0:e1])
+            text = re.sub(r"^\[?\d+\.\]?\s+", "", text)
+            passages_out.append((1, first, len(segments), "en", text))
+    if verbose:
+        print(f"  {len(segments)} segments, chapters 1–{ref}, {len(passages_out)} English passages, "
+              f"{len(marks_out)} column marks ({marks_out[0][2]}–{marks_out[-1][2]})")
+    return "prose", "section", [(1, title)], segments
+
+
 # ---------------------------------------------------------------- the Iliad
 
 def iliad(verbose):
@@ -1683,7 +1909,7 @@ def main():
 
     perseus_members([n["file"] for t in cat["texts"] for n in t.get("notes", []) if n["type"] == "perseus"])
     rows_t, rows_d, rows_s, rows_ns, rows_n, rows_w, rows_tr, rows_tc, rows_tb = [], [], [], [], [], [], [], [], []
-    rows_tp, rows_aw, rows_rl = [], [], []
+    rows_tp, rows_aw, rows_rl, rows_rm = [], [], [], []
     for sort, t in enumerate(cat["texts"]):
         gold_from = (len(rows_w), len(rows_tb))  # (this text's gold parsing: rows added from here)
         if t.get("category") not in categories:
@@ -1713,6 +1939,11 @@ def main():
                 found = []
                 form, cite, divs, segs = prayers(src, args.v, t["title"], found)
                 rows_rl += [(t["slug"], *r) for r in found]
+            elif src["type"] == "parallel":
+                found, marks = [], []
+                form, cite, divs, segs = parallel(src, args.v, t["title"], found, marks)
+                rows_tp += [(t["slug"], *r) for r in found]
+                rows_rm += [(t["slug"], *r) for r in marks]
             else:
                 sys.exit(f"{t['slug']}: unknown source type {src['type']!r}")
         for fix in t.get("fixes", []):  # a slip in the source: {"ref": "17a", "find": ..., "replace": ...}
@@ -1759,6 +1990,8 @@ def main():
                 found = translation_lines(spec, segs)
                 rows_tr += [(t["slug"], *row) for row in found]
                 print(f"  translation: {len(found)} lines")
+            elif spec["type"] == "parallel":  # (the source's own English: its passages, above)
+                pass
             else:
                 rows_tr += [(t["slug"], *row) for row in translation(spec, segs)]
             rows_tc.append((t["slug"], spec["lang"], spec.get("credit")))
@@ -1780,7 +2013,7 @@ def main():
         DROP TABLE IF EXISTS divisions; DROP TABLE IF EXISTS segments;
         DROP TABLE IF EXISTS note_sources; DROP TABLE IF EXISTS notes;
         DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS lexicon; DROP TABLE IF EXISTS translations; DROP TABLE IF EXISTS translation_passages;
-        DROP TABLE IF EXISTS translation_credits; DROP TABLE IF EXISTS ref_labels;
+        DROP TABLE IF EXISTS translation_credits; DROP TABLE IF EXISTS ref_labels; DROP TABLE IF EXISTS ref_marks;
         DROP TABLE IF EXISTS treebank; DROP TABLE IF EXISTS auto_words; DROP TABLE IF EXISTS lemma_defs;
         DROP TABLE IF EXISTS paraphrase_links;
         CREATE TABLE categories (name TEXT PRIMARY KEY, sort INTEGER NOT NULL);
@@ -1887,6 +2120,12 @@ def main():
             lang  TEXT NOT NULL,
             label TEXT NOT NULL,
             PRIMARY KEY (text, ref, lang));
+        CREATE TABLE ref_marks (         -- an edition's column (Migne's) beginning at a segment,
+            text  TEXT NOT NULL,         --   shown greyed in the text
+            div   INTEGER NOT NULL,
+            seq   INTEGER NOT NULL,
+            mark  TEXT NOT NULL,
+            PRIMARY KEY (text, div, seq));
         CREATE TABLE translation_credits (
             text   TEXT NOT NULL,
             lang   TEXT NOT NULL,
@@ -1908,6 +2147,7 @@ def main():
     con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, ?, ?)", rows_tp)
     con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)", rows_tc)
     con.executemany("INSERT INTO ref_labels VALUES (?, ?, ?, ?)", rows_rl)
+    con.executemany("INSERT INTO ref_marks VALUES (?, ?, ?, ?)", rows_rm)
     con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)", rows_tb)
     con.executemany("INSERT INTO auto_words VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_aw)
     if rows_tb or rows_w:  # definitions, as for the Iliad (import_shortdefs.py)

@@ -506,6 +506,10 @@ def text_json(slug, n):
         ref_labels = dict(con.execute("SELECT ref, label FROM ref_labels WHERE text = ? AND lang = 'en'", (slug,)))
     except sqlite3.OperationalError:  # a library built before there were any
         ref_labels = {}
+    try:  # an edition's column where a segment begins (Migne's), greyed in the text
+        marks = dict(con.execute("SELECT seq, mark FROM ref_marks WHERE text = ? AND div = ?", (slug, n)))
+    except sqlite3.OperationalError:  # a library built before there were any
+        marks = {}
     glosses, groups = paraphrase_glosses(con, slug, n)
     con.close()
     if not rows:
@@ -517,7 +521,8 @@ def text_json(slug, n):
         v = {"line": seq, "ref": ref, "text": content,
              **({"speaker": speaker} if speaker else {}), **({"para": True} if para == 1 else {}),
              **({"br": True} if para == 2 else {}),  # (a new line in the paragraph)
-             **({"scholia": notes[seq]} if seq in notes else {})}
+             **({"scholia": notes[seq]} if seq in notes else {}),
+             **({"mark": marks[seq]} if seq in marks else {})}
         if seq in english:
             v["english"] = english[seq]
         if seq in modern:
