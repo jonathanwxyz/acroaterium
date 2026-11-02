@@ -38,7 +38,7 @@ CHUNK_COLUMNS = {
     "words": ["seq", "word_index", "strongs", "words.morph_id", "words.lemma_id"],
     "treebank": ["seq", "word_index", "part", "treebank.lemma_id", "treebank.postag_id", "treebank.relation_id",
                  "treebank.head_id", "form", "match"],
-    "auto_words": ["seq", "word_index", "auto.lemma_id", "auto.morph_id", "confidence", "alternative", "also"],
+    "auto_words": ["seq", "word_index", "auto.lemma_id", "auto.morph_id", "confidence", "alternative", "also", "checked"],
     "paraphrase_links": ["seq", "word_index", "para_seq", "para_index", "para_word"],
     "units": ["seq", "piece", "content?", "start", "speech_end", "end", "score", "cut"],
 }
@@ -63,7 +63,7 @@ FULL = {
     "treebank": ("library", "treebank", ["text", "div", "seq", "word_index", "part", "lemma", "postag", "relation",
                                          "head", "form", "match"]),
     "auto_words": ("library", "auto_words", ["text", "div", "seq", "word_index", "lemma", "headword", "definition",
-                                             "pos", "morph", "confidence", "alternative", "also"]),
+                                             "pos", "morph", "confidence", "alternative", "also", "checked"]),
     "paraphrase_links": ("library", "paraphrase_links", ["text", "div", "seq", "word_index", "para_seq", "para_index",
                                                          "para_word"]),
     "units": ("audio", "units", ["text", "div", "seq", "piece", "content", "start", "speech_end", "end", "score", "cut"]),

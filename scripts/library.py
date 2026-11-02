@@ -1318,16 +1318,19 @@ def rahlfs(src, verbose, words_out=None):
 
 
 AUTO_PARSING = ROOT / "data" / "raw" / "lemmatised"
+LEMMA_CHOICES = ROOT / "library" / "lemma_choices.json"  # (the lemmatiser checked by hand: scripts/review_lemmas.py)
 
 
 def auto_words(slug, segments, gold):
     """Rows of auto_words: the lemmatiser's parsing (data/raw/lemmatised/<slug>.json, from
     scripts/lemmatise_library.py) of the words without gold parsing, where the segment still
-    reads as it was lemmatised."""
+    reads as it was lemmatised. A word checked by hand (LEMMA_CHOICES, scripts/review_lemmas.py)
+    takes the reading chosen there, with no other readings, marked checked."""
     path = AUTO_PARSING / f"{slug}.json"
     if not path.exists():
         return []
     done = json.loads(path.read_text())
+    chosen = json.loads(LEMMA_CHOICES.read_text(encoding="utf-8")).get(slug, {}) if LEMMA_CHOICES.exists() else {}
     out = []
     for div, seq, ref, content, *_ in segments:
         entry = done.get(f"{div}:{seq}")
@@ -1341,10 +1344,15 @@ def auto_words(slug, segments, gold):
             # lemma, headword, definition and analysis, and why: low-confidence, dilemma, chooser)
             also = [{k: a.get(k) for k in ("lemma", "headword", "definition", "morph", "why")}
                     for a in r.get("also_possible") or []]
-            out.append((slug, div, seq, int(i), r["lemma"], r.get("headword"), r.get("definition"),
-                        r.get("pos") or "|".join(r.get("pos_options") or []) or None,
+            pos = r.get("pos") or "|".join(r.get("pos_options") or []) or None
+            if c := chosen.get(f"{div}:{seq}:{i}"):  # (checked by hand: the reading chosen)
+                same = c["lemma"] == r["lemma"]
+                out.append((slug, div, seq, int(i), c["lemma"], c.get("headword"), c.get("definition"), pos if same else None,
+                            json.dumps(c.get("morph") or [], ensure_ascii=False), 1.0, None, None, 1))
+                continue
+            out.append((slug, div, seq, int(i), r["lemma"], r.get("headword"), r.get("definition"), pos,
                         json.dumps(r.get("morph") or [], ensure_ascii=False), r.get("confidence"), alt,
-                        json.dumps(also, ensure_ascii=False) if also else None))
+                        json.dumps(also, ensure_ascii=False) if also else None, 0))
     return out
 
 
@@ -2491,6 +2499,7 @@ def main():
             alternative TEXT,            -- the next likeliest lemma, where it was a choice
             also       TEXT,             -- JSON: other readings worth showing, where in doubt
                                          --   ([{lemma, headword, definition, morph, why}])
+            checked    INTEGER,          -- 1: the reading chosen by hand (scripts/review_lemmas.py)
             PRIMARY KEY (text, div, seq, word_index));
         CREATE TABLE lemma_defs (        -- short English definitions of the treebanks' lemmas
             lemma      TEXT PRIMARY KEY,
@@ -2546,7 +2555,7 @@ def main():
     con.executemany("INSERT INTO ref_labels VALUES (?, ?, ?, ?)", rows_rl)
     con.executemany("INSERT INTO ref_marks VALUES (?, ?, ?, ?)", rows_rm)
     con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)", rows_tb)
-    con.executemany("INSERT INTO auto_words VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_aw)
+    con.executemany("INSERT INTO auto_words VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_aw)
     if rows_tb or rows_w:  # definitions, as for the Iliad (import_shortdefs.py)
         from import_shortdefs import matcher
         match = matcher()

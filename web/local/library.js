@@ -16,7 +16,7 @@
     words: ["seq", "word_index", "strongs", "words.morph_id", "words.lemma_id"],
     treebank: ["seq", "word_index", "part", "treebank.lemma_id", "treebank.postag_id", "treebank.relation_id",
                "treebank.head_id", "form", "match"],
-    auto_words: ["seq", "word_index", "auto.lemma_id", "auto.morph_id", "confidence", "alternative", "also"],
+    auto_words: ["seq", "word_index", "auto.lemma_id", "auto.morph_id", "confidence", "alternative", "also", "checked"],
     paraphrase_links: ["seq", "word_index", "para_seq", "para_index", "para_word"],
     units: ["seq", "piece", "content?", "start", "speech_end", "end", "score", "cut"],
   };
@@ -563,7 +563,7 @@
     async automaticParsing(slug, n, seq, index) {
       const r = (await this.db.word("auto_words", slug, n, seq, index))[0];
       if (!r) return null;
-      let note = "Automatic parsing (may be wrong).";
+      let note = r.checked ? "Lemma checked by hand." : "Automatic parsing (may be wrong).";
       // The other readings the lemmatiser thinks worth showing, each in full (a compact file
       // made before them hasn't the column).
       const others = (truthy(r.also) ? JSON.parse(r.also) : []).map((a) => ({
@@ -572,7 +572,9 @@
         morph: morpheusMorph(null, a.morph ?? []),
       }));
       const other = rstripDigits(r.alternative ?? "");
-      if (others.length) {
+      if (r.checked) {
+        // (the reading chosen by hand)
+      } else if (others.length) {
         note = "Automatic parsing, uncertain.";
       } else if (r.confidence != null && r.confidence < 0.6 && other && other !== rstripDigits(r.lemma)) {
         note = `Automatic parsing, uncertain: perhaps ${other}.`;

@@ -814,9 +814,9 @@ def automatic_parsing(slug, n, seq, index):
     """The lemmatiser's parsing of a word without gold parsing (auto_words), as a card's token."""
     con = sqlite3.connect(LIBRARY)
     try:
-        has_also = "also" in {r[1] for r in con.execute("PRAGMA table_info(auto_words)")}
+        columns = {r[1] for r in con.execute("PRAGMA table_info(auto_words)")}
         row = con.execute(f"SELECT lemma, headword, definition, pos, morph, confidence, alternative, "
-                          f"{'also' if has_also else 'NULL'} FROM auto_words "
+                          f"{'also' if 'also' in columns else 'NULL'}, {'checked' if 'checked' in columns else 'NULL'} FROM auto_words "
                           "WHERE text = ? AND div = ? AND seq = ? AND word_index = ?", (slug, n, seq, index)).fetchone()
     except sqlite3.OperationalError:  # a library built before automatic parsing
         return None
@@ -824,13 +824,15 @@ def automatic_parsing(slug, n, seq, index):
         con.close()
     if not row:
         return None
-    lemma, headword, definition, pos, morph, confidence, alternative, also = row
-    note = "Automatic parsing (may be wrong)."
+    lemma, headword, definition, pos, morph, confidence, alternative, also, checked = row
+    note = "Lemma checked by hand." if checked else "Automatic parsing (may be wrong)."
     # The other readings the lemmatiser thinks worth showing, each in full (the card lists them).
     others = [{"lemma": a.get("headword") or (a.get("lemma") or "").rstrip("0123456789"), "definition": a.get("definition"),
                "morph": morpheus_morph(None, a.get("morph") or [])} for a in json.loads(also or "[]")]
     other = (alternative or "").rstrip("0123456789")
-    if others:
+    if checked:
+        pass
+    elif others:
         note = "Automatic parsing, uncertain."
     elif confidence is not None and confidence < 0.6 and other and other != lemma.rstrip("0123456789"):
         note = f"Automatic parsing, uncertain: perhaps {other}."  # (not where it's only which λέγω)
