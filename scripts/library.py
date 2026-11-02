@@ -1337,8 +1337,14 @@ def auto_words(slug, segments, gold):
             if (div, seq, int(i)) in gold:
                 continue
             alt = max(r.get("alternatives") or {}, key=(r.get("alternatives") or {}).get, default=None)
-            out.append((slug, div, seq, int(i), r["lemma"], r.get("headword"), r.get("definition"), r.get("pos"),
-                        json.dumps(r.get("morph") or [], ensure_ascii=False), r.get("confidence"), alt))
+            # Where the lemmatiser is in doubt, the other readings worth showing (each its own
+            # lemma, headword, definition and analysis, and why: low-confidence, dilemma, chooser)
+            also = [{k: a.get(k) for k in ("lemma", "headword", "definition", "morph", "why")}
+                    for a in r.get("also_possible") or []]
+            out.append((slug, div, seq, int(i), r["lemma"], r.get("headword"), r.get("definition"),
+                        r.get("pos") or "|".join(r.get("pos_options") or []) or None,
+                        json.dumps(r.get("morph") or [], ensure_ascii=False), r.get("confidence"), alt,
+                        json.dumps(also, ensure_ascii=False) if also else None))
     return out
 
 
@@ -2483,6 +2489,8 @@ def main():
             morph      TEXT,             -- JSON: Morpheus's reading(s) as chosen in context ("aor ind act 3rd sg")
             confidence REAL,             -- the lemma's (0-1)
             alternative TEXT,            -- the next likeliest lemma, where it was a choice
+            also       TEXT,             -- JSON: other readings worth showing, where in doubt
+                                         --   ([{lemma, headword, definition, morph, why}])
             PRIMARY KEY (text, div, seq, word_index));
         CREATE TABLE lemma_defs (        -- short English definitions of the treebanks' lemmas
             lemma      TEXT PRIMARY KEY,
@@ -2538,7 +2546,7 @@ def main():
     con.executemany("INSERT INTO ref_labels VALUES (?, ?, ?, ?)", rows_rl)
     con.executemany("INSERT INTO ref_marks VALUES (?, ?, ?, ?)", rows_rm)
     con.executemany("INSERT OR IGNORE INTO treebank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)", rows_tb)
-    con.executemany("INSERT INTO auto_words VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_aw)
+    con.executemany("INSERT INTO auto_words VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_aw)
     if rows_tb or rows_w:  # definitions, as for the Iliad (import_shortdefs.py)
         from import_shortdefs import matcher
         match = matcher()

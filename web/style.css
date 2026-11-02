@@ -1085,6 +1085,11 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
 #card .lemma .strongs { font: 12px system-ui, sans-serif; color: var(--muted); margin-left: 0.5rem; }
 #card .morph code { font-size: 11px; color: var(--muted); align-self: center; }
 #card .note { font-size: 0.85em; color: var(--muted); font-style: italic; margin-top: 0.4rem; }
+/* Automatic parsing in doubt: the other readings, each a lemma, definition and parsing. */
+#card .also { margin-top: 0.6rem; padding-left: 0.6rem; border-left: 2px solid var(--rule); }
+#card .also .label { font-size: 0.75em; color: var(--muted); letter-spacing: 0.04em; }
+#card .also .reading + .reading { margin-top: 0.45rem; }
+#card .also .lemma { font-size: 0.95em; }
 #card .label { font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: 0.06em;
                text-transform: uppercase; color: var(--muted); margin-right: 0.35rem; }
 

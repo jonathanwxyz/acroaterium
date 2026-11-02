@@ -1269,6 +1269,29 @@ function renderCard(data) {
     }
     if (MATCH_NOTES[t.match]) box.append(el("div", "note", tr(MATCH_NOTES[t.match])));
     if (t.note) box.append(el("div", "note", trNote(t.note)));  // (automatic parsing: says so)
+    // Automatic parsing in doubt: the other readings it thinks possible, each in full.
+    if (t.also?.length) {
+      const also = el("div", "also");
+      also.append(el("div", "label", capitals(tr("Also possible"))));
+      for (const a of t.also) {
+        const row = el("div", "reading");
+        const lemma = el("span", "lemma", a.lemma);
+        const link = el("a", null, "Logeion ↗");
+        link.href = `https://logeion.uchicago.edu/${encodeURIComponent(a.lemma)}`;
+        link.target = "_blank";
+        link.rel = "noopener";
+        lemma.append(link);
+        row.append(lemma);
+        if (a.definition) row.append(el("div", "definition", a.definition));
+        if (a.morph?.length) {
+          const m = el("div", "morph");
+          for (const f of a.morph) m.append(el("span", null, trTerm(f)));
+          row.append(m);
+        }
+        also.append(row);
+      }
+      box.append(also);
+    }
     cardBody.append(box);
   }
 }

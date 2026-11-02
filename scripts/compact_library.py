@@ -43,7 +43,7 @@ Format (scripts/compact_read.py reads it; an app's decoder follows that):
         treebank              seq, word_index, part, treebank.lemma_id, treebank.postag_id,
                               treebank.relation_id, treebank.head_id, form, match
         auto_words            seq, word_index, auto.lemma_id, auto.morph_id, confidence,
-                              alternative
+                              alternative, also
         paraphrase_links      seq, word_index, para_seq, para_index, para_word
         units                 seq, piece, content?, start, speech_end, end, score, cut
       A column "<kind>_id" is the id of a value in dicts (below). "content?" (units): null
