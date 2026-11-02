@@ -498,12 +498,19 @@ def text_json(slug, n):
         translation_credits = dict(con.execute("SELECT lang, credit FROM translation_credits WHERE text = ?", (slug,)))
     except sqlite3.OperationalError:  # a library built before there were translations
         pass
-    try:  # or English in passages of several lines, after the last line of each (Murray's Homer)
-        passages = [{"from": a, "to": b, "text": content} for a, b, content in con.execute(
-            "SELECT seq_from, seq_to, content FROM translation_passages WHERE text = ? AND div = ? AND lang = 'en' "
-            "ORDER BY seq_from", (slug, n))]
+    try:  # or English in passages of several lines, after the last line of each (Murray's Homer); one may
+        # end within its last segment, after its word wordTo (a long speech's part, in prose)
+        passages = [{"from": a, "to": b, "text": content, **({"wordTo": w} if w is not None else {})}
+                    for a, b, content, w in con.execute(
+            "SELECT seq_from, seq_to, content, word_to FROM translation_passages WHERE text = ? AND div = ? "
+            "AND lang = 'en' ORDER BY seq_to, word_to IS NULL, word_to", (slug, n))]
     except sqlite3.OperationalError:
-        passages = []
+        try:  # (a library built before word_to)
+            passages = [{"from": a, "to": b, "text": content} for a, b, content in con.execute(
+                "SELECT seq_from, seq_to, content FROM translation_passages WHERE text = ? AND div = ? AND lang = 'en' "
+                "ORDER BY seq_from", (slug, n))]
+        except sqlite3.OperationalError:
+            passages = []
     english, modern, paraphrase = translated["en"], translated["el"], translated["paraphrase"]
     try:  # a part's label in English, beside the Greek (the prayers: "cite": label)
         ref_labels = dict(con.execute("SELECT ref, label FROM ref_labels WHERE text = ? AND lang = 'en'", (slug,)))

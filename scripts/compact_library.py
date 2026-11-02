@@ -37,7 +37,7 @@ Format (scripts/compact_read.py reads it; an app's decoder follows that):
       reals (shortest round-trip form), null as null.
         segments              seq, ref, content, speaker, para
         translations          seq, lang, content
-        translation_passages  seq_from, seq_to, lang, content
+        translation_passages  seq_from, seq_to, lang, content, word_to
         notes                 pos_from, pos_to, source, seq, body?, parts
         words                 seq, word_index, strongs, words.morph_id, words.lemma_id
         treebank              seq, word_index, part, treebank.lemma_id, treebank.postag_id,

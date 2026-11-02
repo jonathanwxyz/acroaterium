@@ -430,15 +430,31 @@ function addPassages(data, after, numbered) {
 function renderProse(data, has) {
   const labelled = data.cite === "label";
   const frag = document.createDocumentFragment();
-  let li = null, text = null, num = null, lastRef = null, notes = 0, refsIn = [], prevLine = null;
-  // A long speech's English comes in passages: the Greek breaks where each ends, so each
-  // passage stands under its own part.
-  const breaks = new Set((data.translation ?? []).map((p) => p.to));
+  let li = null, text = null, num = null, lastRef = null, notes = 0, refsIn = [], breakNext = false;
+  // A long speech's English comes in passages: the Greek breaks where each ends (after a
+  // segment, or after its word wordTo), so each passage stands under its own part.
+  const breaks = new Set(), cutsIn = new Map(), cutRow = new Map();
+  for (const p of data.translation ?? []) {
+    if (p.wordTo == null) breaks.add(p.to);
+    else cutsIn.set(p.to, [...(cutsIn.get(p.to) ?? []), p.wordTo].sort((a, b) => a - b));
+  }
   const close = () => {  // the paragraph's notes key: its first to last segment
     if (!li) return;
     const label = refsIn.length > 1 ? `${refsIn[0]}–${refsIn.at(-1)}` : refsIn[0] ?? lastRef ?? "";
     setNoteKey(li, Number(li.dataset.from), Number(li.dataset.to), label);
     if (notes) li.append(scholiaButton(li, label, notes));
+  };
+  const open = (v, ref) => {
+    close();
+    li = el("li", "verse prose-para untimed" + (v.line <= 0 ? " title" : ""));  // (lines 0, -1…: a heading read first)
+    li.dataset.from = li.dataset.to = v.line;
+    li.addEventListener("click", proseMarginClick);
+    num = el("span", "num");
+    text = el("span", "text");
+    li.append(num, text);
+    frag.append(li);
+    notes = 0;
+    refsIn = lastRef && !(ref && ref !== lastRef) ? [lastRef] : [];
   };
   for (const v of data.verses) {
     const part = labelled && v.ref && v.ref !== lastRef;
@@ -447,26 +463,14 @@ function renderProse(data, has) {
       li = text = null;
       frag.append(partHeading(v.ref, data.refLabels?.[v.ref]));
     }
-    const opens = v.para || !text || breaks.has(prevLine);
-    prevLine = v.line;
+    const opens = v.para || !text || breakNext;
     if (!opens && v.br) text.append(document.createElement("br"));
-    if (opens) {
-      close();
-      li = el("li", "verse prose-para untimed" + (v.line <= 0 ? " title" : ""));  // (lines 0, -1…: a heading read first)
-      li.dataset.from = v.line;
-      li.addEventListener("click", proseMarginClick);
-      num = el("span", "num");
-      text = el("span", "text");
-      li.append(num, text);
-      frag.append(li);
-      notes = 0;
-      refsIn = lastRef && !(v.ref && v.ref !== lastRef) ? [lastRef] : [];
-    }
+    if (opens) open(v, v.ref);
     li.dataset.to = v.line;
     notes += v.scholia ?? 0;
     if (v.ref && v.ref !== lastRef) refsIn.push(v.ref);
     if (v.speaker) text.append(el("span", "speaker", v.speaker), " ");
-    const seg = el("span", "seg");
+    let seg = el("span", "seg");
     if (v.mark) seg.append(el("span", "ref-mark edition-mark", v.mark), " ");  // (an edition's column: Migne's)
     let sectionRef = null;
     if (v.ref && v.ref !== lastRef) {
@@ -479,6 +483,18 @@ function renderProse(data, has) {
     } else if (!v.ref && !lastRef && v.line > 0 && !prologue && !labelled) {
       sectionRef = prologue = { el: li, entry: null };
     }
+    // A passage ending within the segment: the rest of it goes on in a paragraph of its own.
+    const cuts = [...(cutsIn.get(v.line) ?? [])];
+    breakNext = breaks.has(v.line);
+    const cutAfter = (lastWord) => {  // the words up to lastWord are in: cut there if a passage ends by then
+      const done = [];
+      while (cuts.length && cuts[0] <= lastWord) done.push(cuts.shift());
+      if (!done.length) return;
+      for (const c of done) cutRow.set(`${v.line}:${c}`, li);
+      text.append(seg, " ");
+      open(v, null);
+      seg = el("span", "seg");
+    };
     // Parsed words: a span per whitespace chunk, numbered through the segment (as the server's word_index).
     let wordIndex = 0;
     const fill = (node, str) => {
@@ -493,8 +509,10 @@ function renderProse(data, has) {
     };
     if (v.parts) {
       // With a recording: each sentence is timed, and is what lights up, follows and seeks.
+      // (A cut within a sentence waits for its end.)
+      let words = 0;
       v.parts.forEach((part, k) => {
-        if (k) seg.append(" ");
+        if (k && seg.childNodes.length) seg.append(" ");
         const sent = el("span", "sent");
         fill(sent, part.text);
         const entry = { line: v.line, ref: lastRef, start: part.start, speechEnd: part.speechEnd, end: part.end,
@@ -507,9 +525,24 @@ function renderProse(data, has) {
         verses.push(entry);
         if (sectionRef && !sectionRef.entry) sectionRef.entry = entry;
         seg.append(sent);
+        words += part.text.split(/\s+/).filter(Boolean).length;
+        if (k < v.parts.length - 1) cutAfter(words - 1);
       });
+    } else if (cuts.length) {
+      const words = v.text.split(/\s+/).filter(Boolean);
+      let from = 0;
+      for (const c of [...cuts]) {
+        fill(seg, words.slice(from, c + 1).join(" "));
+        from = c + 1;
+        cutAfter(c);
+      }
+      fill(seg, words.slice(from).join(" "));
     } else {
       fill(seg, v.text);
+    }
+    if (cuts.length) {  // (cut in the segment's last sentence: after it)
+      for (const c of cuts) cutRow.set(`${v.line}:${c}`, li);
+      breakNext = true;
     }
     text.append(seg, " ");
   }
@@ -518,7 +551,8 @@ function renderProse(data, has) {
   verses.sort((a, b) => a.start - b.start);
   // A parallel text's English: each passage after the paragraph it ends in.
   const paras = [...list.querySelectorAll(".prose-para")];
-  addPassages(data, (p) => paras.find((li) => Number(li.dataset.from) <= p.to && p.to <= Number(li.dataset.to)), false);
+  addPassages(data, (p) => p.wordTo != null ? cutRow.get(`${p.to}:${p.wordTo}`)
+    : paras.findLast((li) => Number(li.dataset.from) <= p.to && p.to <= Number(li.dataset.to)), false);
 }
 
 // Prose with a recording: a tap in the paragraph's margin (beside the text, not on it, where

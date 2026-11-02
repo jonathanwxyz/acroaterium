@@ -11,7 +11,7 @@
   const CHUNK_COLUMNS = {
     segments: ["seq", "ref", "content", "speaker", "para"],
     translations: ["seq", "lang", "content"],
-    translation_passages: ["seq_from", "seq_to", "lang", "content"],
+    translation_passages: ["seq_from", "seq_to", "lang", "content", "word_to"],
     notes: ["pos_from", "pos_to", "source", "seq", "body?", "parts"],
     words: ["seq", "word_index", "strongs", "words.morph_id", "words.lemma_id"],
     treebank: ["seq", "word_index", "part", "treebank.lemma_id", "treebank.postag_id", "treebank.relation_id",
@@ -350,7 +350,8 @@
       const translationCredits = {};
       for (const r of await this.db.table("translation_credits")) if (r.text === slug) translationCredits[r.lang] = r.credit;
       const passages = (await this.db.rows("translation_passages", slug, n)).filter((r) => r.lang === "en")
-        .sort(bySeq("seq_from")).map((r) => ({ from: r.seq_from, to: r.seq_to, text: r.content }));
+        .sort(bySeq("seq_from")).map((r) => ({ from: r.seq_from, to: r.seq_to, text: r.content,
+                                               ...(r.word_to != null ? { wordTo: r.word_to } : {}) }));
       const { en: english, el: modern, paraphrase } = translated;
       // An edition's column where a segment begins (Migne's): a table a compact file made before it hasn't.
       const marks = new Map();

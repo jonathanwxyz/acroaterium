@@ -33,7 +33,7 @@ from pathlib import Path
 CHUNK_COLUMNS = {
     "segments": ["seq", "ref", "content", "speaker", "para"],
     "translations": ["seq", "lang", "content"],
-    "translation_passages": ["seq_from", "seq_to", "lang", "content"],
+    "translation_passages": ["seq_from", "seq_to", "lang", "content", "word_to"],
     "notes": ["pos_from", "pos_to", "source", "seq", "body?", "parts"],
     "words": ["seq", "word_index", "strongs", "words.morph_id", "words.lemma_id"],
     "treebank": ["seq", "word_index", "part", "treebank.lemma_id", "treebank.postag_id", "treebank.relation_id",
@@ -57,7 +57,7 @@ DICTS = {
 FULL = {
     "segments": ("library", "segments", ["text", "div", "seq", "ref", "content", "speaker", "para"]),
     "translations": ("library", "translations", ["text", "div", "seq", "lang", "content"]),
-    "translation_passages": ("library", "translation_passages", ["text", "div", "seq_from", "seq_to", "lang", "content"]),
+    "translation_passages": ("library", "translation_passages", ["text", "div", "seq_from", "seq_to", "lang", "content", "word_to"]),
     "notes": ("library", "notes", ["text", "div", "pos_from", "pos_to", "source", "seq", "body", "parts"]),
     "words": ("library", "words", ["text", "div", "seq", "word_index", "strongs", "morph", "lemma", "gloss"]),
     "treebank": ("library", "treebank", ["text", "div", "seq", "word_index", "part", "lemma", "postag", "relation",

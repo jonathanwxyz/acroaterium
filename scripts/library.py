@@ -747,18 +747,26 @@ def translation_passages(spec, segments):
 
 
 LONG_PARA, CHUNK = 700, 300  # (letters of Greek: a paragraph cut into passages, and their least length)
+GK_STOP, GK_PAUSE = ".;;", "··"  # (a sentence's end, Greek's question mark too; the ano teleia)
+EN_STOP, EN_PAUSE = ".?!", ";:—"
+SNAP = 150  # (letters of English either side of where a cut falls: a sentence's end is looked for)
+PAUSE_COST = 60  # (letters: how much nearer than a full stop a semicolon must be, after a Greek full stop)
 
 
 def stephanus_passages(spec, work, segments):
-    """[(div, first seq, last seq, language, text)]: a Perseus translation of a text cited
-    by Stephanus sections ("type": "perseus", "edition": default perseus-eng2, the Loeb's
-    for Plato; "work": default the text's), a passage under each paragraph of the Greek.
+    """[(div, first seq, last seq, language, text, word)]: a Perseus translation of a text
+    cited by Stephanus sections ("type": "perseus", "edition": default perseus-eng2, the
+    Loeb's for Plato; "work": default the text's), a passage under each paragraph of the
+    Greek, or a long paragraph's part: the passage ends after its last segment's word
+    `word` (its word_index), or with the segment where None.
     Speech for speech: the n-th speaker's label in the English is the Greek's n-th (one
-    carried over a page division, rend="merge", isn't a new speech); a speech of several
-    paragraphs is cut at the Stephanus sections the English marks, each piece under the
-    paragraph its section begins in. Where the speeches don't pair up, by sections alone.
-    A long paragraph has several passages, cut at sections (LONG_PARA, CHUNK): the reader
-    breaks the Greek where each ends."""
+    carried over a page division, rend="merge", isn't a new speech); where they don't pair
+    up, the whole text as one speech. Within a speech the Stephanus sections both mark are
+    fixed points, and the English between two of them goes with the Greek in proportion;
+    where the Greek is cut (a paragraph begins; a paragraph of over LONG_PARA letters cut at
+    a sentence's end, or failing that an ano teleia, once a part has CHUNK letters and as
+    many are left), the English is cut at the sentence's end (EN_STOP, or EN_PAUSE after
+    an ano teleia) nearest where that falls, within SNAP letters."""
     tlg, wk = work.split(".")
     name = f"{work}.{spec.get('edition', 'perseus-eng2')}.xml"
     root = ElementTree.fromstring(get(f"https://raw.githubusercontent.com/PerseusDL/canonical-greekLit/master/data/{tlg}/{wk}/{name}",
@@ -772,6 +780,8 @@ def stephanus_passages(spec, work, segments):
             if el.get("unit") == "section":
                 state["ref"] = el.get("n").lower()
                 pieces.append([state["speech"], state["ref"], []])
+            elif el.get("unit") == "para" and pieces:  # (often with no space either side)
+                pieces[-1][2].append(" ")
             return
         if tag == "label":
             if not merge:
@@ -787,6 +797,8 @@ def stephanus_passages(spec, work, segments):
             walk(child, merge)
             if child.tail and pieces:
                 pieces[-1][2].append(child.tail)
+        if tag in ("p", "l") and pieces:  # (a paragraph's end, where the file has no space before the next)
+            pieces[-1][2].append(" ")
 
     walk(root.find(f".//{TEI}body"))
     segs = [s for s in segments if s[1] > 0]
@@ -795,41 +807,94 @@ def stephanus_passages(spec, work, segments):
         print(f"  translation: {sum(1 for s in segs if s[4])} speeches in the Greek, {state['speech'] + 1} "
               "in the English: matched by sections alone")
         pieces = [[0, ref, text] for _, ref, text in pieces]
-    # The Greek's paragraphs, by speech: {speech: [[segments]]}
-    by_para, speech = {}, -1 if by_speech else 0
-    for s in segs:
-        if s[4] and by_speech:
-            speech += 1
-        if s[5] or speech not in by_para:
-            by_para.setdefault(speech, []).append([])
-        by_para[speech][-1].append(s)
-    # ... each a passage, or a long one (over LONG_PARA letters) several, cut where a section
-    # begins once a passage has CHUNK letters and as many are left: [[div, first seq, last seq, {sections}]]
-    paras = {}
-    for sp, own in by_para.items():
-        for para in own:
-            left, chunk = sum(len(s[3]) for s in para), None
-            whole = left <= LONG_PARA
-            for k, s in enumerate(para):
-                if chunk is None or not whole and s[2] != para[k - 1][2] and chunk[4] >= CHUNK and left >= CHUNK:
-                    chunk = [s[0], s[1], s[1], set(), 0]
-                    paras.setdefault(sp, []).append(chunk)
-                chunk[2] = s[1]
-                chunk[3].add((s[2] or "").lower())
-                chunk[4] += len(s[3])
-                left -= len(s[3])
-    texts, at = {}, {}  # (speech, passage): [pieces]; at: the passage a speech's English has reached
+    # Each speech's English, and where each section begins in it
+    english = {}  # speech: [text, [(section, offset)]]
     for sp, ref, text in pieces:
-        if sp not in paras:
-            continue
-        k = next((k for k, p in enumerate(paras[sp]) if ref in p[3]), None)
-        at[sp] = max(at.get(sp, 0), k or 0)  # (a section the Greek begins elsewhere: where we are)
-        texts.setdefault((sp, at[sp]), []).append("".join(text))
+        e = english.setdefault(sp, ["", []])
+        e[1].append((ref, len(e[0])))
+        e[0] += re.sub(r"\s+", " ", "".join(text))
+    # ... and its Greek, word by word: (div, seq, word_index, word, offset, section), the
+    # words a paragraph begins with
+    greek, speech = {}, -1 if by_speech else 0
+    for div, seq, ref, content, speaker, para in segs:
+        if speaker and by_speech:
+            speech += 1
+        g = greek.setdefault(speech, {"words": [], "paras": [], "end": 0})
+        if para or not g["words"]:
+            g["paras"].append(len(g["words"]))
+        for k, w in enumerate(content.split()):
+            g["words"].append((div, seq, k, w, g["end"], (ref or "").lower()))
+            g["end"] += len(w) + 1
+
+    def ends_with(word, marks):
+        return word.rstrip("»”’\"')]")[-1:] in marks
+
     out = []
-    for (sp, k), parts in sorted(texts.items()):
-        if text := re.sub(r"\s+", " ", " ".join(parts)).strip():
-            div, first, last, *_ = paras[sp][k]
-            out.append((div, first, last, spec["lang"], text))
+    for sp, g in greek.items():
+        words = g["words"]
+        etext, emarks = english.get(sp, ["", []])
+        lead = len(etext) - len(etext.lstrip())
+        # Where the Greek is cut: each paragraph's first word, and a long paragraph's parts'
+        cuts = []
+        bounds = g["paras"] + [len(words)]
+        for a, b in zip(bounds, bounds[1:]):
+            if a:
+                cuts.append(a)
+            length = sum(len(w[3]) + 1 for w in words[a:b])
+            if length <= LONG_PARA:
+                continue
+            acc = 0
+            for i in range(a, b - 1):
+                acc += len(words[i][3]) + 1
+                left = length - acc
+                if left < CHUNK:
+                    break
+                if acc >= CHUNK and ends_with(words[i][3], GK_STOP) or acc >= 1.5 * CHUNK and ends_with(words[i][3], GK_PAUSE):
+                    cuts.append(i + 1)
+                    acc = 0
+        # The fixed points: a section's beginning in both (in order in both)
+        first = {}
+        for w in words:
+            first.setdefault(w[5], w[4])
+        fixed = [(0, lead)]
+        for ref, off in emarks:
+            if ref in first and first[ref] > fixed[-1][0] and off > fixed[-1][1]:
+                fixed.append((first[ref], off))
+        fixed.append((g["end"], len(etext)))
+
+        def at(x):  # where Greek offset x falls in the English
+            for (g0, e0), (g1, e1) in zip(fixed, fixed[1:]):
+                if g0 <= x <= g1:
+                    return e0 + (e1 - e0) * (x - g0) / max(1, g1 - g0)
+            return len(etext)
+
+        ecuts, gcuts = [lead], [0]
+        for i in sorted(set(cuts)):
+            want = at(words[i][4])
+            # (after a Greek full stop an English one is preferred, by PAUSE_COST letters: a
+            # translator may join two sentences with a semicolon)
+            cost = {**dict.fromkeys(EN_STOP, 0), **dict.fromkeys(EN_PAUSE, 0 if not ends_with(words[i - 1][3], GK_STOP) else PAUSE_COST)}
+            ends = [(abs(m.end() - want) + cost[m[1]], m.end()) for m in re.finditer(rf"([{re.escape(EN_STOP + EN_PAUSE)}])[”’\"')\]]*\s", etext)
+                    if ecuts[-1] < m.end() < len(etext) and abs(m.end() - want) <= SNAP]
+            if ends:
+                e = min(ends)[1]
+            else:  # (no sentence's end near: the space nearest)
+                spaces = [m.end() for m in re.finditer(r"\s", etext) if ecuts[-1] < m.end() < len(etext)]
+                if not spaces:
+                    continue
+                e = min(spaces, key=lambda x: abs(x - want))
+            gcuts.append(i)
+            ecuts.append(e)
+        gcuts.append(len(words))
+        ecuts.append(len(etext))
+        for (ga, gb), (ea, eb) in zip(zip(gcuts, gcuts[1:]), zip(ecuts, ecuts[1:])):
+            text = etext[ea:eb].strip()
+            if not text or ga >= gb:
+                continue
+            div, seq_from = words[ga][0], words[ga][1]
+            last = words[gb - 1]
+            whole = gb == len(words) or words[gb][1] != last[1]  # (to the segment's end)
+            out.append((div, seq_from, last[1], spec["lang"], text, None if whole else last[2]))
     return out
 
 
@@ -1652,7 +1717,7 @@ CREATE TABLE IF NOT EXISTS units (
 def upgrade_schema(con):
     """Add the Iliad's columns and tables to a library built before them."""
     con.executescript(ILIAD_SCHEMA)
-    for table, column in (("texts", "eyebrow TEXT"), ("treebank", "match TEXT")):
+    for table, column in (("texts", "eyebrow TEXT"), ("treebank", "match TEXT"), ("translation_passages", "word_to INTEGER")):
         if column.split()[0] not in {r[1] for r in con.execute(f"PRAGMA table_info({table})")}:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
 
@@ -1694,7 +1759,7 @@ def iliad_into_library(con, slug="iliad", audio_db=AUDIO_DB, verbose=False):
                     [(slug, b, line, {"murray": "en", "polylas": "el"}[tr], text) for tr, b, line, text in il.execute(
                         "SELECT translation, book, line, text FROM translation_lines "
                         "WHERE translation IN ('murray', 'polylas') AND text IS NOT NULL")])
-    con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, 'en', ?)",
+    con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, 'en', ?, NULL)",
                     [(slug, b, a, z, text) for b, a, z, text in il.execute(
                         "SELECT book, line_from, line_to, text FROM translation_passages WHERE translation = 'murray' "
                         "ORDER BY book, line_from")
@@ -2267,7 +2332,8 @@ def main():
             seq_to   INTEGER NOT NULL,
             lang     TEXT NOT NULL,
             content  TEXT NOT NULL,
-            PRIMARY KEY (text, div, seq_from, lang));
+            word_to  INTEGER,            -- the passage ends after this word (word_index) of seq_to; NULL: with it
+            PRIMARY KEY (text, div, seq_to, word_to, lang));
         CREATE TABLE ref_labels (        -- a part's label (segments.ref) in another language
             text  TEXT NOT NULL,
             ref   TEXT NOT NULL,
@@ -2298,7 +2364,7 @@ def main():
         con.execute("INSERT INTO settings VALUES ('church_text', ?)", (json.dumps(True),))
     con.executemany("INSERT INTO texts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows_t)
     con.executemany("INSERT INTO translations VALUES (?, ?, ?, ?, ?)", rows_tr)
-    con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, ?, ?)", rows_tp)
+    con.executemany("INSERT INTO translation_passages VALUES (?, ?, ?, ?, ?, ?, ?)", [(*r, None)[:7] for r in rows_tp])
     con.executemany("INSERT INTO translation_credits VALUES (?, ?, ?)", rows_tc)
     con.executemany("INSERT INTO ref_labels VALUES (?, ?, ?, ?)", rows_rl)
     con.executemany("INSERT INTO ref_marks VALUES (?, ?, ?, ?)", rows_rm)
