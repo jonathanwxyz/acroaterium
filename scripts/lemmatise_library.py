@@ -7,13 +7,17 @@ Run with that project's environment:
 
     ~/code/lemmatisation/venv/bin/python scripts/lemmatise_library.py crito phaedrus ...
     LEMMATISATION=/path/to/lemmatisation ... (if it's elsewhere)
+    ... --redo ion   (lemmatise again what was done, after the lemmatiser changed)
 
 Only the sentences with words that lack gold parsing are lemmatised (the whole sentence,
 for context): the words go to the lemmatiser as they stand in the library, so each result
 belongs to one word, by its place in its segment. Results go to
 data/raw/lemmatised/<slug>.json, each segment with the text it was made from: a division
-whose text hasn't changed isn't done again. scripts/library.py takes them into the
-library (auto_words) for the words without gold parsing.
+whose text hasn't changed isn't done again (unless --redo). scripts/library.py takes them
+into the library (auto_words) for the words without gold parsing. Where the lemmatiser is
+in doubt it says so: other readings worth showing (also_possible: lemma, probability, why,
+morph, headword, definition), a part of speech or analysis left open (pos_options,
+morph_options), flags (uncertain, no-definition).
 """
 import argparse
 import json
@@ -31,7 +35,8 @@ sys.path.insert(0, str(LEMMATISATION))
 from lemeval.lemmatise import GreekLemmatiser, tokenise  # noqa: E402
 
 SENTENCE_END = {".", ";", "·", ";", "!", "?"}
-KEEP = ("lemma", "headword", "definition", "pos", "morph", "confidence", "source", "alternatives", "homographs")
+KEEP = ("lemma", "headword", "definition", "pos", "morph", "confidence", "source", "alternatives", "homographs",
+        "also_possible", "pos_options", "morph_options", "flags")
 
 
 def gold_words(con, slug):
@@ -73,12 +78,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("slugs", nargs="+")
     ap.add_argument("--all-words", action="store_true", help="also the words with gold parsing")
+    ap.add_argument("--redo", action="store_true", help="lemmatise again what was done already")
     args = ap.parse_args()
     con = sqlite3.connect(LIBRARY)
     lem = None
     for slug in args.slugs:
         path = OUT / f"{slug}.json"
-        done = json.loads(path.read_text()) if path.exists() else {}
+        done = json.loads(path.read_text()) if path.exists() and not args.redo else {}
         gold = set() if args.all_words else gold_words(con, slug)
         divs = {}
         for div, seq, content in con.execute(
