@@ -646,8 +646,45 @@ def brenton_verses():
 
 
 def vulgate_verses():
-    """{(book, chapter, verse): Latin} of the Clementine Vulgate."""
-    return vpl_verses(VULGATE_ZIP, "latVUC_vpl")
+    """{(book, chapter, verse): Latin} of the Clementine Vulgate (its brackets, an edition's
+    marks of where the text runs on, dropped)."""
+    return {k: re.sub(r"\s*[\[\]]\s*", " ", t).strip() for k, t in vpl_verses(VULGATE_ZIP, "latVUC_vpl").items()}
+
+
+# Paratext's versifications (SIL's, MIT licence): each maps its verses to the original's
+# (the Hebrew's) where they differ, so the Septuagint's verse can be found in the Vulgate.
+PARATEXT_VRS = "https://raw.githubusercontent.com/sillsdev/libpalaso/master/SIL.Scripture/Resources/{}.vrs.txt"
+_vrs = {}
+
+
+def versification(name):
+    """{(book, chapter, verse): (book, chapter, verse) in the original's numbering} from
+    Paratext's name.vrs ("lxx", "vul"): its lines "GEN 31:55 = GEN 32:1", a verse or a run."""
+    if name not in _vrs:
+        ref = r"([1-4A-Z]{3})\s+(\d+):(\d+)[a-z]?(?:-(?:(\d+):)?(\d+)[a-z]?)?"
+        out = {}
+        for line in get(PARATEXT_VRS.format(name), f"paratext/{name}.vrs").splitlines():
+            m = re.fullmatch(ref + r"\s*=\s*" + ref, line.split("#", 1)[0].strip())
+            if not m:
+                continue
+            b1, c1, v1, c1b, v1b, b2, c2, v2, c2b, v2b = m.groups()
+            n1 = int(v1b) - int(v1) + 1 if v1b and not c1b else 1
+            n2 = int(v2b) - int(v2) + 1 if v2b and not c2b else 1
+            for k in range(min(n1, n2) if n1 > 1 and n2 > 1 else n1):
+                out.setdefault((b1, int(c1), int(v1) + k), (b2, int(c2), int(v2) + (k if n2 > 1 else 0)))
+        _vrs[name] = out
+    return _vrs[name]
+
+
+def septuagint_to_vulgate(book, org_book):
+    """A function (chapter, verse) -> (chapter, verse): where a Septuagint book's verse (the
+    book as lxx.vrs names it) is in the Vulgate, through the original's numbering (org_book:
+    the book as the original's and vul.vrs name it)."""
+    lxx, vul = versification("lxx"), versification("vul")
+    back = {}
+    for k, org in vul.items():
+        back.setdefault(org, k)
+    return lambda c, v: back.get(org := lxx.get((book, c, v), (org_book, c, v)), org)[1:]
 
 
 def vamvas_verses():
@@ -673,7 +710,12 @@ def translation(spec, segments):
       "refs": {"1:πρ. 1": "1:1", "1:1": null}: a verse of ours ("div:ref") read at another
         place of the translation's, or at none (Brenton's Sirach: the prologue as 1:1), or
         at several, joined ("6:51": ["6:51", "6:52"]: the Vulgate cuts the verse in two;
-        these are the translation's own numbers, not "moved")."""
+        these are the translation's own numbers, not "moved");
+      "versification": "JER" (or ["DAG", "DAN"]): the Septuagint's verses found in the
+        Vulgate through Paratext's tables (septuagint_to_vulgate: the book as lxx.vrs names
+        it, and as vul.vrs does), where "moved" and "refs" don't say;
+      "skip": [36, 37]: chapters of ours with none (the Septuagint's order not the
+        translation's, as Exodus's last)."""
     verses = {"web": web_verses, "vamvas": vamvas_verses, "brenton": brenton_verses,
               "vulgate": vulgate_verses}.get(spec["type"])
     if not verses:
@@ -687,9 +729,15 @@ def translation(spec, segments):
             moved[(int(ca), int(first) + k)] = (cb, vb + k)
     chapters = {int(c): tuple(b) for c, b in spec.get("chapters", {}).items()}
     refs = spec.get("refs", {})
+    vrs = spec.get("versification")
+    vrs = septuagint_to_vulgate(*vrs) if isinstance(vrs, list) else septuagint_to_vulgate(vrs, vrs) if vrs else None
+    skip = set(spec.get("skip", []))
     plain = {(div, ref) for div, _, ref, *_ in segments}
     out = []
     for div, seq, ref, *_ in segments:
+        if div in skip:
+            continue
+        own = False  # (a place in the translation's own numbering: not to be renumbered)
         if f"{div}:{ref}" in refs:
             target = refs[f"{div}:{ref}"]
             if target is None:
@@ -700,6 +748,7 @@ def translation(spec, segments):
                     out.append((div, seq, spec["lang"], " ".join(parts)))
                 continue
             c, v = map(int, target.split(":"))
+            own = True
         elif m := re.fullmatch(r"(\d+):(\d+)", ref):
             c, v = int(m[1]), int(m[2])
         elif ref.isdigit():
@@ -708,7 +757,10 @@ def translation(spec, segments):
             c, v = div, int(m[1])
         else:
             continue
-        c, v = moved.get((c, v), (c, v))
+        if (c, v) in moved:
+            c, v = moved[(c, v)]
+        elif vrs and not own:
+            c, v = vrs(c, v)
         book, c = chapters.get(c, (spec["book"], c))
         if text := verses.get((book, c, v)):  # (WEB lists the verses it omits, empty)
             out.append((div, seq, spec["lang"], text))
