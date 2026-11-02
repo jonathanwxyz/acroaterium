@@ -874,7 +874,9 @@ window.addEventListener("pageshow", (e) => {
 // Search (the magnifier by the text menu, opening a panel): a lemma as it's typed, accents,
 // breathings and capitals aside (/api/lemmas: λογ, ΛΟΓ), or a word of it as printed
 // (λογου: λόγος, with λόγου beside it), a few suggested at a time, commonest first, each
-// with its words in the library and its meaning; the one chosen
+// with its words in the library and its meaning; a whole word, every lemma Morpheus finds
+// it may be of first, with its analyses (masc gen sg), those the library hasn't greyed;
+// the one chosen
 // (tapped, or picked with the arrows and Enter: the first, without) opens its references
 // (refs.html). The lemmas are the server's: offline, it says so.
 {
@@ -916,9 +918,16 @@ window.addEventListener("pageshow", (e) => {
       if (x.form) name.append(el("span", "lemma-result-form", x.form));
       top.append(name, el("span", "lemma-result-n", x.n.toLocaleString(UI_LOCALE)));
       li.append(top);
+      if (x.parses?.length) li.append(el("span", "lemma-result-parses", x.parses.join(" · ")));
       if (x.definition) li.append(el("span", "lemma-result-def", x.definition));
       li.lang = "grc";
-      li.addEventListener("click", () => go(x.lemma));
+      if (x.absent) {  // (Morpheus's, with no words in the library: nothing to open)
+        li.classList.add("lemma-result-absent");
+        li.setAttribute("aria-disabled", "true");
+        top.lastChild.textContent = tr("not in the library");
+      } else {
+        li.addEventListener("click", () => go(x.lemma));
+      }
       results.append(li);
     });
     if (note) results.append(el("li", "lemma-result-note", note));
@@ -959,8 +968,8 @@ window.addEventListener("pageshow", (e) => {
   input.addEventListener("focus", () => { if (found.length) open(true); });
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    const pick = found[active] ?? found[0];
-    if (pick) go(pick.lemma);
+    const pick = found[active] ?? found.find((x) => !x.absent);
+    if (pick && !pick.absent) go(pick.lemma);
     else ask();
   });
   // The panel: the button opens it (at the box, ready to type) and closes it, as do a tap

@@ -10,6 +10,9 @@ data/*.sqlite.*
 # A copy of vasilestancu.ro's text, which states no licence: kept local
 data/iliad.tsv
 
+# Morpheus, built by scripts/install_morpheus.sh
+data/morpheus/
+
 __pycache__/
 
 # Audio recordings (large, from YouTube), kept local

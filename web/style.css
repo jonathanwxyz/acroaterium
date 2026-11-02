@@ -1724,6 +1724,8 @@ body.library { padding-top: env(safe-area-inset-top); }
 .lemma-result-form { margin-left: 0.6em; color: var(--muted); font-style: italic; }  /* (the word typed, as printed) */
 .lemma-result-def { display: block; font: 13px system-ui, sans-serif; color: var(--muted);
                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lemma-result-parses { display: block; font: 13px system-ui, sans-serif; color: var(--muted); font-style: italic; }
+.lemma-result-absent { cursor: default; opacity: 0.6; }
 .lemma-result-note { padding: 0.35rem 0.5rem; font: italic 14px system-ui, sans-serif; color: var(--muted); }
 .category { margin: 2rem 0 0; }
 .category > h2 {

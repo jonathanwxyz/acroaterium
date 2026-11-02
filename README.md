@@ -65,6 +65,11 @@ Needs Python 3 (standard library only) and, for the audio, ffmpeg.
    python3 scripts/serve.py --show-hidden   # also list the hidden texts, greyed
    ```
 
+   The search finds a lemma by any of its words, and once a whole word is typed, every
+   lemma Morpheus says it may be of, with its analyses: build Morpheus into
+   `data/morpheus` with `scripts/install_morpheus.sh` (git, gcc, make, flex). Without
+   it, the search finds the words printed in the library only.
+
 ### On a phone
 
 The reader is an installable web app: "Install" or "Add to Home Screen" in the browser

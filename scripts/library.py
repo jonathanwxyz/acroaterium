@@ -1864,12 +1864,18 @@ def lemma_index(con):
     # capitals aside, with the lemmas of its words and its commonest printing (a grave as
     # an acute; in small letters but for a name's); not a lemma of a fiftieth of its words
     # at most, a misparsing mostly (ἦν: ὁ, twice).
+    # A word a treebank has in parts (κἀγώ: καί, ἐγώ), each part as the treebank has it.
+    parts = {}
+    for text, div, seq, index, part, form in con.execute(f"""
+            SELECT text, div, seq, word_index, part, form FROM treebank WHERE {listed} AND form != ''
+              AND (text, div, seq, word_index) IN (SELECT text, div, seq, word_index FROM treebank WHERE part > 0)"""):
+        parts[text, div, seq, index, part] = form
     printings = {}
     for lid, text, div, seq, index, part in words:
         chunks = segments.get((text, div, seq), [])
+        printed = parts.get((text, div, seq, index, part)) or (chunks[index] if index < len(chunks) else "")
         # (an elided word with its mark: ἔλαβ᾽, searched for as ελαβ)
-        if index < len(chunks) and (form := re.sub(r"^[^\w]+|(?<=\w)[^\w’᾽ʼ']+$|(?<=[’᾽ʼ'])[^\w]+$", "",
-                                                   re.sub(r"[\[\]⟨⟩]", "", chunks[index]))):
+        if (form := re.sub(r"^[^\w]+|(?<=\w)[^\w’᾽ʼ']+$|(?<=[’᾽ʼ'])[^\w]+$", "", re.sub(r"[\[\]⟨⟩]", "", printed))):
             form = unicodedata.normalize("NFC", unicodedata.normalize("NFD", form).replace("\u0300", "\u0301"))
             if (bare_form := search_key(form.rstrip("’᾽ʼ'"))):
                 printings.setdefault((bare_form, lid), Counter())[form] += 1

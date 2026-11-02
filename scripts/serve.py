@@ -24,9 +24,10 @@ Routes:
   /api/lexword/<slug>/<n>/<seq>/<i>  JSON: the parsing of word i (whitespace chunk) of a
                        segment, for the word card (the Iliad's treebank, with Gaza's word;
                        the New Testament: Robinson's parsing, Dodson's lexicon; ...)
-  /api/lemmas?q=…&limit=  JSON: the lemmas beginning with what's typed, accents and capitals
-                       aside, or with words printed so (the library's search), commonest
-                       first, each with its count (and the word, where it's by one)
+  /api/lemmas?q=…&limit=  JSON: the library's search: the lemmas Morpheus finds what's typed
+                       may be of, with its analyses, then those beginning so, accents and
+                       capitals aside, or with words printed so, commonest first, each with
+                       its count (and the word, where it's by one)
   /api/references/<lemma>?offset=&limit=&in=  JSON: the verses of every listed text with
                        a word of that lemma (as a word card's "references" gives it), by text;
                        in: part of the library only, named as a reading plan's target
@@ -72,6 +73,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from import_treebank import POSTAG
+import morpheus
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
@@ -917,23 +919,57 @@ def references_json(lemma, query):
             "within": within, "hits": hits, "offset": offset, "more": len(verses) > limit}
 
 
+def search_spelling(word):
+    """A word as the search has it: in small letters, without accents, breathings or other
+    marks, σ for ς (library.py's search_key)."""
+    return "".join(c for c in unicodedata.normalize("NFD", word.lower()) if not unicodedata.combining(c)).replace("ς", "σ")
+
+
+def index_lemma(con, lemma):
+    """(lemma, n, definition) of the lemma index's lemma for one Morpheus names: spelled so,
+    or so in a parsing table (γίνομαι: γίγνομαι), or the one lemma of its letters; or None."""
+    lemma = unicodedata.normalize("NFC", lemma)
+    rows = (con.execute("SELECT lemma, n, definition FROM lemmas WHERE lemma = ?", (lemma,)).fetchall()
+            or con.execute("SELECT l.lemma, l.n, l.definition FROM lemma_forms f JOIN lemmas l ON l.id = f.lemma "
+                           "WHERE f.form = ?", (lemma,)).fetchall()
+            or con.execute("SELECT lemma, n, definition FROM lemmas WHERE bare = ?", (search_spelling(lemma),)).fetchall())
+    return rows[0] if len(rows) == 1 else None
+
+
 def lemmas_json(query):
-    """The lemmas the library's search suggests for what's typed (q): those beginning so,
-    whatever the accents, breathings and capitals (λογ, ΛΟΓ: λόγος, λογίζομαι, ...), or with
-    words printed so (λογου: λόγος; ειπ: λέγω); the one spelled so first, then those with a
-    word printed so, then those with the most words beginning so: [{lemma, n, definition,
-    form}], at most limit, form the word printed so where the lemma isn't spelled so."""
+    """The lemmas the library's search suggests for what's typed (q): first, where it's a
+    word, every lemma Morpheus finds it may be of (λόγου: λόγος, λογόω), the commonest in
+    the library first, each with its analyses (parses: "masc gen sg"); then those beginning
+    so, whatever the accents, breathings and capitals (λογ, ΛΟΓ: λόγος, λογίζομαι, ...), or
+    with words in the library printed so (λογου: λόγος; ειπ: λέγω): the one spelled so
+    first, then those with a word printed so, then those with the most words beginning so.
+    [{lemma, n, definition, form, parses}], at most limit (Morpheus's all, though), form
+    the word printed so where the lemma isn't spelled so; n 0 for a lemma of Morpheus's
+    the library hasn't (absent: true)."""
     if not LIBRARY.exists():
         return None
     q = urllib.parse.parse_qs(query)
-    typed = "".join(c for c in unicodedata.normalize("NFD", q.get("q", [""])[0].strip().lower())
-                    if not unicodedata.combining(c)).replace("ς", "σ")  # (library.py's search_key)
+    word = q.get("q", [""])[0].strip()
+    typed = search_spelling(word)
     limit = min(50, max(1, int(q.get("limit", ["12"])[0] or 12)))
     if not typed:
         return []
     span = (typed, typed + "\U0010ffff")
     con = sqlite3.connect(LIBRARY)
     try:
+        parsed = {}
+        for a in morpheus.analyse(word) if not re.search(r"\s", word) else []:
+            if row := index_lemma(con, a["lemma"]):
+                lemma, n, definition = row
+                x = parsed.setdefault(lemma, {"lemma": lemma, "n": n, "definition": definition,
+                                              "form": None, "parses": []})
+            else:
+                definition = con.execute("SELECT definition FROM lemma_defs WHERE lemma = ?", (a["lemma"],)).fetchone()
+                x = parsed.setdefault(a["lemma"], {"lemma": a["lemma"], "n": 0, "definition": definition and definition[0],
+                                                   "form": None, "parses": [], "absent": True})
+            if search_spelling(a["form"]) != search_spelling(x["lemma"]):
+                x["form"] = a["form"]
+            x["parses"] += [p for p in a["parses"] if p not in x["parses"]]
         try:
             rows = con.execute(
                 "WITH hits (lemma, named, exact, n) AS ("
@@ -946,16 +982,18 @@ def lemmas_json(query):
                 "  (SELECT form FROM lemma_inflections i WHERE i.lemma = b.lemma AND i.bare >= ? AND i.bare < ? "
                 "   ORDER BY i.bare = ? DESC, i.n DESC LIMIT 1) END "
                 "FROM best b JOIN lemmas l ON l.id = b.lemma ORDER BY b.exact DESC, b.score DESC, l.lemma",
-                (typed, *span, typed, *span, limit, *span, typed)).fetchall()
+                (typed, *span, typed, *span, limit + len(parsed), *span, typed)).fetchall()
         except sqlite3.OperationalError:  # a library built before the words as printed: the lemmas only
             rows = con.execute("SELECT lemma, n, definition, NULL FROM lemmas "
                                "WHERE bare >= ? AND bare < ? ORDER BY bare = ? DESC, n DESC, lemma LIMIT ?",
-                               (*span, typed, limit)).fetchall()
+                               (*span, typed, limit + len(parsed))).fetchall()
     except sqlite3.OperationalError:  # a library built before the lemma index (or its search)
         return None
     finally:
         con.close()
-    return [{"lemma": lemma, "n": n, "definition": definition, "form": form} for lemma, n, definition, form in rows]
+    rest = [{"lemma": lemma, "n": n, "definition": definition, "form": form}
+            for lemma, n, definition, form in rows if lemma not in parsed]
+    return sorted(parsed.values(), key=lambda x: -x["n"]) + rest[:max(0, limit - len(parsed))]
 
 
 def parsing_json(slug, n, seq, index):
