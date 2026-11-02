@@ -91,6 +91,7 @@ const bookMenu = document.getElementById("book-menu");
 let DATA = null;   // the book as loaded
 let verses = [];   // {line, text, start, speechEnd, end, el}, timed ones in recording order
 let refs = [];     // {ref, div, el, entry}: every line or section start, for the position box (div: its chapter)
+let prologue = null;  // {el, entry}: prose's start before its first section, typed as 0
 let current = -1;  // index into verses
 let lastUserScroll = 0;
 let passages = [];    // {from, to, el}: Murray's English passages
@@ -105,7 +106,7 @@ let released = null;  // verse the reader resumed by hand while hovering: don't 
 function render(data) {
   DATA = data;
   // (Again for the next chapter, carried on in place: nothing of the last one kept.)
-  verses = []; refs = []; passages = [];
+  verses = []; refs = []; passages = []; prologue = null;
   current = -1; focusIdx = -1; activePassage = null;
   hovered = heldBy = released = null;
   scholiaCache.clear(); scholiaLoaded.clear(); wordCache.clear(); wordLoaded.clear();
@@ -471,6 +472,8 @@ function renderProse(data, has) {
       sectionRef = { ref: v.ref, el: opens ? text.parentNode : seg, entry: null };
       refs.push(sectionRef);
       lastRef = v.ref;
+    } else if (!v.ref && !lastRef && v.line > 0 && !prologue && !labelled) {
+      sectionRef = prologue = { el: li, entry: null };
     }
     // Parsed words: a span per whitespace chunk, numbered through the segment (as the server's word_index).
     let wordIndex = 0;
@@ -845,6 +848,7 @@ function findLabel(typed) {
 function findSection(typed) {
   const m = typed.toLowerCase().replace(/[\s.§]+/g, "").match(/^(\d+)([a-e]?)$/);
   if (!m) return null;
+  if (Number(m[1]) === 0 && !m[2]) return prologue;
   return refs.find((r) => r.ref === m[1] + (m[2] || "a")) ?? refs.find((r) => r.ref.startsWith(m[1])) ?? null;
 }
 
