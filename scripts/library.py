@@ -600,6 +600,9 @@ def gap_rows(div, mine, theirs):
 #   murray  A. T. Murray's English Homer (Loeb, public domain; Perseus's encoding CC BY-SA
 #           4.0) in passages between line numbers ("work": tlg0012.tlg001), see
 #           translation_passages()
+#   perseus  a Perseus translation of a text cited by Stephanus sections (the Loeb's
+#           Plato, public domain where published before 1931; Perseus's encoding CC BY-SA
+#           4.0), a passage under each paragraph of the Greek, see stephanus_passages()
 #   gutenberg  Polylas's modern Greek Homer (public domain) from Project Gutenberg, a line
 #           under each line ("ebooks": [the volumes' numbers]), see translation_lines()
 # The reader shows English under the "translation" switch, modern Greek under "μετάφραση".
@@ -741,6 +744,74 @@ def translation_passages(spec, segments):
     if errors:
         print("  translation: cut points that don't work:", *errors[:20], sep="\n    ")
     return out, lines
+
+
+def stephanus_passages(spec, work, segments):
+    """[(div, first seq, last seq, language, text)]: a Perseus translation of a text cited
+    by Stephanus sections ("type": "perseus", "edition": default perseus-eng2, the Loeb's
+    for Plato; "work": default the text's), a passage under each paragraph of the Greek.
+    Speech for speech: the n-th speaker's label in the English is the Greek's n-th (one
+    carried over a page division, rend="merge", isn't a new speech); a speech of several
+    paragraphs is cut at the Stephanus sections the English marks, each piece under the
+    paragraph its section begins in. Where the speeches don't pair up, by sections alone."""
+    tlg, wk = work.split(".")
+    name = f"{work}.{spec.get('edition', 'perseus-eng2')}.xml"
+    root = ElementTree.fromstring(get(f"https://raw.githubusercontent.com/PerseusDL/canonical-greekLit/master/data/{tlg}/{wk}/{name}",
+                                      f"perseus_{name}").encode())
+    pieces = []  # [speech, section, [text]]: a piece wherever a speech or section begins
+    state = {"speech": -1, "ref": None}
+
+    def walk(el, merge=False):
+        tag = el.tag.replace(TEI, "")
+        if tag == "milestone":
+            if el.get("unit") == "section":
+                state["ref"] = el.get("n").lower()
+                pieces.append([state["speech"], state["ref"], []])
+            return
+        if tag == "label":
+            if not merge:
+                state["speech"] += 1
+                pieces.append([state["speech"], state["ref"], []])
+            return
+        if tag in ("note", "bibl", "head", "del"):
+            return
+        merge = merge or (tag == "said" and el.get("rend") == "merge")
+        if el.text and pieces:
+            pieces[-1][2].append(el.text)
+        for child in el:
+            walk(child, merge)
+            if child.tail and pieces:
+                pieces[-1][2].append(child.tail)
+
+    walk(root.find(f".//{TEI}body"))
+    segs = [s for s in segments if s[1] > 0]
+    by_speech = sum(1 for s in segs if s[4]) == state["speech"] + 1
+    if not by_speech:
+        print(f"  translation: {sum(1 for s in segs if s[4])} speeches in the Greek, {state['speech'] + 1} "
+              "in the English: matched by sections alone")
+        pieces = [[0, ref, text] for _, ref, text in pieces]
+    # The Greek's paragraphs, by speech: {speech: [[div, first seq, last seq, {sections in it}]]}
+    paras, speech = {}, -1 if by_speech else 0
+    for div, seq, ref, _, speaker, para in segs:
+        if speaker and by_speech:
+            speech += 1
+        if para or speech not in paras:
+            paras.setdefault(speech, []).append([div, seq, seq, set()])
+        paras[speech][-1][2] = seq
+        paras[speech][-1][3].add((ref or "").lower())
+    texts, at = {}, {}  # (speech, paragraph): [pieces]; at: the paragraph a speech's English has reached
+    for sp, ref, text in pieces:
+        if sp not in paras:
+            continue
+        k = next((k for k, p in enumerate(paras[sp]) if ref in p[3]), None)
+        at[sp] = max(at.get(sp, 0), k or 0)  # (a section the Greek begins elsewhere: where we are)
+        texts.setdefault((sp, at[sp]), []).append("".join(text))
+    out = []
+    for (sp, k), parts in sorted(texts.items()):
+        if text := re.sub(r"\s+", " ", " ".join(parts)).strip():
+            div, first, last, _ = paras[sp][k]
+            out.append((div, first, last, spec["lang"], text))
+    return out
 
 
 # Polylas's modern Greek Homer (public domain) as Project Gutenberg transcribed
@@ -2046,6 +2117,10 @@ def main():
                 rows_tp += [(t["slug"], *row) for row in found]
                 rows_tr += [(t["slug"], *row) for row in split_lines]
                 print(f"  translation: {len(found)} passages" + (f", {len(split_lines)} lines split from them" if split_lines else ""))
+            elif spec["type"] == "perseus":
+                found = stephanus_passages(spec, spec.get("work", t["source"].get("work", "")), segs)
+                rows_tp += [(t["slug"], *row) for row in found]
+                print(f"  translation: {len(found)} passages")
             elif spec["type"] == "gutenberg":
                 found = translation_lines(spec, segs)
                 rows_tr += [(t["slug"], *row) for row in found]
