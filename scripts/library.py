@@ -746,6 +746,9 @@ def translation_passages(spec, segments):
     return out, lines
 
 
+LONG_PARA, CHUNK = 700, 300  # (letters of Greek: a paragraph cut into passages, and their least length)
+
+
 def stephanus_passages(spec, work, segments):
     """[(div, first seq, last seq, language, text)]: a Perseus translation of a text cited
     by Stephanus sections ("type": "perseus", "edition": default perseus-eng2, the Loeb's
@@ -753,7 +756,9 @@ def stephanus_passages(spec, work, segments):
     Speech for speech: the n-th speaker's label in the English is the Greek's n-th (one
     carried over a page division, rend="merge", isn't a new speech); a speech of several
     paragraphs is cut at the Stephanus sections the English marks, each piece under the
-    paragraph its section begins in. Where the speeches don't pair up, by sections alone."""
+    paragraph its section begins in. Where the speeches don't pair up, by sections alone.
+    A long paragraph has several passages, cut at sections (LONG_PARA, CHUNK): the reader
+    breaks the Greek where each ends."""
     tlg, wk = work.split(".")
     name = f"{work}.{spec.get('edition', 'perseus-eng2')}.xml"
     root = ElementTree.fromstring(get(f"https://raw.githubusercontent.com/PerseusDL/canonical-greekLit/master/data/{tlg}/{wk}/{name}",
@@ -790,16 +795,30 @@ def stephanus_passages(spec, work, segments):
         print(f"  translation: {sum(1 for s in segs if s[4])} speeches in the Greek, {state['speech'] + 1} "
               "in the English: matched by sections alone")
         pieces = [[0, ref, text] for _, ref, text in pieces]
-    # The Greek's paragraphs, by speech: {speech: [[div, first seq, last seq, {sections in it}]]}
-    paras, speech = {}, -1 if by_speech else 0
-    for div, seq, ref, _, speaker, para in segs:
-        if speaker and by_speech:
+    # The Greek's paragraphs, by speech: {speech: [[segments]]}
+    by_para, speech = {}, -1 if by_speech else 0
+    for s in segs:
+        if s[4] and by_speech:
             speech += 1
-        if para or speech not in paras:
-            paras.setdefault(speech, []).append([div, seq, seq, set()])
-        paras[speech][-1][2] = seq
-        paras[speech][-1][3].add((ref or "").lower())
-    texts, at = {}, {}  # (speech, paragraph): [pieces]; at: the paragraph a speech's English has reached
+        if s[5] or speech not in by_para:
+            by_para.setdefault(speech, []).append([])
+        by_para[speech][-1].append(s)
+    # ... each a passage, or a long one (over LONG_PARA letters) several, cut where a section
+    # begins once a passage has CHUNK letters and as many are left: [[div, first seq, last seq, {sections}]]
+    paras = {}
+    for sp, own in by_para.items():
+        for para in own:
+            left, chunk = sum(len(s[3]) for s in para), None
+            whole = left <= LONG_PARA
+            for k, s in enumerate(para):
+                if chunk is None or not whole and s[2] != para[k - 1][2] and chunk[4] >= CHUNK and left >= CHUNK:
+                    chunk = [s[0], s[1], s[1], set(), 0]
+                    paras.setdefault(sp, []).append(chunk)
+                chunk[2] = s[1]
+                chunk[3].add((s[2] or "").lower())
+                chunk[4] += len(s[3])
+                left -= len(s[3])
+    texts, at = {}, {}  # (speech, passage): [pieces]; at: the passage a speech's English has reached
     for sp, ref, text in pieces:
         if sp not in paras:
             continue
@@ -809,7 +828,7 @@ def stephanus_passages(spec, work, segments):
     out = []
     for (sp, k), parts in sorted(texts.items()):
         if text := re.sub(r"\s+", " ", " ".join(parts)).strip():
-            div, first, last, _ = paras[sp][k]
+            div, first, last, *_ = paras[sp][k]
             out.append((div, first, last, spec["lang"], text))
     return out
 

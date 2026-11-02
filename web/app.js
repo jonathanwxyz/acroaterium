@@ -430,7 +430,10 @@ function addPassages(data, after, numbered) {
 function renderProse(data, has) {
   const labelled = data.cite === "label";
   const frag = document.createDocumentFragment();
-  let li = null, text = null, num = null, lastRef = null, notes = 0, refsIn = [];
+  let li = null, text = null, num = null, lastRef = null, notes = 0, refsIn = [], prevLine = null;
+  // A long speech's English comes in passages: the Greek breaks where each ends, so each
+  // passage stands under its own part.
+  const breaks = new Set((data.translation ?? []).map((p) => p.to));
   const close = () => {  // the paragraph's notes key: its first to last segment
     if (!li) return;
     const label = refsIn.length > 1 ? `${refsIn[0]}–${refsIn.at(-1)}` : refsIn[0] ?? lastRef ?? "";
@@ -444,7 +447,8 @@ function renderProse(data, has) {
       li = text = null;
       frag.append(partHeading(v.ref, data.refLabels?.[v.ref]));
     }
-    const opens = v.para || !text;
+    const opens = v.para || !text || breaks.has(prevLine);
+    prevLine = v.line;
     if (!opens && v.br) text.append(document.createElement("br"));
     if (opens) {
       close();
