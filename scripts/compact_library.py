@@ -24,9 +24,9 @@ Format (scripts/compact_read.py reads it; an app's decoder follows that):
   The small tables, as they are, under their own names and with the same columns:
       texts, divisions, categories, settings, note_sources, translation_credits,
       lexicon, lemma_defs (library.sqlite) and recordings (library_audio.sqlite).
-      lemmas and lemma_forms too (the word cards' references), but not lemma_words
-      (compact_read.DERIVED), which is made from the parsing again (library.py's
-      lemma_index); only its schema.
+      lemmas and lemma_forms too (the word cards' references), but not lemma_words or
+      lemma_inflections (compact_read.DERIVED), made from the parsing again (library.py's
+      lemma_index); only their schema.
 
   chunks(kind TEXT, text TEXT, div INTEGER, rows BLOB), primary key (kind, text, div)
       (an ordinary rowid table with 1 KB pages: chunks are kilobytes each)

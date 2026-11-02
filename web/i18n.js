@@ -399,8 +399,10 @@ Object.assign(I18N.el, {
   "No references to this lemma.": "Δεν υπάρχουν παραπομπές σε αυτό το λήμμα.",
   "Where": "Πού",
   "Search a lemma": "Αναζήτηση λήμματος",
+  "A lemma or a word": "Λήμμα ή λέξη",
+  "Search a lemma or a word": "Αναζήτηση λήμματος ή λέξης",
   "Lemmas": "Λήμματα",
-  "No lemma begins so.": "Κανένα λήμμα δεν αρχίζει έτσι.",
+  "No lemma or word begins so.": "Κανένα λήμμα ή λέξη δεν αρχίζει έτσι.",
   "Searching needs a connection to the server.": "Η αναζήτηση χρειάζεται σύνδεση με τον διακομιστή.",
   "{n} in {where}": "{n} σε: {where}",
 });
@@ -748,8 +750,10 @@ Object.assign(I18N.grc, {
   "No references to this lemma.": "Οὐκ ἔστι χωρία τοῦδε τοῦ λήμματος.",
   "Where": "Ποῦ",
   "Search a lemma": "Ζήτει λῆμμα",
+  "A lemma or a word": "Λῆμμα ἢ λέξις",
+  "Search a lemma or a word": "Ζήτει λῆμμα ἢ λέξιν",
   "Lemmas": "Λήμματα",
-  "No lemma begins so.": "Οὐδὲν λῆμμα οὕτως ἄρχεται.",
+  "No lemma or word begins so.": "Οὐδὲν λῆμμα οὐδὲ λέξις οὕτως ἄρχεται.",
   "Searching needs a connection to the server.": "Ἡ ζήτησις δεῖται συνδέσεως πρὸς τὸν διακομιστήν.",
   "{n} in {where}": "{n} ἐν· {where}",
 });

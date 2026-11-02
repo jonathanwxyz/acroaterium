@@ -872,8 +872,9 @@ window.addEventListener("pageshow", (e) => {
 });
 
 // Search (the magnifier by the text menu, opening a panel): a lemma as it's typed, accents,
-// breathings and capitals aside (/api/lemmas: λογ, ΛΟΓ), a few suggested at a time,
-// commonest first, each with its words in the library and its meaning; the one chosen
+// breathings and capitals aside (/api/lemmas: λογ, ΛΟΓ), or a word of it as printed
+// (λογου: λόγος, with λόγου beside it), a few suggested at a time, commonest first, each
+// with its words in the library and its meaning; the one chosen
 // (tapped, or picked with the arrows and Enter: the first, without) opens its references
 // (refs.html). The lemmas are the server's: offline, it says so.
 {
@@ -910,7 +911,10 @@ window.addEventListener("pageshow", (e) => {
       li.id = `lemma-result-${k}`;
       li.setAttribute("role", "option");
       const top = el("span", "lemma-result-top");
-      top.append(el("span", "lemma-result-name", x.lemma), el("span", "lemma-result-n", x.n.toLocaleString(UI_LOCALE)));
+      const name = el("span", "lemma-result-head");
+      name.append(el("span", "lemma-result-name", x.lemma));
+      if (x.form) name.append(el("span", "lemma-result-form", x.form));
+      top.append(name, el("span", "lemma-result-n", x.n.toLocaleString(UI_LOCALE)));
       li.append(top);
       if (x.definition) li.append(el("span", "lemma-result-def", x.definition));
       li.lang = "grc";
@@ -929,7 +933,7 @@ window.addEventListener("pageshow", (e) => {
       const r = await fetch(`/api/lemmas?${new URLSearchParams({ q, limit: 10 })}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const items = await r.json();
-      if (n === asked) draw(items, items.length ? null : tr("No lemma begins so."));
+      if (n === asked) draw(items, items.length ? null : tr("No lemma or word begins so."));
     } catch {
       if (n === asked) draw([], tr("Searching needs a connection to the server."));
     }
@@ -974,5 +978,5 @@ window.addEventListener("pageshow", (e) => {
   }
   button.addEventListener("click", () => showPanel(panel.hidden));
   document.addEventListener("pointerdown", (e) => { if (!panel.hidden && !picker.contains(e.target)) showPanel(false); });
-  keepCarved(panel, (n) => n.parentElement.closest(".lemma-result-name"), carveGreek);
+  keepCarved(panel, (n) => n.parentElement.closest(".lemma-result-name, .lemma-result-form"), carveGreek);
 }

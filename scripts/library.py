@@ -1795,8 +1795,10 @@ NOT_ONE_NAME = {"Ὀλυμπία", "Ὀλύμπια"}  # (names alike but for th
 def lemma_index(con):
     """lemmas, lemma_forms, lemma_words: every parsed word of the texts listed (a hand-made
     treebank's, the New Testament's or the Septuagint's, the lemmatiser's) under one
-    spelling of its lemma, for the references to a lemma in every text. (The compact library
-    keeps lemmas and lemma_forms, for the word cards, but not lemma_words: it rebuilds them.) A lemma printed without accents (the Septuagint's
+    spelling of its lemma, for the references to a lemma in every text; lemma_inflections,
+    its words as printed, for the search. (The compact library keeps lemmas and
+    lemma_forms, for the word cards, but not lemma_words or lemma_inflections: it rebuilds
+    them.) A lemma printed without accents (the Septuagint's
     names: Ιωαχας) goes with the one accented lemma of its letters, where there's one, else
     takes the spelling of its words as printed (Ἰωάχαζ); a name accented otherwise in
     another parsing, with its commonest accents."""
@@ -1858,6 +1860,28 @@ def lemma_index(con):
     words = sorted({(ids[keys[lemma]], text, div, seq, index, part)
                     for text, div, seq, index, part, lemma, _ in rows if keys[lemma]})
     counts = Counter(row[0] for row in words)
+    # Its words as printed (λόγου, εἶπεν), for the search: each spelling, accents and
+    # capitals aside, with the lemmas of its words and its commonest printing (a grave as
+    # an acute; in small letters but for a name's); not a lemma of a fiftieth of its words
+    # at most, a misparsing mostly (ἦν: ὁ, twice).
+    printings = {}
+    for lid, text, div, seq, index, part in words:
+        chunks = segments.get((text, div, seq), [])
+        # (an elided word with its mark: ἔλαβ᾽, searched for as ελαβ)
+        if index < len(chunks) and (form := re.sub(r"^[^\w]+|(?<=\w)[^\w’᾽ʼ']+$|(?<=[’᾽ʼ'])[^\w]+$", "",
+                                                   re.sub(r"[\[\]⟨⟩]", "", chunks[index]))):
+            form = unicodedata.normalize("NFC", unicodedata.normalize("NFD", form).replace("\u0300", "\u0301"))
+            if (bare_form := search_key(form.rstrip("’᾽ʼ'"))):
+                printings.setdefault((bare_form, lid), Counter())[form] += 1
+    printed_so = Counter()
+    for (bare_form, _), forms in printings.items():
+        printed_so[bare_form] += sum(forms.values())
+    names = {i for k, i in ids.items() if k[0].isupper()}
+    inflections = []
+    for (bare_form, lid), forms in printings.items():
+        form, n = forms.most_common(1)[0][0], sum(forms.values())
+        if 50 * n > printed_so[bare_form]:
+            inflections.append((bare_form, lid, form if lid in names else form.lower(), n))
     # Its meaning: the short definitions' (as the word cards'), else the gloss its words have
     # most often (the New Testament's lexicon's, the Septuagint's, the lemmatiser's).
     glosses = {}
@@ -1867,7 +1891,8 @@ def lemma_index(con):
     definitions = {k: (m[0] if (m := match(k)) and m[0] else None)
                    or (glosses[k].most_common(1)[0][0] if k in glosses else None) for k in ids}
     con.executescript("""
-        DROP TABLE IF EXISTS lemma_words; DROP TABLE IF EXISTS lemma_forms; DROP TABLE IF EXISTS lemmas;
+        DROP TABLE IF EXISTS lemma_inflections; DROP TABLE IF EXISTS lemma_words;
+        DROP TABLE IF EXISTS lemma_forms; DROP TABLE IF EXISTS lemmas;
         CREATE TABLE lemmas (            -- a lemma as the references know it (lemma_index)
             id     INTEGER PRIMARY KEY,
             lemma  TEXT NOT NULL UNIQUE,
@@ -1885,13 +1910,20 @@ def lemma_index(con):
             word_index INTEGER NOT NULL,
             part       INTEGER NOT NULL,
             PRIMARY KEY (lemma, text, div, seq, word_index, part)) WITHOUT ROWID;
+        CREATE TABLE lemma_inflections ( -- each lemma's words as printed, for the search
+            bare   TEXT NOT NULL,        -- as searched for (search_key: λογου)
+            lemma  INTEGER NOT NULL REFERENCES lemmas,
+            form   TEXT NOT NULL,        -- as printed most often (λόγου)
+            n      INTEGER NOT NULL,     -- its words so printed
+            PRIMARY KEY (bare, lemma)) WITHOUT ROWID;
     """)
     con.executemany("INSERT INTO lemmas VALUES (?, ?, ?, ?, ?)",
                     [(i, k, counts[i], search_key(k), definitions[k]) for k, i in ids.items()])
     con.execute("CREATE INDEX lemmas_bare ON lemmas (bare)")
     con.executemany("INSERT INTO lemma_forms VALUES (?, ?)", [(f, ids[k]) for f, k in keys.items() if k])
     con.executemany("INSERT INTO lemma_words VALUES (?, ?, ?, ?, ?, ?)", words)
-    print(f"lemma index: {len(words)} words under {len(ids)} lemmas "
+    con.executemany("INSERT INTO lemma_inflections VALUES (?, ?, ?, ?)", inflections)
+    print(f"lemma index: {len(words)} words under {len(ids)} lemmas, {len(inflections)} printings "
           f"({sum(1 for k in keys.values() if not k)} lemmas left out)")
 
 

@@ -25,7 +25,8 @@ Routes:
                        segment, for the word card (the Iliad's treebank, with Gaza's word;
                        the New Testament: Robinson's parsing, Dodson's lexicon; ...)
   /api/lemmas?q=…&limit=  JSON: the lemmas beginning with what's typed, accents and capitals
-                       aside, commonest first (the library's search), each with its count
+                       aside, or with words printed so (the library's search), commonest
+                       first, each with its count (and the word, where it's by one)
   /api/references/<lemma>?offset=&limit=&in=  JSON: the verses of every listed text with
                        a word of that lemma (as a word card's "references" gives it), by text;
                        in: part of the library only, named as a reading plan's target
@@ -918,8 +919,10 @@ def references_json(lemma, query):
 
 def lemmas_json(query):
     """The lemmas the library's search suggests for what's typed (q): those beginning so,
-    whatever the accents, breathings and capitals (λογ, ΛΟΓ: λόγος, λογίζομαι, ...), the
-    one spelled so first, then the commonest: [{lemma, n, definition}], at most limit."""
+    whatever the accents, breathings and capitals (λογ, ΛΟΓ: λόγος, λογίζομαι, ...), or with
+    words printed so (λογου: λόγος; ειπ: λέγω); the one spelled so first, then those with a
+    word printed so, then those with the most words beginning so: [{lemma, n, definition,
+    form}], at most limit, form the word printed so where the lemma isn't spelled so."""
     if not LIBRARY.exists():
         return None
     q = urllib.parse.parse_qs(query)
@@ -928,16 +931,31 @@ def lemmas_json(query):
     limit = min(50, max(1, int(q.get("limit", ["12"])[0] or 12)))
     if not typed:
         return []
+    span = (typed, typed + "\U0010ffff")
     con = sqlite3.connect(LIBRARY)
     try:
-        rows = con.execute("SELECT lemma, n, definition FROM lemmas "
-                           "WHERE bare >= ? AND bare < ? ORDER BY bare = ? DESC, n DESC, lemma LIMIT ?",
-                           (typed, typed + "\U0010ffff", typed, limit)).fetchall()
+        try:
+            rows = con.execute(
+                "WITH hits (lemma, named, exact, n) AS ("
+                "  SELECT id, 1, 2 * (bare = ?), n FROM lemmas WHERE bare >= ? AND bare < ?"
+                "  UNION ALL SELECT lemma, 0, bare = ?, n FROM lemma_inflections WHERE bare >= ? AND bare < ?), "
+                "best AS (SELECT lemma, max(named) AS named, max(exact) AS exact, "
+                "  max(max(CASE WHEN named THEN n ELSE 0 END), total(CASE WHEN named THEN 0 ELSE n END)) AS score "
+                "  FROM hits GROUP BY lemma ORDER BY exact DESC, score DESC LIMIT ?) "
+                "SELECT l.lemma, l.n, l.definition, CASE WHEN b.named THEN NULL ELSE "
+                "  (SELECT form FROM lemma_inflections i WHERE i.lemma = b.lemma AND i.bare >= ? AND i.bare < ? "
+                "   ORDER BY i.bare = ? DESC, i.n DESC LIMIT 1) END "
+                "FROM best b JOIN lemmas l ON l.id = b.lemma ORDER BY b.exact DESC, b.score DESC, l.lemma",
+                (typed, *span, typed, *span, limit, *span, typed)).fetchall()
+        except sqlite3.OperationalError:  # a library built before the words as printed: the lemmas only
+            rows = con.execute("SELECT lemma, n, definition, NULL FROM lemmas "
+                               "WHERE bare >= ? AND bare < ? ORDER BY bare = ? DESC, n DESC, lemma LIMIT ?",
+                               (*span, typed, limit)).fetchall()
     except sqlite3.OperationalError:  # a library built before the lemma index (or its search)
         return None
     finally:
         con.close()
-    return [{"lemma": lemma, "n": n, "definition": definition} for lemma, n, definition in rows]
+    return [{"lemma": lemma, "n": n, "definition": definition, "form": form} for lemma, n, definition, form in rows]
 
 
 def parsing_json(slug, n, seq, index):

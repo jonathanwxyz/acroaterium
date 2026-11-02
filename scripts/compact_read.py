@@ -71,8 +71,9 @@ FULL = {
 
 
 # Tables the compact library doesn't keep, but rebuilds from the rest: the lemma index's
-# words (library.py's lemma_index; its lemmas and lemma_forms are kept, for the word cards).
-DERIVED = {"lemma_words"}
+# words and their printings (library.py's lemma_index; its lemmas and lemma_forms are
+# kept, for the word cards).
+DERIVED = {"lemma_words", "lemma_inflections"}
 
 
 def unpack(blob):
