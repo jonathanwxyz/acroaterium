@@ -706,7 +706,8 @@ function update() {
   if (i >= 0) {
     const v = verses[i];
     v.el.classList.toggle("pausing", t >= v.speechEnd);
-    const r = v.ref ?? v.line;
+    // (prose before its first section, as a Life's prefatory letter: the prologue)
+    const r = v.ref ?? (DATA.cite === "section" ? tr("prologue") : v.line);
     showPosition((v.line <= 0 ? tr("title") : DATA.books.length > 1 ? `${v.div ?? BOOK}${DATA.cite === "verse" ? ":" : "."}${r}` : r) + (heldBy === v ? ` · ${tr("held")}` : ""));
   } else {
     showPosition(verses.length ? "—" : "");  // no recording: the box is just for jumping
