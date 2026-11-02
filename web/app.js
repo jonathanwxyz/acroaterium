@@ -78,6 +78,9 @@ const showModern = document.getElementById("show-modern");
 const gloss = document.getElementById("gloss");
 const holdOnHover = document.getElementById("hold-on-hover");
 const focused = document.getElementById("focused");
+// Focused mode as it is (the page's class), not as it's set: it's off where it can't be
+// (prose, or no recording) whatever the checkbox says.
+const focusedMode = () => document.body.classList.contains("focused");
 const endMode = document.getElementById("end-mode");  // at the end of a chapter: continue, repeat, stop (its data-mode)
 const card = document.getElementById("card");
 const cardBody = document.getElementById("card-body");
@@ -677,7 +680,7 @@ function update() {
     if (i >= 0) {
       const el = verses[i].el;
       el.classList.add("current");
-      if (follow.checked && !focused.checked && Date.now() - lastUserScroll > 4000) {
+      if (follow.checked && !focusedMode() && Date.now() - lastUserScroll > 4000) {
         centerRow(el, true);
       }
     }
@@ -699,7 +702,7 @@ function update() {
   document.body.classList.toggle("playing", isPlaying());
   showTimeline(audio.currentTime);
   // (focused mode: the selected word's verse stepped out of view)
-  if (selected && focused.checked && !selected.getClientRects().length) closeCard();
+  if (selected && focusedMode() && !selected.getClientRects().length) closeCard();
   if (i >= 0) {
     const v = verses[i];
     v.el.classList.toggle("pausing", t >= v.speechEnd);
@@ -1101,7 +1104,7 @@ scholiaBody.addEventListener("mousedown", (e) => { if (e.target.closest("summary
 function linkGroup(w, on) {
   if (w.dataset.group == null) return;
   // In focused mode only the current line lights up, not a linked word in a neighbour.
-  const scope = on && focused.checked ? list.querySelector(".f-cur") ?? list : list;
+  const scope = on && focusedMode() ? list.querySelector(".f-cur") ?? list : list;
   for (const el of scope.querySelectorAll(`.w[data-group="${w.dataset.group}"]`)) {
     el.classList.toggle("linked", on);
   }
@@ -1416,14 +1419,14 @@ measureBars();
 document.addEventListener("sizechange", () => {
   measureBars();
   placeCard({ again: true });
-  if (!focused.checked && current >= 0 && follow.checked) centerRow(verses[current].el);
+  if (!focusedMode() && current >= 0 && follow.checked) centerRow(verses[current].el);
 });
 
 // Focused mode toggle (F), remembered per browser.
 function applyFocused() {
   document.body.classList.toggle("focused", focused.checked && DATA?.form !== "prose");
   try { localStorage.setItem("focused", focused.checked ? "1" : "0"); } catch {}
-  if (focused.checked) window.scrollTo(0, 0);
+  if (focusedMode()) window.scrollTo(0, 0);
   else if (current >= 0) centerRow(verses[current].el);
 }
 try { focused.checked = localStorage.getItem("focused") === "1"; } catch {}
@@ -1443,7 +1446,7 @@ const WHEEL_QUIET_MS = 150; // ...until the wheel has been still this long
 let wheelSum = 0, wheelStepAt = 0, wheelLastAt = 0;
 
 function stepsVerses(e) {
-  if (!focused.checked || !verses.length || document.body.classList.contains("no-audio")) return false;
+  if (!focusedMode() || !verses.length) return false;
   return !e.target.closest?.("#scholia, #card, #player, #topbar");
 }
 function stepBy(dir) { seekTo(Math.min(Math.max(focusIdx + dir, 0), verses.length - 1)); }
@@ -1899,7 +1902,7 @@ function reachedEnd(t) {
 window.addEventListener("pageshow", (e) => {
   if (!e.persisted || !DATA?.audio || RANGE || !audio.paused || !reachedEnd(audio.currentTime)) return;
   seekTo(0, { play: false });
-  if (!focused.checked) centerRow(verses[0].el);
+  if (!focusedMode()) centerRow(verses[0].el);
 });
 
 function restorePlace() {
@@ -1921,13 +1924,13 @@ function restorePlace() {
   if (!(t > 0) && verses.length && verses[0].start > 1) t = Math.max(0, verses[0].start - LEAD_IN);
   // Show the place at once; the recording is moved there once it can be.
   const at = t > 0 ? verseAt(t) : -1;
-  if (at >= 0 && !focused.checked) centerRow(verses[at].el);
+  if (at >= 0 && !focusedMode()) centerRow(verses[at].el);
   const apply = () => {
     if (t > 0 && (!audio.duration || t < audio.duration)) audio.currentTime = t;
     restored = true;
     update();
     if (CARRY_AT) audio.play().catch(() => {});  // the browser may want a tap first: then it waits, there
-    if (current >= 0 && !focused.checked) centerRow(verses[current].el);
+    if (current >= 0 && !focusedMode()) centerRow(verses[current].el);
   };
   whenAudioReady(apply);
 }
@@ -1947,7 +1950,7 @@ function goToLinked() {
       : refs.find((r) => r.ref === MARK && r.div === BOOK);
     planRestored = true;
     if (target) {
-      if (!focused.checked || !target.entry) centerRow(target.el);
+      if (!focusedMode() || !target.entry) centerRow(target.el);
       target.el.classList.add("located");
       setTimeout(() => target.el.classList.remove("located"), 1800);
       if (target.entry) whenAudioReady(() => { audio.currentTime = target.entry.start; update(); });
@@ -1963,7 +1966,7 @@ function goToLinked() {
     restored = !RANGE;
     return;
   }
-  if (!focused.checked || !target.entry) centerRow(target.el);
+  if (!focusedMode() || !target.entry) centerRow(target.el);
   noteTap(target.el.closest("li.verse") ?? target.el, target.el.getBoundingClientRect().top);
   if (!RANGE) {
     target.el.classList.add("located");
@@ -2250,7 +2253,7 @@ function restorePlanPlace() {
   const first = verses[0]?.start ?? 0, last = verses.at(-1)?.end ?? Infinity;
   if (!(saved.at > first && saved.at < last)) return false;  // (at the start, or past the end: from the start)
   const i = verseAt(saved.at);
-  if (i >= 0 && !focused.checked) centerRow(verses[i].el);
+  if (i >= 0 && !focusedMode()) centerRow(verses[i].el);
   whenAudioReady(() => {
     audio.currentTime = saved.at;
     update();
