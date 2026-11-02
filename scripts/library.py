@@ -877,8 +877,8 @@ def stephanus_passages(spec, work, segments):
             return len(etext)
 
         # The Greek's paragraphs paired with the English's, in order, each where it falls in the
-        # English (at) near one there: a narrated dialogue's many short speeches (the Phaedo's,
-        # unlabelled), which falling in proportion alone would set a speech or two astray
+        # English (at) near one there: a narrated dialogue's many short speeches (without
+        # speakers' labels), which falling in proportion alone would set a speech or two astray
         gp = [a for a in g["paras"] if a]
         ep = []
         for o in sorted(eparas):  # (a <p> and a paragraph milestone at its start are one paragraph)
