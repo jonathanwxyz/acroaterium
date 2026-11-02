@@ -751,6 +751,7 @@ GK_STOP, GK_PAUSE = ".;;", "··"  # (a sentence's end, Greek's question mark to
 EN_STOP, EN_PAUSE = ".?!", ";:—"
 SNAP = 150  # (letters of English either side of where a cut falls: a sentence's end is looked for)
 PAUSE_COST = 60  # (letters: how much nearer than a full stop a semicolon must be, after a Greek full stop)
+SKIP_GREEK, SKIP_ENGLISH = 200, 50  # (letters: the cost of a paragraph left unpaired, in the Greek, the English)
 
 
 def stephanus_passages(spec, work, segments):
@@ -780,8 +781,8 @@ def stephanus_passages(spec, work, segments):
             if el.get("unit") == "section":
                 state["ref"] = el.get("n").lower()
                 pieces.append([state["speech"], state["ref"], []])
-            elif el.get("unit") == "para" and pieces:  # (often with no space either side)
-                pieces[-1][2].append(" ")
+            elif el.get("unit") == "para" and pieces:  # a paragraph begins (\0; often no space either side)
+                pieces[-1][2].append(" \0")
             return
         if tag == "label":
             if not merge:
@@ -791,6 +792,8 @@ def stephanus_passages(spec, work, segments):
         if tag in ("note", "bibl", "head", "del"):
             return
         merge = merge or (tag == "said" and el.get("rend") == "merge")
+        if tag == "p" and pieces:
+            pieces[-1][2].append(" \0")
         if el.text and pieces:
             pieces[-1][2].append(el.text)
         for child in el:
@@ -807,12 +810,17 @@ def stephanus_passages(spec, work, segments):
         print(f"  translation: {sum(1 for s in segs if s[4])} speeches in the Greek, {state['speech'] + 1} "
               "in the English: matched by sections alone")
         pieces = [[0, ref, text] for _, ref, text in pieces]
-    # Each speech's English, and where each section begins in it
-    english = {}  # speech: [text, [(section, offset)]]
+    # Each speech's English, and where each section and paragraph begins in it
+    english = {}  # speech: [text, [(section, offset)], [paragraph's offset]]
     for sp, ref, text in pieces:
-        e = english.setdefault(sp, ["", []])
+        e = english.setdefault(sp, ["", [], []])
         e[1].append((ref, len(e[0])))
-        e[0] += re.sub(r"\s+", " ", "".join(text))
+        for k, part in enumerate(re.sub(r"\s+", " ", "".join(text)).split("\0")):
+            if e[0].endswith(" ") and part.startswith(" "):
+                part = part[1:]
+            if k:
+                e[2].append(len(e[0]) + (part[:1] == " "))
+            e[0] += part
     # ... and its Greek, word by word: (div, seq, word_index, word, offset, section), the
     # words a paragraph begins with
     greek, speech = {}, -1 if by_speech else 0
@@ -832,7 +840,7 @@ def stephanus_passages(spec, work, segments):
     out = []
     for sp, g in greek.items():
         words = g["words"]
-        etext, emarks = english.get(sp, ["", []])
+        etext, emarks, eparas = english.get(sp, ["", [], []])
         lead = len(etext) - len(etext.lstrip())
         # Where the Greek is cut: each paragraph's first word, and a long paragraph's parts'
         cuts = []
@@ -868,18 +876,56 @@ def stephanus_passages(spec, work, segments):
                     return e0 + (e1 - e0) * (x - g0) / max(1, g1 - g0)
             return len(etext)
 
+        # The Greek's paragraphs paired with the English's, in order, each where it falls in the
+        # English (at) near one there: a narrated dialogue's many short speeches (the Phaedo's,
+        # unlabelled), which falling in proportion alone would set a speech or two astray
+        gp = [a for a in g["paras"] if a]
+        ep = []
+        for o in sorted(eparas):  # (a <p> and a paragraph milestone at its start are one paragraph)
+            if lead + 1 < o < len(etext) - 1 and (not ep or o - ep[-1] > 2):
+                ep.append(o)
+        paired = {}
+        if gp and ep:
+            want = [at(words[a][4]) for a in gp]
+            n, m_ = len(gp), len(ep)
+            inf = float("inf")
+            dp = [[inf] * (m_ + 1) for _ in range(n + 1)]
+            step = [[None] * (m_ + 1) for _ in range(n + 1)]
+            dp[0][0] = 0
+            for i in range(n + 1):
+                for j in range(m_ + 1):
+                    c = dp[i][j]
+                    if c == inf:
+                        continue
+                    if i < n and c + SKIP_GREEK < dp[i + 1][j]:
+                        dp[i + 1][j], step[i + 1][j] = c + SKIP_GREEK, "g"
+                    if j < m_ and c + SKIP_ENGLISH < dp[i][j + 1]:
+                        dp[i][j + 1], step[i][j + 1] = c + SKIP_ENGLISH, "e"
+                    if i < n and j < m_ and (d := abs(want[i] - ep[j])) <= SNAP * 2 and c + d < dp[i + 1][j + 1]:
+                        dp[i + 1][j + 1], step[i + 1][j + 1] = c + d, "m"
+            i, j = n, m_
+            while i or j:
+                s = step[i][j]
+                if s == "m":
+                    paired[gp[i - 1]] = ep[j - 1]
+                i, j = (i - 1, j - 1) if s == "m" else (i - 1, j) if s == "g" else (i, j - 1)
         ecuts, gcuts = [lead], [0]
         for i in sorted(set(cuts)):
+            if paired.get(i, 0) > ecuts[-1]:
+                gcuts.append(i)
+                ecuts.append(paired[i])
+                continue
             want = at(words[i][4])
+            until = min((e for a, e in paired.items() if a > i), default=len(etext))  # (not past the next pair)
             # (after a Greek full stop an English one is preferred, by PAUSE_COST letters: a
             # translator may join two sentences with a semicolon)
             cost = {**dict.fromkeys(EN_STOP, 0), **dict.fromkeys(EN_PAUSE, 0 if not ends_with(words[i - 1][3], GK_STOP) else PAUSE_COST)}
             ends = [(abs(m.end() - want) + cost[m[1]], m.end()) for m in re.finditer(rf"([{re.escape(EN_STOP + EN_PAUSE)}])[”’\"')\]]*\s", etext)
-                    if ecuts[-1] < m.end() < len(etext) and abs(m.end() - want) <= SNAP]
+                    if ecuts[-1] < m.end() < until and abs(m.end() - want) <= SNAP]
             if ends:
                 e = min(ends)[1]
             else:  # (no sentence's end near: the space nearest)
-                spaces = [m.end() for m in re.finditer(r"\s", etext) if ecuts[-1] < m.end() < len(etext)]
+                spaces = [m.end() for m in re.finditer(r"\s", etext) if ecuts[-1] < m.end() < until]
                 if not spaces:
                     continue
                 e = min(spaces, key=lambda x: abs(x - want))
