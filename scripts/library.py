@@ -128,6 +128,12 @@ def greek_number(n):
     return (hundreds[n // 100 % 10] + tens[n // 10 % 10] + units[n % 10]).replace(" ", "") + "ʹ"
 
 
+def greek_value(numeral):
+    """A Greek numeral's value: ιγʹ -> 13, ΙΣΤʹ or ιϛʹ -> 16."""
+    values = dict(zip("αβγδεϛζηθικλμνξοπϟρ", [*range(1, 10), *range(10, 100, 10), 100]))
+    return sum(values.get(c, 0) for c in numeral.lower().replace("στ", "ϛ"))
+
+
 # Ordinals, read out in a chapter's title ("Κεφάλαιον Δέκατον Ἕκτον"; a psalm's, masculine):
 # (stem, oxytone) for 1-9, 10-90, 100; 11 and 12 are words of their own.
 ORDINAL_UNITS = [None, ("πρῶτ", 0), ("δεύτερ", 0), ("τρίτ", 0), ("τέταρτ", 0), ("πέμπτ", 0), ("ἕκτ", 0),
@@ -1335,11 +1341,14 @@ def pair_paragraphs(greek, english, opens, ratio):
     return pairs[::-1]
 
 
+ROMAN = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
+
+
 def parallel(src, verbose, title, passages_out, marks_out):
     """A text with its English beside it, from a local HTML file ("file", under the project):
     a word processor's export (Google Docs) of a table, the Greek in its first column and the
     English in its second, a passage to a row, in paragraphs. An English paragraph opening
-    with a number ("8. Thus ...", "[8.] Thus ...") begins that chapter: the segments' ref (a
+    with a number ("8. Thus ...", "[8.] Thus ...", "VIII. Thus ...") begins that chapter: the segments' ref (a
     section), the Greek of the pair it's in too. The first row's paragraphs up to its last
     heading (set in a colour of its own: the title, "Προοίμιον"), or where there's none, up to
     the first numbered one, are left out, the catalogue's "heading" giving what's read of them;
@@ -1352,8 +1361,9 @@ def parallel(src, verbose, title, passages_out, marks_out):
     of the text, the segment breaking there, and kept as marks on the segment after
     (marks_out: (div, seq, mark)); the first from the heading's "(Migne 26.837)". So is the
     Greek's own section number opening a paragraph ("βʹ. Ὡς οὖν": βʹ), where the English
-    numbers its sections otherwise. A note in square brackets in Latin letters ("[cf. Herod
-    ii. 168]") is left out.
+    numbers its sections otherwise (where each opens the English's chapter of that number,
+    it's left out). A note in square brackets in Latin letters ("[cf. Herod ii. 168]") is
+    left out, and an English footnote (a paragraph opening with "*", and its asterisk).
 
     Within a row, the Greek and English paragraphs are paired by their lengths
     (pair_paragraphs), a pair being an English passage (passages_out: (div, seq_from,
@@ -1385,13 +1395,20 @@ def parallel(src, verbose, title, passages_out, marks_out):
     body = weight.most_common(1)[0][0]
     heading = lambda colours: bool(colours - {None}) and body not in colours
 
-    chapter_of = lambda text: int(m[1]) if (m := re.match(r"\[?(\d+)\.\]?\s", text)) else None
-    section = re.compile(r"([α-ω]{1,3}ʹ)\.\s+")  # (the numeral sign: U+0374, ʹ after NFC)
+    def chapter_of(text):  # ("8.", "[8.]", "VIII.")
+        if m := re.match(r"\[?(\d+)\.\]?\s", text):
+            return int(m[1])
+        if m := re.match(r"([IVXLC]+)\.\s", text):
+            values = [ROMAN[c] for c in m[1]]
+            return sum(-v if v < w else v for v, w in zip(values, values[1:] + [0]))
+    section = re.compile(r"([α-ωΑ-ΩϚϛ]{1,3}ʹ)\.\s+")  # (the numeral sign: U+0374, ʹ after NFC)
     segments, mark, ref = [], None, None
+    numbered = []  # (for each Greek section number: is it its chapter's, opening it?)
     pages = re.compile(r"(?<!\S)(\d{3,4})(?!\S)([,.;·]?)")
     greek_all, english_all = 0, 0
     kept = []
     for k, (greek, english) in enumerate(rows):
+        english = [(t, c) for t, c in english if not t.startswith("*")]  # (a footnote)
         if k == 0:  # the front matter: to the last heading in each column
             g_from = max((i for i, (_, c) in enumerate(greek) if heading(c)), default=None)
             e_from = max((i for i, (_, c) in enumerate(english) if heading(c)), default=None)
@@ -1403,7 +1420,7 @@ def parallel(src, verbose, title, passages_out, marks_out):
                 mark = m[1]
             greek, english = greek[g_from + 1:], english[e_from + 1:]
         greek = [t for t, _ in greek]
-        english = [t for t, _ in english]
+        english = [re.sub(r"(?<=\w)\*", "", t) for t, _ in english]  # (a footnote's asterisk)
         if not greek or not english:
             if (greek or english) and verbose:
                 print(f"  row {k + 1}: no {'Greek' if english else 'English'}, left out ({(greek or english)[0][:40]}…)")
@@ -1430,13 +1447,15 @@ def parallel(src, verbose, title, passages_out, marks_out):
         if pairs is None:
             sys.exit(f"{src['file']}: can't pair the paragraphs of the row beginning {greek[0][:40]!r}")
         for g0, g1, e0, e1 in pairs:
-            if (n := chapter_of(english[e0])) is not None:
-                ref = str(n)
+            opening = chapter_of(english[e0])
+            if opening is not None:
+                ref = str(opening)
             first = len(segments) + 1
             for i in range(g0, g1):
                 text = greek[i].replace("∆", "Δ").replace(":", "·")  # (the increment sign, for a capital delta)
                 if m := section.match(text):
                     mark = f"{mark} {m[1]}" if mark else m[1]
+                    numbered.append(i == g0 and greek_value(m[1]) == opening)
                     text = text[m.end():]
                 text = re.sub(r"\s*\[[^\]]*[A-Za-z][^\]]*\]", "", text)
                 pieces, at = [], 0
@@ -1458,11 +1477,14 @@ def parallel(src, verbose, title, passages_out, marks_out):
                         mark = None
                     para = 0
             text = " ".join(english[e0:e1])
-            text = re.sub(r"^\[?\d+\.\]?\s+", "", text)
+            text = re.sub(r"^(\[?\d+\.\]?|[IVXLC]+\.)\s+", "", text)
             passages_out.append((1, first, len(segments), "en", text))
+    if numbered and all(numbered):  # (the Greek's sections are the chapters: no marks for them)
+        marks_out[:] = [(d, s, m) for d, s, m in ((d, s, " ".join(w for w in m.split() if not section.match(w + ". ")))
+                                                  for d, s, m in marks_out) if m]
     if verbose:
         print(f"  {len(segments)} segments, chapters 1–{ref}, {len(passages_out)} English passages, "
-              f"{len(marks_out)} column marks ({marks_out[0][2]}–{marks_out[-1][2]})")
+              f"{len(marks_out)} marks" + (f" ({marks_out[0][2]}–{marks_out[-1][2]})" if marks_out else ""))
     return "prose", "section", [(1, title)], segments
 
 
