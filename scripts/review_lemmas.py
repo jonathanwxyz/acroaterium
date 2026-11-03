@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""A page for checking the lemmatiser by hand, on this computer only: each word it was in
+"""A page for choosing among the lemmatiser's readings, on this computer only: each word it was in
 doubt about (other readings listed: also_possible), in context, its reading and the others
 to choose between, or a lemma typed in. The choices go to library/lemma_choices.json (local,
 like the catalogue), and scripts/library.py takes them into the library: the card shows the
-reading chosen, checked by hand.
+reading chosen (as automatic parsing, without the other readings).
 
     python3 scripts/review_lemmas.py [ion ...] [--port 8001]
 

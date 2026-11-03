@@ -563,7 +563,7 @@
     async automaticParsing(slug, n, seq, index) {
       const r = (await this.db.word("auto_words", slug, n, seq, index))[0];
       if (!r) return null;
-      let note = r.checked ? "Lemma checked by hand." : "Automatic parsing (may be wrong).";
+      let note = "Automatic parsing (may be wrong).";
       // The other readings the lemmatiser thinks worth showing, each in full (a compact file
       // made before them hasn't the column).
       const others = (truthy(r.also) ? JSON.parse(r.also) : []).map((a) => ({

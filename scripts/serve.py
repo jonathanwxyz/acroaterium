@@ -825,7 +825,7 @@ def automatic_parsing(slug, n, seq, index):
     if not row:
         return None
     lemma, headword, definition, pos, morph, confidence, alternative, also, checked = row
-    note = "Lemma checked by hand." if checked else "Automatic parsing (may be wrong)."
+    note = "Automatic parsing (may be wrong)."
     # The other readings the lemmatiser thinks worth showing, each in full (the card lists them).
     others = [{"lemma": a.get("headword") or (a.get("lemma") or "").rstrip("0123456789"), "definition": a.get("definition"),
                "morph": morpheus_morph(None, a.get("morph") or [])} for a in json.loads(also or "[]")]
