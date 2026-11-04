@@ -854,7 +854,7 @@ main {
 /* The choices wrap among themselves, beside the label rather than under it. */
 .font-choices { display: flex; flex-wrap: wrap; gap: 0.3rem; min-width: 0; }
 .size-name { min-width: 5.2rem; }
-.font-choice, .theme-choice, .lang-choice, .accent-choice, .letters-choice {
+.font-choice, .theme-choice, .lang-choice, .accent-choice, .letters-choice, .pictures-choice {
   padding: 0.2rem 0.5rem;
   font-size: 17px;
   color: var(--muted);
@@ -898,9 +898,10 @@ main {
 :root[data-letters="capitals"] #verses .text { word-break: break-all; }
 .lang-choice:not([data-lang="en"]) { font-family: var(--greek); font-size: 15.5px; }
 .lang-choice[data-lang="en"] { font-size: 14px; }  /* (each language's name in its own script) */
-@media (hover: hover) { .font-choice:hover, .theme-choice:hover, .lang-choice:hover, .accent-choice:hover, .letters-choice:hover { color: var(--text); border-color: var(--current-bar); } }
+.pictures-choice { font-size: 14px; }
+@media (hover: hover) { .font-choice:hover, .theme-choice:hover, .lang-choice:hover, .accent-choice:hover, .letters-choice:hover, .pictures-choice:hover { color: var(--text); border-color: var(--current-bar); } }
 .font-choice[aria-pressed="true"], .theme-choice[aria-pressed="true"], .lang-choice[aria-pressed="true"],
-.accent-choice[aria-pressed="true"], .letters-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
+.accent-choice[aria-pressed="true"], .letters-choice[aria-pressed="true"], .pictures-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
 .size-value { text-align: center; font-variant-numeric: tabular-nums; color: var(--text); }
 .size-step {
   width: 2rem;
@@ -1065,7 +1066,7 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
 #card h2 { margin: 0 1.5rem 0.2rem 0; font-weight: 400; font-size: 1.6em; }
 #card .gloss-line { color: var(--muted); margin: 0 0 0.8rem; }
 #card .card-pic { margin: 0.2rem 0 0.8rem; }
-#card .card-pic img { display: block; max-width: 100%; max-height: 9rem; border-radius: 6px; background: #f6f3ec; }
+#card .card-pic img { display: block; max-width: 100%; max-height: calc(12rem * var(--picture-scale, 1)); border-radius: 6px; background: #f6f3ec; }
 #card .card-pic figcaption { color: var(--muted); font-size: 0.65em; margin-top: 0.2rem; }
 #card .token + .token { border-top: 1px solid var(--rule); margin-top: 0.8rem; padding-top: 0.8rem; }
 #card .form { color: var(--muted); font-size: 0.85em; margin-bottom: 0.2rem; }
@@ -1285,7 +1286,7 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
 /* (light behind a picture: an icon drawn black on nothing shows in the dark themes too) */
-#word-pic img { display: block; max-width: 11rem; max-height: 11rem; border-radius: 5px; background: #f6f3ec; }
+#word-pic img { display: block; max-width: calc(14rem * var(--picture-scale, 1)); max-height: calc(14rem * var(--picture-scale, 1)); border-radius: 5px; background: #f6f3ec; }
 #word-pic .via { color: var(--muted); font-size: 0.75rem; text-align: center; margin-top: 2px; }
 #word-pic .via:empty { display: none; }
 .verse.current { background: var(--current-bg); border-left-color: var(--current-bar); }

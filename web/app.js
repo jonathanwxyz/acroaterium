@@ -1195,7 +1195,7 @@ window.addEventListener("scroll", () => { gloss.hidden = true; }, { passive: tru
 // lemma has some: resting the pointer on a word shows its best; on a touch screen its card
 // does instead (cardPicture). A book's pictures (/api/images) come as the first is wanted,
 // from the server only: never kept offline (sw.js).
-const showPictures = document.getElementById("show-pictures");
+let picturesOn = true;  // (the Aa menu's Pictures: Show, Hide)
 const wordPic = document.getElementById("word-pic");
 const noHover = window.matchMedia?.("(hover: none)");
 const bookPictures = new Map();  // "text/div" -> promise of /api/images
@@ -1224,7 +1224,7 @@ function hidePicture() {
 }
 list.addEventListener("pointerover", (e) => {
   const w = e.target.closest(".w");
-  if (!w || w === picWord || e.pointerType === "touch" || !showPictures.checked) return;
+  if (!w || w === picWord || e.pointerType === "touch" || !picturesOn) return;
   hidePicture();
   picWord = w;
   // (a moment's rest on the word first: not a picture for every word the pointer crosses)
@@ -1258,7 +1258,7 @@ window.addEventListener("scroll", hidePicture, { passive: true });
 // In the word's card on a touch screen: its best picture; a tap shows the next, if there are more.
 async function cardPicture(w) {
   cardBody.querySelector(".card-pic")?.remove();
-  if (!showPictures.checked || !noHover?.matches) return;
+  if (!picturesOn || !noHover?.matches) return;
   const pics = await picturesOf(w).catch(() => null);
   const h2 = cardBody.querySelector("h2");
   if (!pics || selected !== w || !h2 || cardBody.querySelector(".card-skel, .card-pic")) return;
@@ -1280,12 +1280,23 @@ async function cardPicture(w) {
   h2.after(fig);
 }
 
-try { showPictures.checked = localStorage.getItem("showPictures") !== "0"; } catch {}  // on by default
-showPictures.addEventListener("change", () => {
-  try { localStorage.setItem("showPictures", showPictures.checked ? "1" : "0"); } catch {}
+// Shown or not: the Aa menu's Pictures (on by default); their size is its Picture size
+// (theme.js, as the text's: --picture-scale).
+function showPicturesChoice() {
+  for (const b of document.querySelectorAll(".pictures-choice")) b.setAttribute("aria-pressed", String((b.dataset.pictures === "on") === picturesOn));
+}
+try { picturesOn = localStorage.getItem("showPictures") !== "0"; } catch {}
+showPicturesChoice();
+document.getElementById("size-menu").addEventListener("click", (e) => {
+  const choice = e.target.closest(".pictures-choice");
+  if (!choice) return;
+  picturesOn = choice.dataset.pictures === "on";
+  try { localStorage.setItem("showPictures", picturesOn ? "1" : "0"); } catch {}
+  showPicturesChoice();
   hidePicture();
   if (selected) cardPicture(selected);
 });
+
 
 // Parsing card: clicking a word shows its treebank analysis (instead of seeking).
 let selected = null;

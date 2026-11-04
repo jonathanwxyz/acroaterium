@@ -19,9 +19,9 @@
   try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
   // And the accent (amber unless another was chosen).
   try { const a = localStorage.getItem("accent"); if (["red", "purple", "blue"].includes(a)) document.documentElement.dataset.accent = a; } catch {}
-  // Text and interface sizes (the reader's Aa menu), likewise.
+  // Text, interface and picture sizes (the reader's Aa menu), likewise.
   try {
-    for (const [key, prop] of [["textScale", "--text-scale"], ["uiScale", "--ui-scale"]]) {
+    for (const [key, prop] of [["textScale", "--text-scale"], ["uiScale", "--ui-scale"], ["pictureScale", "--picture-scale"]]) {
       const v = parseFloat(localStorage.getItem(key));
       if (v > 0) document.documentElement.style.setProperty(prop, v);
     }
@@ -126,6 +126,21 @@
           <span class="font-choices">
             <button class="letters-choice" data-letters="book" aria-pressed="false" title="Minuscule: small letters, accents and spaces, as printed" aria-label="Minuscule" lang="grc">Μικρά</button>
             <button class="letters-choice" data-letters="capitals" aria-pressed="false" title="Majuscule, in scriptio continua: capitals only, without accents, spaces or punctuation" aria-label="Majuscule" lang="grc">ΚΕΦΑΛΑΙΑ</button>
+          </span>
+        </div>
+        <div class="font-row pictures-row" role="group" aria-label="Pictures" title="A picture of the word under the pointer, where a vocabulary deck has one (on a touch screen: in the word's card)">
+          <span class="size-name">Pictures</span>
+          <span class="font-choices">
+            <button class="pictures-choice" data-pictures="on" aria-pressed="true">Show</button>
+            <button class="pictures-choice" data-pictures="off" aria-pressed="false">Hide</button>
+          </span>
+        </div>
+        <div class="size-row" data-key="pictureScale" data-prop="--picture-scale">
+          <span class="size-name">Picture size</span>
+          <span class="size-steps">
+            <button class="size-step" data-step="-1" aria-label="Smaller pictures">−</button>
+            <output class="size-value">100%</output>
+            <button class="size-step" data-step="1" aria-label="Larger pictures">+</button>
           </span>
         </div>
         <div class="font-row theme-row" role="group" aria-label="Theme">
@@ -251,7 +266,6 @@
   <div class="controls">
     <label class="toggle" title="Show only the current verse, with the one before and after (F)"><input type="checkbox" id="focused"> focused</label>
     <label class="toggle" title="Pause at the end of the verse the pointer is on; resume when it moves off"><input type="checkbox" id="hold-on-hover" checked> pause on hover</label>
-    <label class="toggle" title="A picture of the word under the pointer, where a vocabulary deck has one (on a touch screen: in the word's card)"><input type="checkbox" id="show-pictures" checked> pictures</label>
     <label class="toggle"><input type="checkbox" id="show-paraphrase" checked> paraphrase</label>
     <label class="toggle"><input type="checkbox" id="show-modern"> μετάφραση</label>
     <label class="toggle"><input type="checkbox" id="show-translation"> translation</label>
