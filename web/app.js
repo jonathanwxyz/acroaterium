@@ -1192,12 +1192,17 @@ list.addEventListener("pointerout", (e) => {
 window.addEventListener("scroll", () => { gloss.hidden = true; }, { passive: true });
 
 // Pictures of words, from vocabulary decks (scripts/import_anki_images.py), where the word's
-// lemma has some: resting the pointer on a word shows its best; on a touch screen its card
-// does instead (cardPicture). A book's pictures (/api/images) come as the first is wanted,
+// lemma has some: resting the pointer on a word shows its best, its card too (cardPicture),
+// as the Aa menu's Pictures says; on a touch screen its card does. A book's pictures (/api/images) come as the first is wanted,
 // from the server only: never kept offline (sw.js).
-let picturesOn = true;  // (the Aa menu's Pictures: Show, Hide)
+// The Aa menu's Pictures: with a pointer that hovers, "hover" (the default), "card" (in the word's
+// card) or "off"; on a touch screen "show" (in the card) or "off". (Each the other's, on the
+// other kind of screen: show as hover; hover or card as show.)
+let picturesMode = "hover";
 const wordPic = document.getElementById("word-pic");
 const noHover = window.matchMedia?.("(hover: none)");
+const picturesOnHover = () => !noHover?.matches && (picturesMode === "show" || picturesMode === "hover");
+const picturesInCard = () => (noHover?.matches ? picturesMode !== "off" : picturesMode === "card");
 const bookPictures = new Map();  // "text/div" -> promise of /api/images
 function picturesOf(w) {
   if (navigator.onLine === false) return Promise.resolve(null);
@@ -1224,7 +1229,7 @@ function hidePicture() {
 }
 list.addEventListener("pointerover", (e) => {
   const w = e.target.closest(".w");
-  if (!w || w === picWord || e.pointerType === "touch" || !picturesOn) return;
+  if (!w || w === picWord || e.pointerType === "touch" || !picturesOnHover()) return;
   hidePicture();
   picWord = w;
   // (a moment's rest on the word first: not a picture for every word the pointer crosses)
@@ -1255,10 +1260,11 @@ list.addEventListener("pointerout", (e) => {
 list.addEventListener("pointerdown", hidePicture);
 window.addEventListener("scroll", hidePicture, { passive: true });
 
-// In the word's card on a touch screen: its best picture; a tap shows the next, if there are more.
+// In the word's card (on a touch screen, or as the Aa menu says): its best picture; a tap shows
+// the next, if there are more.
 async function cardPicture(w) {
   cardBody.querySelector(".card-pic")?.remove();
-  if (!picturesOn || !noHover?.matches) return;
+  if (!picturesInCard()) return;
   const pics = await picturesOf(w).catch(() => null);
   const h2 = cardBody.querySelector("h2");
   if (!pics || selected !== w || !h2 || cardBody.querySelector(".card-skel, .card-pic")) return;
@@ -1280,18 +1286,29 @@ async function cardPicture(w) {
   h2.after(fig);
 }
 
-// Shown or not: the Aa menu's Pictures (on by default); their size is its Picture size
-// (theme.js, as the text's: --picture-scale).
+// Where they're shown: the Aa menu's Pictures, remembered per browser; their size is its
+// Picture size (theme.js, as the text's: --picture-scale).
 function showPicturesChoice() {
-  for (const b of document.querySelectorAll(".pictures-choice")) b.setAttribute("aria-pressed", String((b.dataset.pictures === "on") === picturesOn));
+  const touch = !!noHover?.matches;
+  for (const b of document.querySelectorAll(".pictures-choice")) {
+    const m = b.dataset.pictures;
+    b.hidden = touch ? m === "hover" || m === "card" : m === "show";
+    const mode = touch ? (picturesMode === "off" ? "off" : "show") : picturesMode === "show" ? "hover" : picturesMode;
+    b.setAttribute("aria-pressed", String(m === mode));
+  }
 }
-try { picturesOn = localStorage.getItem("showPictures") !== "0"; } catch {}
+try {
+  const m = localStorage.getItem("pictures");
+  if (["show", "hover", "card", "off"].includes(m)) picturesMode = m;
+  else if (localStorage.getItem("showPictures") === "0") picturesMode = "off";  // (as Hide was kept before)
+} catch {}
 showPicturesChoice();
+noHover?.addEventListener?.("change", showPicturesChoice);
 document.getElementById("size-menu").addEventListener("click", (e) => {
   const choice = e.target.closest(".pictures-choice");
   if (!choice) return;
-  picturesOn = choice.dataset.pictures === "on";
-  try { localStorage.setItem("showPictures", picturesOn ? "1" : "0"); } catch {}
+  picturesMode = choice.dataset.pictures;
+  try { localStorage.setItem("pictures", picturesMode); localStorage.removeItem("showPictures"); } catch {}
   showPicturesChoice();
   hidePicture();
   if (selected) cardPicture(selected);

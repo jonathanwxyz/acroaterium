@@ -131,8 +131,10 @@
         <div class="font-row pictures-row" role="group" aria-label="Pictures" title="A picture of the word under the pointer, where a vocabulary deck has one (on a touch screen: in the word's card)">
           <span class="size-name">Pictures</span>
           <span class="font-choices">
-            <button class="pictures-choice" data-pictures="on" aria-pressed="true">Show</button>
-            <button class="pictures-choice" data-pictures="off" aria-pressed="false">Hide</button>
+            <button class="pictures-choice" data-pictures="show" aria-pressed="false" title="In the word's card" hidden>Show</button>
+            <button class="pictures-choice" data-pictures="hover" aria-pressed="true" title="Only on hover">Hover</button>
+            <button class="pictures-choice" data-pictures="card" aria-pressed="false" title="Only in the word's card">Card</button>
+            <button class="pictures-choice" data-pictures="off" aria-pressed="false">None</button>
           </span>
         </div>
         <div class="size-row" data-key="pictureScale" data-prop="--picture-scale">

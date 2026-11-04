@@ -899,6 +899,7 @@ main {
 .lang-choice:not([data-lang="en"]) { font-family: var(--greek); font-size: 15.5px; }
 .lang-choice[data-lang="en"] { font-size: 14px; }  /* (each language's name in its own script) */
 .pictures-choice { font-size: 14px; }
+.pictures-choice[hidden] { display: none; }  /* (Hover and Card: not on a touch screen; Show only there) */
 @media (hover: hover) { .font-choice:hover, .theme-choice:hover, .lang-choice:hover, .accent-choice:hover, .letters-choice:hover, .pictures-choice:hover { color: var(--text); border-color: var(--current-bar); } }
 .font-choice[aria-pressed="true"], .theme-choice[aria-pressed="true"], .lang-choice[aria-pressed="true"],
 .accent-choice[aria-pressed="true"], .letters-choice[aria-pressed="true"], .pictures-choice[aria-pressed="true"] { color: var(--text); border-color: var(--current-bar); background: var(--current-bg); }
