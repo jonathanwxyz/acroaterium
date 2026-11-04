@@ -5,11 +5,12 @@ word, for the reader to show by a word (on hover, and in the word card).
 The decks (.apkg) are in images/, and library/image_decks.json lists them, best first (all
 local, like the pictures made from them; library/image_decks.example.json shows the
 format): a lemma with pictures from several decks shows the best deck's first
-(image_sources.rank; the API gives them all, in that order).
+(image_sources.rank; the API gives them all, in that order). A deck marked "hidden" is
+imported all the same, but its pictures aren't shown.
 
 Tables in data/library.sqlite (library.py leaves them be; compact_library.py leaves them
 out: the pictures are served, not kept on the device):
-  image_sources (source, name, rank, deck)
+  image_sources (source, name, rank, deck, hidden)
   lemma_images  (source, note, ord, file, headword, lemma, method)
       one row per picture of each note with a Greek word, matched or not (lemma NULL;
       method says why), so that nothing is lost when the matching or the policy changes.
@@ -266,7 +267,8 @@ def main():
             source TEXT PRIMARY KEY,
             name   TEXT NOT NULL,
             rank   INTEGER NOT NULL,     -- 1: the best; a lemma's pictures are shown in this order
-            deck   TEXT NOT NULL);       -- its file (under images/)
+            deck   TEXT NOT NULL,        -- its file (under images/)
+            hidden INTEGER NOT NULL);    -- 1: its pictures kept but not shown
         CREATE TABLE lemma_images (      -- a picture of a deck's note (scripts/import_anki_images.py)
             source   TEXT NOT NULL REFERENCES image_sources,
             note     INTEGER NOT NULL,   -- the note's id in the deck
@@ -278,8 +280,9 @@ def main():
             PRIMARY KEY (source, note, ord));
         CREATE INDEX lemma_images_lemma ON lemma_images (lemma);
     """)
-    con.executemany("INSERT INTO image_sources VALUES (?, ?, ?, ?)",
-                    [(d["source"], d["name"], rank, d["file"]) for rank, d in enumerate(decks, 1)])
+    con.executemany("INSERT INTO image_sources VALUES (?, ?, ?, ?, ?)",
+                    [(d["source"], d["name"], rank, d["file"], int(bool(d.get("hidden"))))
+                     for rank, d in enumerate(decks, 1)])
     con.executemany("INSERT INTO lemma_images VALUES (?, ?, ?, ?, ?, ?, ?)", made)
     con.commit()
     lemmas = con.execute("SELECT count(DISTINCT lemma) FROM lemma_images").fetchone()[0]

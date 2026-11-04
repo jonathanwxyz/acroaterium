@@ -265,7 +265,7 @@ def images_json(slug, n):
     scripts/import_anki_images.py), for the reader to show by a word: {"lemmas": [{lemma,
     images: [{src, source, headword}, …]}, …], "lines": {line: [a lemma's place in "lemmas" or
     null, for each word]}, "sources": {source: name}}; a lemma's pictures best deck first
-    (image_sources.rank); a word in parts (κἀγώ), its first part with pictures. Served only,
+    (image_sources.rank), but for a deck hidden; a word in parts (κἀγώ), its first part with pictures. Served only,
     never kept offline (the service worker leaves them to the network)."""
     if not LIBRARY.exists():
         return None
@@ -273,13 +273,14 @@ def images_json(slug, n):
     try:
         rows = con.execute("""
             SELECT w.seq, w.word_index, l.lemma FROM lemma_words w JOIN lemmas l ON l.id = w.lemma
-            WHERE w.text = ? AND w.div = ? AND l.lemma IN (SELECT lemma FROM lemma_images)
+            WHERE w.text = ? AND w.div = ? AND l.lemma IN (
+                SELECT lemma FROM lemma_images JOIN image_sources USING (source) WHERE NOT hidden)
             ORDER BY w.seq, w.word_index, w.part""", (slug, n)).fetchall()
         names = sorted({r[2] for r in rows})
         images = {}
         for lemma, file, source, headword in con.execute(f"""
                 SELECT i.lemma, i.file, i.source, i.headword FROM lemma_images i JOIN image_sources s USING (source)
-                WHERE i.lemma IN ({",".join("?" * len(names))})
+                WHERE i.lemma IN ({",".join("?" * len(names))}) AND NOT s.hidden
                 ORDER BY s.rank, i.method != 'lemma', i.note, i.ord""", names):
             images.setdefault(lemma, []).append({"src": f"/lemma-images/{file}", "source": source, "headword": headword})
         sources = dict(con.execute("SELECT source, name FROM image_sources"))
