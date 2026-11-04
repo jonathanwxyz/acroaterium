@@ -7,6 +7,12 @@ Run after import_translation.py. Each cut-point entry is `book.line first words`
 line's English starts at those words, searched for after the previous cut within the
 passage. Checks that every line of a split passage has an entry and that the pieces
 rejoin to the passage text exactly.
+
+A passage's first line needs no entry. Where Murray's English for it lies across the
+passage break, it may have one (across()): words found at the end of the line before
+(the previous passage's last line) bring that English forward into this line; words found
+further into this line's own English give what comes before them to the line before
+(a line marked "-" there takes it).
 """
 import re
 import sqlite3
@@ -17,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "data" / "translation_lines"
 DB = ROOT / "data" / "iliad.sqlite"
 TRANSLATION = "murray"
-OPENERS = "“‘("  # a cut moves back over these so they stay with the words they open
+OPENERS = "“‘(["  # a cut moves back over these so they stay with the words they open
 
 
 def read_cuts(path):
@@ -59,6 +65,30 @@ def split(text, first, last, book, cuts, errors):
     return [text[a:b].strip() for a, b in zip(bounds, bounds[1:])]
 
 
+def across(book, pieces, firsts, cuts, errors):
+    """Move English across passage breaks, by the entries for passages' first lines
+    (pieces: {line: English}, in order, changed in place)."""
+    for line in firsts:
+        words = cuts.get((book, line))
+        if not words or line - 1 not in pieces or line not in pieces:
+            continue
+        prev, own = pieces[line - 1] or "", pieces[line] or ""
+        at = prev.find(words)
+        if at > 0:
+            while at > 0 and (prev[at - 1] in OPENERS or prev[at - 1] == " " and prev[at - 2:at - 1] in OPENERS):
+                at -= 1
+            pieces[line - 1], pieces[line] = prev[:at].strip(), (prev[at:].strip() + " " + own).strip()
+            continue
+        at = own.find(words)
+        if at > 0:
+            while at > 0 and (own[at - 1] in OPENERS or own[at - 1] == " " and own[at - 2:at - 1] in OPENERS):
+                at -= 1
+            pieces[line - 1], pieces[line] = (prev + " " + own[:at].strip()).strip(), own[at:].strip()
+            continue
+        if at < 0:
+            errors.append(f"{book}.{line}: {words!r} not found at the end of {book}.{line - 1} or in {book}.{line}")
+
+
 def main():
     con = sqlite3.connect(DB)
     rows, errors = [], []
@@ -67,6 +97,7 @@ def main():
         books = {b for b, _ in cuts}
         for book in sorted(books):
             done = {l for b, l in cuts if b == book}
+            pieces_of, firsts = {}, []
             for first, last, text in con.execute(
                     "SELECT line_from, line_to, text FROM translation_passages "
                     "WHERE translation = ? AND book = ? ORDER BY line_from", (TRANSLATION, book)):
@@ -78,8 +109,10 @@ def main():
                 if "".join("".join(pieces).split()) != "".join(text.split()):
                     errors.append(f"{book}.{first}-{last}: pieces don't rejoin to the passage")
                     continue
-                rows += [(TRANSLATION, book, line, piece or None)
-                         for line, piece in zip(range(first, last + 1), pieces)]
+                pieces_of.update(zip(range(first, last + 1), pieces))
+                firsts.append(first)
+            across(book, pieces_of, firsts, cuts, errors)
+            rows += [(TRANSLATION, book, line, piece or None) for line, piece in pieces_of.items()]
 
     con.executescript(
         """

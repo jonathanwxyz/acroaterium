@@ -58,7 +58,7 @@ to write `library_compact.sqlite` again (about a minute, with its check).
    after step 2)
 6. `scripts/import_translation.py` → `translation_passages` (Murray's English), then
    `scripts/import_translation_lines.py` → `translation_lines` (split per line, from
-   `translation_lines/murray_book01.txt`), and `scripts/import_polylas.py` →
+   `translation_lines/murray_bookNN.txt`), and `scripts/import_polylas.py` →
    `translation_lines` (Polylas's modern Greek, from Wikisource)
 7. `.venv/bin/python scripts/align_audio.py --book N --audio recordings/Iliad/iliadNN.m4a`
    → `verse_timings` (setup in `requirements-audio.txt`), or `scripts/align_all.sh` for
@@ -136,10 +136,12 @@ another (link precision/recall, per-word agreement).
   this per book from where sentences end (see `import_translation.py`). Its markers have three slips, merged into the
   preceding passage: 2.720 repeated, 13.825 after 13.830, 20.1 repeated.
 - **translation_lines** `(translation, book, line)`: Murray split into single Greek
-  lines (Book 1 so far). The split points are hand-made: `translation_lines/murray_book01.txt`
+  lines, all 24 books. The split points are hand-made: `translation_lines/murray_bookNN.txt`
   gives the first words of each line's English; the importer checks the pieces rejoin
   to the passage exactly. Where Murray reorders clauses across lines the cut is the
   best fit, so a line's English can carry a word or two belonging to its neighbour.
+  Murray's passage breaks often fall a line off the Greek; an entry for a passage's
+  first line moves English across the break (see `import_translation_lines.py`).
 - **translation_lines**, `translation = 'polylas'`: Iakovos Polylas's modern Greek verse
   translation (published 1923, public domain) from Greek Wikisource. He keeps Homer's
   line count, and Wikisource marks every 5th line, so lines are taken one for one. A
