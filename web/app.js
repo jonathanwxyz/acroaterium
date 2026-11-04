@@ -1196,13 +1196,13 @@ window.addEventListener("scroll", () => { gloss.hidden = true; }, { passive: tru
 // as the Aa menu's Pictures says; on a touch screen its card does. A book's pictures (/api/images) come as the first is wanted,
 // from the server only: never kept offline (sw.js).
 // The Aa menu's Pictures: with a pointer that hovers, "hover" (the default), "card" (in the word's
-// card) or "off"; on a touch screen "show" (in the card) or "off". (Each the other's, on the
-// other kind of screen: show as hover; hover or card as show.)
+// card), "both" or "off"; on a touch screen "show" (in the card) or "off". (Each the other's, on
+// the other kind of screen: show as hover; hover, card or both as show.)
 let picturesMode = "hover";
 const wordPic = document.getElementById("word-pic");
 const noHover = window.matchMedia?.("(hover: none)");
-const picturesOnHover = () => !noHover?.matches && (picturesMode === "show" || picturesMode === "hover");
-const picturesInCard = () => (noHover?.matches ? picturesMode !== "off" : picturesMode === "card");
+const picturesOnHover = () => !noHover?.matches && ["show", "hover", "both"].includes(picturesMode);
+const picturesInCard = () => (noHover?.matches ? picturesMode !== "off" : picturesMode === "card" || picturesMode === "both");
 const bookPictures = new Map();  // "text/div" -> promise of /api/images
 function picturesOf(w) {
   if (navigator.onLine === false) return Promise.resolve(null);
@@ -1292,14 +1292,14 @@ function showPicturesChoice() {
   const touch = !!noHover?.matches;
   for (const b of document.querySelectorAll(".pictures-choice")) {
     const m = b.dataset.pictures;
-    b.hidden = touch ? m === "hover" || m === "card" : m === "show";
+    b.hidden = touch ? m !== "show" && m !== "off" : m === "show";
     const mode = touch ? (picturesMode === "off" ? "off" : "show") : picturesMode === "show" ? "hover" : picturesMode;
     b.setAttribute("aria-pressed", String(m === mode));
   }
 }
 try {
   const m = localStorage.getItem("pictures");
-  if (["show", "hover", "card", "off"].includes(m)) picturesMode = m;
+  if (["show", "hover", "card", "both", "off"].includes(m)) picturesMode = m;
   else if (localStorage.getItem("showPictures") === "0") picturesMode = "off";  // (as Hide was kept before)
 } catch {}
 showPicturesChoice();
