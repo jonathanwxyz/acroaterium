@@ -1195,11 +1195,11 @@ window.addEventListener("scroll", () => { gloss.hidden = true; }, { passive: tru
 // lemma has some: resting the pointer on a word shows its best, its card too (cardPicture),
 // as the Aa menu's Pictures says; on a touch screen its card does. A book's pictures (/api/images) come as the first is wanted,
 // from the server only: never kept offline (sw.js).
-// The Aa menu's Pictures: with a pointer that hovers, two toggles, Hover (on by default) and
-// Card (in the word's card), kept as "hover", "card", "both" or "off"; on a touch screen Show (in
+// The Aa menu's Pictures: with a pointer that hovers, two toggles, Hover and Card (in the
+// word's card; on by default), kept as "hover", "card", "both" or "off"; on a touch screen Show (in
 // the card) or None, kept as "show" or "off". (Each the other's, on the other kind of screen:
 // show as hover; hover, card or both as show.)
-let picturesMode = "hover";
+let picturesMode = "card";
 const wordPic = document.getElementById("word-pic");
 const noHover = window.matchMedia?.("(hover: none)");
 const picturesOnHoverMode = () => ["show", "hover", "both"].includes(picturesMode);
