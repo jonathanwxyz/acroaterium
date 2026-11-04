@@ -1285,6 +1285,8 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
 #word-pic img { display: block; max-width: 11rem; max-height: 11rem; border-radius: 5px; }
+#word-pic .via { color: var(--muted); font-size: 0.75rem; text-align: center; margin-top: 2px; }
+#word-pic .via:empty { display: none; }
 .verse.current { background: var(--current-bg); border-left-color: var(--current-bar); }
 .verse.current .num { color: var(--current-bar); visibility: visible; }
 .verse.current.pausing { background: var(--pause-bg); }

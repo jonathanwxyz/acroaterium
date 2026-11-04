@@ -263,26 +263,57 @@ def words_json(slug, n):
 def images_json(slug, n):
     """The pictures of a book's words' lemmas (lemma_images, from Anki decks: see
     scripts/import_anki_images.py), for the reader to show by a word: {"lemmas": [{lemma,
-    images: [{src, source, headword}, …]}, …], "lines": {line: [a lemma's place in "lemmas" or
-    null, for each word]}, "sources": {source: name}}; a lemma's pictures best deck first
-    (image_sources.rank), but for a deck hidden; a word in parts (κἀγώ), its first part with pictures. Served only,
-    never kept offline (the service worker leaves them to the network)."""
+    images: [{src, source, headword}, …]}, …], "lines": {line: [for each word: a lemma's place
+    in "lemmas", or [its place, the paraphrase's word it comes by], or null]}, "sources":
+    {source: name}}; a lemma's pictures best deck first (image_sources.rank), but for a deck
+    hidden; a word in parts (κἀγώ), its first part with pictures. A word without pictures of
+    its own has its paraphrase's (Gaza's Attic for the Iliad's Homeric, paraphrase_links:
+    μῆνιν, τὴν ὀργὴν: ὀργή), where a word of it (not the article) is a printed form of a lemma
+    with pictures (lemma_inflections: as accented, else the lemma most so printed). Served
+    only, never kept offline (the service worker leaves them to the network)."""
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
     try:
-        rows = con.execute("""
+        shown = {lemma for (lemma,) in con.execute(
+            "SELECT DISTINCT lemma FROM lemma_images JOIN image_sources USING (source) WHERE NOT hidden AND lemma IS NOT NULL")}
+        rows = [r for r in con.execute("""
             SELECT w.seq, w.word_index, l.lemma FROM lemma_words w JOIN lemmas l ON l.id = w.lemma
-            WHERE w.text = ? AND w.div = ? AND l.lemma IN (
-                SELECT lemma FROM lemma_images JOIN image_sources USING (source) WHERE NOT hidden)
-            ORDER BY w.seq, w.word_index, w.part""", (slug, n)).fetchall()
-        names = sorted({r[2] for r in rows})
+            WHERE w.text = ? AND w.div = ? ORDER BY w.seq, w.word_index, w.part""", (slug, n)) if r[2] in shown]
+        own = {(seq, index) for seq, index, _ in rows}
+        # The paraphrase's words, for the words without pictures of their own.
+        para = [r for r in con.execute(
+            "SELECT seq, word_index, para_word FROM paraphrase_links WHERE text = ? AND div = ? "
+            "ORDER BY seq, word_index, para_seq, para_index", (slug, n)) if (r[0], r[1]) not in own]
+        printed = {}
+        for word in {w for *_, w in para}:
+            printed.setdefault(search_spelling(word.strip(PARA_PUNCT)), set()).add(word)
+        forms = {}
+        for i in range(0, len(printed), 500):
+            keys = list(printed)[i:i + 500]
+            for bare, lemma, form, k in con.execute(f"""
+                    SELECT i.bare, l.lemma, i.form, i.n FROM lemma_inflections i JOIN lemmas l ON l.id = i.lemma
+                    WHERE i.bare IN ({",".join("?" * len(keys))})""", keys):
+                forms.setdefault(bare, []).append((form, k, lemma))
+        via = {}
+        for seq, index, word in para:
+            if (seq, index) in via:
+                continue
+            w = unicodedata.normalize("NFC", unicodedata.normalize("NFD", word.strip(PARA_PUNCT)).replace("\u0300", "\u0301"))
+            hits = forms.get(search_spelling(w), [])
+            same = [h for h in hits if h[0] in (w, w.lower())]
+            lemma = max(same or hits, key=lambda h: h[1])[2] if same or hits else None
+            if lemma in shown and lemma != "ὁ":
+                via[seq, index] = (lemma, word.strip(PARA_PUNCT))
+        names = sorted({r[2] for r in rows} | {lemma for lemma, _ in via.values()})
         images = {}
-        for lemma, file, source, headword in con.execute(f"""
-                SELECT i.lemma, i.file, i.source, i.headword FROM lemma_images i JOIN image_sources s USING (source)
-                WHERE i.lemma IN ({",".join("?" * len(names))}) AND NOT s.hidden
-                ORDER BY s.rank, i.method != 'lemma', i.note, i.ord""", names):
-            images.setdefault(lemma, []).append({"src": f"/lemma-images/{file}", "source": source, "headword": headword})
+        for i in range(0, len(names), 500):
+            chunk = names[i:i + 500]
+            for lemma, file, source, headword in con.execute(f"""
+                    SELECT i.lemma, i.file, i.source, i.headword FROM lemma_images i JOIN image_sources s USING (source)
+                    WHERE i.lemma IN ({",".join("?" * len(chunk))}) AND NOT s.hidden
+                    ORDER BY s.rank, i.method != 'lemma', i.note, i.ord""", chunk):
+                images.setdefault(lemma, []).append({"src": f"/lemma-images/{file}", "source": source, "headword": headword})
         sources = dict(con.execute("SELECT source, name FROM image_sources"))
     except sqlite3.OperationalError:  # a library without pictures
         return {"lemmas": [], "lines": {}, "sources": {}}
@@ -290,13 +321,21 @@ def images_json(slug, n):
         con.close()
     place = {lemma: i for i, lemma in enumerate(names)}
     lines = {}
-    for seq, index, lemma in rows:
+
+    def put(seq, index, value):
         words = lines.setdefault(seq, [])
         words += [None] * (index + 1 - len(words))
         if words[index] is None:
-            words[index] = place[lemma]
+            words[index] = value
+    for seq, index, lemma in rows:
+        put(seq, index, place[lemma])
+    for (seq, index), (lemma, word) in via.items():
+        put(seq, index, [place[lemma], word])
     return {"lemmas": [{"lemma": lemma, "images": images[lemma]} for lemma in names],
             "lines": lines, "sources": sources}
+
+
+PARA_PUNCT = ".,;·:—–“”‘’'\"()[]⟨⟩«»"  # (round a paraphrase's word)
 
 
 def offline_json(slug, n):

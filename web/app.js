@@ -1207,9 +1207,12 @@ function picturesOf(w) {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .catch((err) => { bookPictures.delete(key); throw err; }));
   }
+  // (a word without pictures of its own may have its paraphrase's: [lemma, Gaza's word])
   return bookPictures.get(key).then((data) => {
-    const i = data.lines[w.dataset.line]?.[Number(w.dataset.index)];
-    return i == null ? null : { ...data.lemmas[i], sources: data.sources };
+    const e = data.lines[w.dataset.line]?.[Number(w.dataset.index)];
+    if (e == null) return null;
+    const [i, via] = Array.isArray(e) ? e : [e, null];
+    return { ...data.lemmas[i], via, sources: data.sources };
   });
 }
 
@@ -1228,9 +1231,10 @@ list.addEventListener("pointerover", (e) => {
   picTimer = setTimeout(async () => {
     const pics = await picturesOf(w).catch(() => null);
     if (picWord !== w || !pics) return;
-    const img = wordPic.firstElementChild;
+    const img = wordPic.querySelector("img");
     img.src = pics.images[0].src;
     img.alt = pics.lemma;
+    wordPic.querySelector(".via").textContent = pics.via ? tr("by Gaza's {word}", { word: pics.via }) : "";
     await img.decode().catch(() => {});
     if (picWord !== w) return;
     wordPic.hidden = false;
@@ -1264,9 +1268,10 @@ async function cardPicture(w) {
     const p = pics.images[at], deck = pics.sources[p.source] ?? p.source;
     img.src = p.src;
     img.alt = pics.lemma;
-    cap.textContent = pics.images.length > 1
-      ? tr("Picture: {deck} · {i} of {n} (tap for the next)", { deck, i: at + 1, n: pics.images.length })
-      : tr("Picture: {deck}", { deck });
+    cap.textContent = [tr("Picture: {deck}", { deck }),
+      pics.via && tr("by Gaza's {word}", { word: pics.via }),
+      pics.images.length > 1 && tr("{i} of {n} (tap for the next)", { i: at + 1, n: pics.images.length }),
+    ].filter(Boolean).join(" · ");
   };
   if (pics.images.length > 1) fig.addEventListener("click", () => { at = (at + 1) % pics.images.length; show(); });
   img.addEventListener("load", () => placeCard());
