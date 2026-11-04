@@ -1191,6 +1191,97 @@ list.addEventListener("pointerout", (e) => {
 });
 window.addEventListener("scroll", () => { gloss.hidden = true; }, { passive: true });
 
+// Pictures of words, from vocabulary decks (scripts/import_anki_images.py), where the word's
+// lemma has some: resting the pointer on a word shows its best; on a touch screen its card
+// does instead (cardPicture). A book's pictures (/api/images) come as the first is wanted,
+// from the server only: never kept offline (sw.js).
+const showPictures = document.getElementById("show-pictures");
+const wordPic = document.getElementById("word-pic");
+const noHover = window.matchMedia?.("(hover: none)");
+const bookPictures = new Map();  // "text/div" -> promise of /api/images
+function picturesOf(w) {
+  if (navigator.onLine === false) return Promise.resolve(null);
+  const div = w.dataset.div ?? BOOK, key = `${TEXT}/${div}`;
+  if (!bookPictures.has(key)) {
+    bookPictures.set(key, fetch(`/api/images/${encodeURIComponent(TEXT)}/${div}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .catch((err) => { bookPictures.delete(key); throw err; }));
+  }
+  return bookPictures.get(key).then((data) => {
+    const i = data.lines[w.dataset.line]?.[Number(w.dataset.index)];
+    return i == null ? null : { ...data.lemmas[i], sources: data.sources };
+  });
+}
+
+let picWord = null, picTimer = null;
+function hidePicture() {
+  clearTimeout(picTimer);
+  picWord = null;
+  wordPic.hidden = true;
+}
+list.addEventListener("pointerover", (e) => {
+  const w = e.target.closest(".w");
+  if (!w || w === picWord || e.pointerType === "touch" || !showPictures.checked) return;
+  hidePicture();
+  picWord = w;
+  // (a moment's rest on the word first: not a picture for every word the pointer crosses)
+  picTimer = setTimeout(async () => {
+    const pics = await picturesOf(w).catch(() => null);
+    if (picWord !== w || !pics) return;
+    const img = wordPic.firstElementChild;
+    img.src = pics.images[0].src;
+    img.alt = pics.lemma;
+    await img.decode().catch(() => {});
+    if (picWord !== w) return;
+    wordPic.hidden = false;
+    // Above the word; below it where Gaza's word is shown above, or there's no room.
+    const r = w.getBoundingClientRect(), p = wordPic.getBoundingClientRect();
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - p.width / 2), innerWidth - p.width - 8);
+    const above = r.top - p.height - 8;
+    const room = document.getElementById("topbar").getBoundingClientRect().bottom + 8;
+    const top = above > room && gloss.hidden ? above : r.bottom + 8;
+    wordPic.style.left = `${left + scrollX}px`;
+    wordPic.style.top = `${top + scrollY}px`;
+  }, 250);
+});
+list.addEventListener("pointerout", (e) => {
+  const w = e.target.closest(".w");
+  if (w && w === picWord && !w.contains(e.relatedTarget)) hidePicture();
+});
+list.addEventListener("pointerdown", hidePicture);
+window.addEventListener("scroll", hidePicture, { passive: true });
+
+// In the word's card on a touch screen: its best picture; a tap shows the next, if there are more.
+async function cardPicture(w) {
+  cardBody.querySelector(".card-pic")?.remove();
+  if (!showPictures.checked || !noHover?.matches) return;
+  const pics = await picturesOf(w).catch(() => null);
+  const h2 = cardBody.querySelector("h2");
+  if (!pics || selected !== w || !h2 || cardBody.querySelector(".card-skel, .card-pic")) return;
+  const fig = el("figure", "card-pic"), img = el("img"), cap = el("figcaption");
+  let at = 0;
+  const show = () => {
+    const p = pics.images[at], deck = pics.sources[p.source] ?? p.source;
+    img.src = p.src;
+    img.alt = pics.lemma;
+    cap.textContent = pics.images.length > 1
+      ? tr("Picture: {deck} · {i} of {n} (tap for the next)", { deck, i: at + 1, n: pics.images.length })
+      : tr("Picture: {deck}", { deck });
+  };
+  if (pics.images.length > 1) fig.addEventListener("click", () => { at = (at + 1) % pics.images.length; show(); });
+  img.addEventListener("load", () => placeCard());
+  show();
+  fig.append(img, cap);
+  h2.after(fig);
+}
+
+try { showPictures.checked = localStorage.getItem("showPictures") !== "0"; } catch {}  // on by default
+showPictures.addEventListener("change", () => {
+  try { localStorage.setItem("showPictures", showPictures.checked ? "1" : "0"); } catch {}
+  hidePicture();
+  if (selected) cardPicture(selected);
+});
+
 // Parsing card: clicking a word shows its treebank analysis (instead of seeking).
 let selected = null;
 
@@ -1339,6 +1430,7 @@ async function openCard(w) {
   const id = wordId(w);
   if (wordLoaded.has(id)) {
     renderCard(wordLoaded.get(id));
+    cardPicture(w);
   } else {
     // Until it comes: the word itself and grey lines, never the last word's card.
     const skel = el("div", "card-skel");
@@ -1350,7 +1442,7 @@ async function openCard(w) {
   if (wordLoaded.has(id)) return;
   try {
     const data = await fetchWord(w);
-    if (selected === w) { renderCard(data); placeCard(); }  // (on the side it opened on)
+    if (selected === w) { renderCard(data); cardPicture(w); placeCard(); }  // (on the side it opened on)
   } catch (err) {
     if (selected === w) {
       cardBody.replaceChildren(el("p", "note", navigator.onLine === false

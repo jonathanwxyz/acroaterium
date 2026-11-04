@@ -75,6 +75,10 @@ FULL = {
 # kept, for the word cards).
 DERIVED = {"lemma_words", "lemma_inflections"}
 
+# Tables the compact library leaves out altogether: the words' pictures
+# (import_anki_images.py), which the server serves and the device never keeps.
+SERVED = {"image_sources", "lemma_images"}
+
 
 def unpack(blob):
     """A chunk's rows: zlib, then JSON."""

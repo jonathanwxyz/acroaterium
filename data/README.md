@@ -81,6 +81,16 @@ Books 16–20 out of order; `recordings/Iliad/playlist.txt` lists it).
 9. `scripts/import_commentaries.py` → `commentaries`, from Perseus's XML (downloads a
    125 MB archive once and keeps the four files needed in `raw/perseus/`)
 
+The words' pictures: `scripts/import_anki_images.py` (`-v` lists the notes not matched)
+reads the Anki decks (`.apkg`) in `images/` that `library/image_decks.json` lists, best
+first (local, like the catalogue; `library/image_decks.example.json` shows the format),
+and puts each note's pictures under the lemma of its Greek word: `image_sources` and
+`lemma_images` in `library.sqlite`, the pictures (WebP, at most 480 px) in
+`lemma_images/`. Its docstring says how words are matched to lemmas. Run it after
+`library.py` has (re)built the lemma index (it's quick once the pictures are made). The
+server serves them (`/api/images`, `/lemma-images/`); the compact library and the
+service worker leave them out, so they're never kept offline. All of it stays out of git.
+
 `scripts/compare_alignments.py REF CANDIDATE [-v]` scores one alignment file against
 another (link precision/recall, per-word agreement).
 

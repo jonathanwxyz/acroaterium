@@ -251,6 +251,7 @@
   <div class="controls">
     <label class="toggle" title="Show only the current verse, with the one before and after (F)"><input type="checkbox" id="focused"> focused</label>
     <label class="toggle" title="Pause at the end of the verse the pointer is on; resume when it moves off"><input type="checkbox" id="hold-on-hover" checked> pause on hover</label>
+    <label class="toggle" title="A picture of the word under the pointer, where a vocabulary deck has one (on a touch screen: in the word's card)"><input type="checkbox" id="show-pictures" checked> pictures</label>
     <label class="toggle"><input type="checkbox" id="show-paraphrase" checked> paraphrase</label>
     <label class="toggle"><input type="checkbox" id="show-modern"> μετάφραση</label>
     <label class="toggle"><input type="checkbox" id="show-translation"> translation</label>
@@ -261,6 +262,7 @@
 </footer>
 
 <div id="gloss" role="tooltip" hidden></div>
+<div id="word-pic" hidden><img alt=""></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
 <aside id="scholia" hidden aria-label="Scholia">

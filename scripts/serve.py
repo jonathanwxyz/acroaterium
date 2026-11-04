@@ -59,6 +59,7 @@ Routes:
 """
 import argparse
 import datetime
+import gzip
 import hashlib
 import xml.etree.ElementTree as ElementTree
 import json
@@ -81,6 +82,7 @@ RECORDINGS = ROOT / "recordings"
 LIBRARY = ROOT / "data" / "library.sqlite"
 LIBRARY_AUDIO = ROOT / "data" / "library_audio.sqlite"
 LIBRARY_COMPACT = ROOT / "data" / "library_compact.sqlite"
+LEMMA_IMAGES = ROOT / "data" / "lemma_images"
 SHOW_HIDDEN = False  # --show-hidden: list the hidden texts too, marked (locally, never on the live site)
 
 mimetypes.add_type("audio/ogg", ".opus")
@@ -256,6 +258,44 @@ def words_json(slug, n):
             if card and (card.get("tokens") or "gloss" in card):  # (the Iliad's, with Gaza's word, all)
                 out[f"{seq}/{i}"] = card
     return out
+
+
+def images_json(slug, n):
+    """The pictures of a book's words' lemmas (lemma_images, from Anki decks: see
+    scripts/import_anki_images.py), for the reader to show by a word: {"lemmas": [{lemma,
+    images: [{src, source, headword}, …]}, …], "lines": {line: [a lemma's place in "lemmas" or
+    null, for each word]}, "sources": {source: name}}; a lemma's pictures best deck first
+    (image_sources.rank); a word in parts (κἀγώ), its first part with pictures. Served only,
+    never kept offline (the service worker leaves them to the network)."""
+    if not LIBRARY.exists():
+        return None
+    con = sqlite3.connect(LIBRARY)
+    try:
+        rows = con.execute("""
+            SELECT w.seq, w.word_index, l.lemma FROM lemma_words w JOIN lemmas l ON l.id = w.lemma
+            WHERE w.text = ? AND w.div = ? AND l.lemma IN (SELECT lemma FROM lemma_images)
+            ORDER BY w.seq, w.word_index, w.part""", (slug, n)).fetchall()
+        names = sorted({r[2] for r in rows})
+        images = {}
+        for lemma, file, source, headword in con.execute(f"""
+                SELECT i.lemma, i.file, i.source, i.headword FROM lemma_images i JOIN image_sources s USING (source)
+                WHERE i.lemma IN ({",".join("?" * len(names))})
+                ORDER BY s.rank, i.method != 'lemma', i.note, i.ord""", names):
+            images.setdefault(lemma, []).append({"src": f"/lemma-images/{file}", "source": source, "headword": headword})
+        sources = dict(con.execute("SELECT source, name FROM image_sources"))
+    except sqlite3.OperationalError:  # a library without pictures
+        return {"lemmas": [], "lines": {}, "sources": {}}
+    finally:
+        con.close()
+    place = {lemma: i for i, lemma in enumerate(names)}
+    lines = {}
+    for seq, index, lemma in rows:
+        words = lines.setdefault(seq, [])
+        words += [None] * (index + 1 - len(words))
+        if words[index] is None:
+            words[index] = place[lemma]
+    return {"lemmas": [{"lemma": lemma, "images": images[lemma]} for lemma in names],
+            "lines": lines, "sources": sources}
 
 
 def offline_json(slug, n):
@@ -1325,6 +1365,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(scholia_json(*map(int, m.groups())))
         elif m := re.fullmatch(r"/api/words/([\w-]+)/(\d+)", self.path):
             self.send_json(words_json(m[1], int(m[2])))
+        elif m := re.fullmatch(r"/api/images/([\w-]+)/(\d+)", self.path):
+            self.send_json(images_json(m[1], int(m[2])), compress=True)
+        elif self.path.startswith("/lemma-images/"):
+            # A lemma's picture (images_json), under data/lemma_images/, never above it.
+            path = (LEMMA_IMAGES / urllib.parse.unquote(self.path[len("/lemma-images/"):].split("?")[0])).resolve()
+            if not path.is_relative_to(LEMMA_IMAGES.resolve()):
+                return self.send_error(HTTPStatus.NOT_FOUND)
+            self.send_audio(path, {"Cache-Control": "public, max-age=604800"})
         elif m := re.fullmatch(r"/api/offline/([\w-]+)/(\d+)", self.path):
             self.send_json(offline_json(m[1], int(m[2])))
         elif m := re.fullmatch(r"/api/lectionary/(\d{4}-\d\d-\d\d)", self.path):
@@ -1345,12 +1393,18 @@ class Handler(SimpleHTTPRequestHandler):
         else:
             super().do_GET()
 
-    def send_json(self, data):
+    def send_json(self, data, compress=False):
         if data is None:
             return self.send_error(HTTPStatus.NOT_FOUND)
-        body = json.dumps(data, ensure_ascii=False).encode()
+        body = json.dumps(data, ensure_ascii=False, separators=(",", ":") if compress else None).encode()
+        compress = compress and "gzip" in self.headers.get("Accept-Encoding", "")
+        if compress:
+            body = gzip.compress(body, 6)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        if compress:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

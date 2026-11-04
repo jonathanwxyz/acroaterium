@@ -27,6 +27,8 @@ Format (scripts/compact_read.py reads it; an app's decoder follows that):
       lemmas and lemma_forms too (the word cards' references), but not lemma_words or
       lemma_inflections (compact_read.DERIVED), made from the parsing again (library.py's
       lemma_index); only their schema.
+      Nor the words' pictures (compact_read.SERVED: image_sources, lemma_images), not
+      even their schema: the server serves them, and the device never keeps them.
 
   chunks(kind TEXT, text TEXT, div INTEGER, rows BLOB), primary key (kind, text, div)
       (an ordinary rowid table with 1 KB pages: chunks are kilobytes each)
@@ -83,7 +85,7 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compact_read import CHUNK_COLUMNS, DERIVED, DICTS, FULL, restore  # noqa: E402
+from compact_read import CHUNK_COLUMNS, DERIVED, DICTS, FULL, SERVED, restore  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 LIBRARY = ROOT / "data" / "library.sqlite"
@@ -157,7 +159,8 @@ def build(out=OUT):
     # The schemas, and the small tables as they are.
     for db, src in srcs.items():
         for type_, name, sql in src.execute("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL "
-                                            "AND name NOT LIKE 'sqlite_%' ORDER BY type DESC, rowid"):
+                                            "AND name NOT LIKE 'sqlite_%' AND tbl_name NOT IN "
+                                            f"({', '.join(repr(t) for t in sorted(SERVED))}) ORDER BY type DESC, rowid"):
             dst.execute("INSERT INTO schema VALUES (?, ?, ?, ?)", (db, type_, name, sql))
             if type_ == "table" and name not in chunked and name not in DERIVED:
                 dst.execute(sql)
@@ -240,6 +243,8 @@ def check(out=OUT, samples=400, seed=1):
         for db, path in SOURCES.items():
             a, b = read_only(path), read_only(rest[db])
             for (name,) in a.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"):
+                if name in SERVED:
+                    continue
                 cols = [r[1] for r in a.execute(f'PRAGMA table_info("{name}")')]
                 order = ", ".join(f'"{c}"' for c in cols)
                 where, params = not_hidden(name, cols, hidden)
@@ -250,7 +255,8 @@ def check(out=OUT, samples=400, seed=1):
                 print(f"  {db}.{name}: {len(ra)} rows {'identical' if same else 'DIFFER'}"
                       + ("" if same else f" ({len(rb)} restored)"))
             for type_ in ("index",):
-                ia = {n for (n,) in a.execute("SELECT name FROM sqlite_master WHERE type = ? AND sql IS NOT NULL", (type_,))}
+                ia = {n for (n, t) in a.execute("SELECT name, tbl_name FROM sqlite_master WHERE type = ? AND sql IS NOT NULL",
+                                                (type_,)) if t not in SERVED}
                 ib = {n for (n,) in b.execute("SELECT name FROM sqlite_master WHERE type = ? AND sql IS NOT NULL", (type_,))}
                 if ia != ib:
                     ok = False

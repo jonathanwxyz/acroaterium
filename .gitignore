@@ -23,6 +23,7 @@ recordings/
 # shows the format
 library/*
 !library/catalogue.example.json
+!library/image_decks.example.json
 # and the prayers' texts (scripts/library.py, source "prayers")
 prayer_texts/
 
@@ -36,3 +37,7 @@ data/plans.tmp
 
 # The Flutter version of the app (an experiment), kept local
 flutter_app/
+
+# Anki decks and the words' pictures made from them (scripts/import_anki_images.py), kept local
+images/
+data/lemma_images/

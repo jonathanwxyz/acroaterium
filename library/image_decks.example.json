@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy to image_decks.json (local). decks: best first (a lemma's pictures are shown in this order); file: the .apkg under images/; field: the note field with the Greek word (else the first field with Greek in it). overrides: a note matched by hand (lemma as in lemmas.lemma; null: left unmatched).",
+  "decks": [
+    {
+      "source": "pictures",
+      "name": "A picture vocabulary",
+      "file": "Picture_Vocabulary.apkg",
+      "field": "Greek"
+    },
+    {
+      "source": "core",
+      "name": "Core vocabulary",
+      "file": "Core_Vocabulary.apkg"
+    }
+  ],
+  "overrides": [
+    {
+      "source": "core",
+      "headword": "ἀλλᾶς",
+      "lemma": null
+    }
+  ]
+}

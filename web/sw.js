@@ -18,7 +18,7 @@
 // from the file (local/library.js, reading only the pages it needs: local/sqlite.js),
 // before the network is asked; anything not made here, or failing, goes to the server.
 importScripts("local/sqlite.js", "local/library.js");
-const VERSION = "v141";
+const VERSION = "v142";
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 const FONTS = "fonts";  // kept across versions
@@ -190,9 +190,11 @@ self.addEventListener("fetch", (e) => {
   const { request } = e;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== location.origin || url.pathname.startsWith("/__app/") || url.pathname.startsWith("/api/compact")) {
+  if (url.origin !== location.origin || url.pathname.startsWith("/__app/") || url.pathname.startsWith("/api/compact")
+      || url.pathname.startsWith("/api/images/") || url.pathname.startsWith("/lemma-images/")) {
     // (The browser handles it: another site; the app's own copy of the library; the
-    // library's file and its recordings' sizes, fetched for local/manager.js.)
+    // library's file and its recordings' sizes, fetched for local/manager.js; the words'
+    // pictures, from the server only, never kept offline.)
     return;
   } else if (url.pathname.startsWith("/fonts/")) {
     e.respondWith(cacheFirst(request));
