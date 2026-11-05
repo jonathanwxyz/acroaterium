@@ -1299,6 +1299,12 @@ function showPicturesChoice() {
       : m === "hover" ? picturesOnHoverMode() : ["card", "both"].includes(picturesMode);
     b.setAttribute("aria-pressed", String(on));
   }
+  // (with the toggles, an × to turn both off: plainly, pictures needn't be shown)
+  const clear = document.querySelector(".pictures-clear");
+  if (clear) {
+    clear.hidden = touch;
+    clear.disabled = picturesMode === "off" || picturesMode === "show";
+  }
 }
 try {
   const m = localStorage.getItem("pictures");
@@ -1308,10 +1314,11 @@ try {
 showPicturesChoice();
 noHover?.addEventListener?.("change", showPicturesChoice);
 document.getElementById("size-menu").addEventListener("click", (e) => {
-  const choice = e.target.closest(".pictures-choice");
+  const choice = e.target.closest(".pictures-choice, .pictures-clear");
   if (!choice) return;
   const m = choice.dataset.pictures;
-  if (noHover?.matches) picturesMode = m;
+  if (choice.classList.contains("pictures-clear")) picturesMode = "off";
+  else if (noHover?.matches) picturesMode = m;
   else {  // (a toggle: the other as it is)
     const hover = picturesOnHoverMode() !== (m === "hover");
     const card = ["card", "both"].includes(picturesMode) !== (m === "card");
