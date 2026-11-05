@@ -781,7 +781,9 @@ function buildAnkiDialog() {
   head.append(el("h2", null, tr("Flashcards for Anki")), close);
   const form = el("form", "plan-form");
   const picked = textPicker();
-  // Some of a text's verses (lines, Stephanus sections): "1-50, 72", "3:5-4:12" across books.
+  // Some of a text's verses, named as it numbers them (lines, verses, Stephanus sections,
+  // chapters; the preview's "parts" says which, and its first and last): "1-50, 72",
+  // "3:5-4:12" across books. Not for a text whose parts aren't numbered (a service's).
   const verses = el("input");
   Object.assign(verses, { type: "text", name: "verses", inputMode: "text", spellcheck: false, autocomplete: "off" });
   const versesRow = planField(tr("Verses"), verses);
@@ -807,15 +809,18 @@ function buildAnkiDialog() {
   const made = () => { try { return Math.max(0, parseInt(localStorage.getItem(ANKI_MADE), 10) || 0); } catch { return 0; } };
   const query = (extra) => new URLSearchParams({ target: picked.target(), v: versesRow.hidden ? "" : verses.value.trim(),
                                                  pictures: pictures.checked ? 1 : 0, ...extra });
-  const showVerses = () => {
-    const t = picked.chosenText();
-    versesRow.hidden = versesHint.hidden = !t;
-    if (!t) return;
-    const books = picked.target().match(/:(\d+)-(\d+)$/);  // (some of its books: "iliad:1-3")
-    const several = books ? books[1] !== books[2] : t.books.length > 1;
-    verses.placeholder = tr("All");
-    versesHint.textContent = several ? tr("All, or some: 1-50, 72 (in the first book), 2:10-3:40 (book:verse)")
-      : tr("All, or some: 1-50, 72");
+  verses.placeholder = tr("All");
+  const PART_NAMES = { lines: "Lines", verses: "Verses", stephanus: "Stephanus", chapters: "Chapters" };
+  const showVerses = (parts) => {  // (undefined: a text, until its preview comes)
+    versesRow.hidden = versesHint.hidden = parts === undefined ? !picked.chosenText() : !parts;
+    if (!parts) return;
+    versesRow.querySelector(".plan-label").textContent = tr(PART_NAMES[parts.kind]);
+    const first = parts.first === "0" ? tr("0 (prologue)") : parts.first;
+    versesHint.textContent = parts.multi
+      ? tr(parts.kind === "verses" ? "From {first} to {last}, as chapter:verse (a verse alone: in the first chapter); a-b for a range, commas between; empty for all"
+           : "From {first} to {last}, as book:line (a line alone: in the first book); a-b for a range, commas between; empty for all",
+           { first, last: parts.last })
+      : tr("From {first} to {last}; a-b for a range, commas between; empty for all", { first, last: parts.last });
   };
   let asked = 0, shown = null, asking = null;
   d.update = async () => {
@@ -828,12 +833,16 @@ function buildAnkiDialog() {
     else preview.replaceChildren(el("p", "plan-note", "…"));
     try {
       const r = await fetch(`/api/anki/preview?${query()}`, { signal: asking.signal });
-      if (r.status === 404) throw new Error("none");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const p = await r.json();
       if (ask !== asked) return;
-      shown = p;
+      showVerses(p.parts);
       preview.classList.remove("stale");
+      if (p.none) {
+        preview.replaceChildren(el("p", "plan-note", tr("Not in the text: see the range above.")));
+        return;
+      }
+      shown = p;
       const n = (x) => x.toLocaleString(UI_LOCALE);
       let note = tr("{lemmas} cards, one for each lemma of {words} words", { lemmas: n(p.lemmas), words: n(p.words) });
       if (p.pictures != null) note += `, ${tr("{n} with a picture", { n: n(p.pictures) })}`;
@@ -851,11 +860,12 @@ function buildAnkiDialog() {
       if (ask !== asked) return;
       preview.classList.remove("stale");
       preview.replaceChildren(el("p", "plan-note", navigator.onLine === false ? tr("Flashcards need the connection.")
-        : e.message === "none" ? tr("No such verses there.") : tr("Couldn't work out the cards.")));
+        : tr("Couldn't work out the cards.")));
     }
   };
   showVerses();
-  for (const input of picked.inputs) input.addEventListener("change", () => { showVerses(); d.update(); });
+  // (another text, or other books: verses typed for the last are cleared)
+  for (const input of picked.inputs) input.addEventListener("change", () => { verses.value = ""; showVerses(); d.update(); });
   pictures.addEventListener("change", d.update);
   let typing = null;
   verses.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(d.update, 400); });

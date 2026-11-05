@@ -56,7 +56,8 @@ Routes:
                        and the sentence it's first met in where asked; a lemma's note is the
                        same in every deck, so Anki adds only the lemmas it hasn't yet
                        (start: the cards the device made before, where its new ones begin)
-  /api/anki/preview?…  JSON: what that deck would hold ({title, lemmas, words, pictures, sample})
+  /api/anki/preview?…  JSON: what that deck would hold ({title, lemmas, words, pictures, sample}),
+                       and of a single text, what its verses are and which there are ("parts")
   /api/compact         data/library_compact.sqlite (scripts/compact_library.py), the whole
                        library in one file, for an app to keep (with Range support; its
                        version, the start of its SHA-256, in X-Version and ETag; HEAD to ask
@@ -1424,9 +1425,9 @@ def anki_selection(con, target, verses):
                                          (slug,)):
             if books and not books[0] <= div <= books[1]:
                 continue
-            if cite == "section":  # (a Stephanus section's later segments: its ref)
+            if cite == "section":  # (a section's later segments: its ref; before the first, a prologue: 0, as the reader has it)
                 if ref_key(ref) or not ref:
-                    ref = section = ref or section
+                    ref = section = ref or section or "0"
             rows.append((div, seq, ref))
         if verses:
             ranges = cite in ("line", "verse", "section") and verse_ranges(verses, books[0] if books else min(labels))
@@ -1447,6 +1448,8 @@ def place_label(title, cite, labels, div, ref):
         return f"{title} {ref}" if ":" in (ref or "") else f"{title} {div}:{ref}"
     if cite == "label":
         return f"{title}, {ref}" if ref else title
+    if cite == "section" and ref == "0":
+        return f"{title}, πρόλογος"
     book = shortLabel(labels.get(div), div) if len(labels) > 1 else None
     return " ".join(x for x in (title, book, ref) if x)
 
@@ -1542,6 +1545,23 @@ def picture_of(con, lemma):
     return row and row[0]
 
 
+def anki_parts(selection):
+    """What a single text's verses are, for the dialog to name them and say which there are:
+    {kind: lines, verses, stephanus or chapters, first, last (book:ref where it's several
+    books), multi}; None for a text whose parts aren't numbered (a service's)."""
+    if len(selection[1]) != 1:
+        return None
+    _, _, cite, _, _, rows = selection[1][0]
+    keyed = [r for r in rows if ref_key(r[2])]
+    if cite not in ("line", "verse", "section") or not keyed:
+        return None
+    kind = {"line": "lines", "verse": "verses"}.get(cite) \
+        or ("stephanus" if any(ref_key(r[2])[1] for r in keyed) else "chapters")  # (Plato's 2a; a Father's 1, 2)
+    multi = keyed[0][0] != keyed[-1][0]
+    name = lambda r: f"{r[0]}:{r[2]}" if multi else r[2]  # noqa: E731
+    return {"kind": kind, "first": name(keyed[0]), "last": name(keyed[-1]), "multi": multi}
+
+
 def anki_query(query):
     q = urllib.parse.parse_qs(query)
     target = q.get("target", [""])[0]
@@ -1553,19 +1573,24 @@ def anki_query(query):
 
 def anki_preview(query):
     """JSON for the export dialog: {title, lemmas, words, pictures, sample: [{lemma,
-    definition}]}, what a deck of that part of the library would hold."""
+    definition}], parts (anki_parts)}, what a deck of that part of the library would hold
+    ("none": true, verses asked for that aren't there)."""
     target, verses, pictures, *_ = anki_query(query)
     if not LIBRARY.exists() or not target:
         return None
     con = sqlite3.connect(LIBRARY)
     try:
-        selection = anki_selection(con, target, verses)
-        if not selection:
+        whole = anki_selection(con, target, "")
+        if not whole:
             return None
+        parts = anki_parts(whole)
+        selection = anki_selection(con, target, verses) if verses else whole
+        if not selection:  # (verses that aren't there: what there are, to say so)
+            return {"title": whole[0], "parts": parts, "none": True, "lemmas": 0, "words": 0, "pictures": None, "sample": []}
         notes, media, total = anki_notes(con, selection, pictures, False)
     finally:
         con.close()
-    return {"title": selection[0], "lemmas": len(notes), "words": total,
+    return {"title": selection[0], "parts": parts, "lemmas": len(notes), "words": total,
             "pictures": sum("Picture" in n["fields"] for n in notes) if pictures else None,
             "sample": [{"lemma": n["lemma"], "definition": html.unescape(n["fields"]["Definition"])} for n in notes[:6]]}
 
