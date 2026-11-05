@@ -795,7 +795,7 @@ function buildAnkiDialog() {
     l.append(box, el("span", null, label));
     return [l, box];
   };
-  const [picturesRow, pictures] = check("pictures", tr("With pictures"), true);
+  const [picturesRow, pictures] = check("pictures", tr("With pictures (where available)"), true);
   const [sentencesRow, sentences] = check("sentences", tr("With the sentence each is found in, on the back"), true);
   const options = el("div", "anki-options");
   options.append(picturesRow, sentencesRow);
