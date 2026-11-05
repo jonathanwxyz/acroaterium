@@ -804,7 +804,7 @@ main {
 
 /* Text size menu (Aa): text and interface, each stepped smaller or larger. */
 #size-picker { position: relative; flex: none; display: flex; }  /* flex: no line box (and descent) around the button */
-#size-button, #search-button {
+#size-button, #search-button, #anki-button {
   height: 1.85rem;
   padding: 0 0.45rem;
   font: 15px var(--greek);
@@ -815,8 +815,8 @@ main {
   cursor: pointer;
 }
 #size-button[aria-expanded="true"], #search-button[aria-expanded="true"] { color: var(--text); border-color: var(--current-bar); }
-@media (hover: hover) { :is(#size-button, #search-button):hover { color: var(--text); border-color: var(--current-bar); } }
-#search-button { display: flex; align-items: center; }
+@media (hover: hover) { :is(#size-button, #search-button, #anki-button):hover { color: var(--text); border-color: var(--current-bar); } }
+#search-button, #anki-button { display: flex; align-items: center; }
 #size-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -2325,7 +2325,7 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
 .plan-delete.armed { color: #fff; background: #c0392b; border-color: #c0392b; }
 
 /* The new plan dialog (as the downloads panel). */
-#plan-dialog {
+#plan-dialog, #anki-dialog {
   width: min(28rem, calc(100vw - 32px));
   max-height: min(85vh, 40rem);
   padding: 0;
@@ -2336,7 +2336,7 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
   font: 14px system-ui, sans-serif;
 }
-#plan-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+#plan-dialog::backdrop, #anki-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
 .plan-form { display: grid; gap: 0.5rem; padding: 0.9rem 0 0; }
 .plan-field { display: grid; grid-template-columns: 4.3rem 1fr; align-items: center; gap: 0.5rem; padding: 0 0.9rem; }
 .plan-label { color: var(--muted); }
@@ -2366,6 +2366,20 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
   border-color: var(--current-bar) !important;
 }
 .plan-create:disabled { opacity: 0.5; cursor: default; }
+
+/* The flashcards dialog (as the new plan's): the verses' hint, the options, the first cards. */
+#anki-dialog[open] { display: flex; flex-direction: column; }
+#anki-dialog .plan-form { overflow-y: auto; min-height: 0; }
+#anki-dialog .dl-foot { position: sticky; bottom: 0; background: var(--bg); }  /* (the button in view, the cards under it scrolling) */
+.plan-form input[name="verses"] { flex: 1; font-family: var(--greek); font-size: 16px; }
+.anki-hint { padding: 0 0.9rem 0 calc(0.9rem + 4.8rem); margin: -0.2rem 0 0; font-size: 12px; }
+.anki-hint[hidden] { display: none; }
+.anki-options { display: grid; gap: 0.3rem; padding: 0.2rem 0.9rem 0.3rem calc(0.9rem + 4.8rem); }
+.anki-option { display: flex; align-items: baseline; gap: 0.45rem; cursor: pointer; }
+.anki-option input { accent-color: var(--current-bar); }
+.anki-sample .anki-lemma { flex: none; min-width: 6rem; }
+.anki-sample .plan-row-label { font-family: system-ui, sans-serif; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#anki-dialog .plan-preview { min-height: 11rem; }
 
 /* In the reader, a reading plan's day: what it is, above the verses; at their end, its next
    part, or marking it read and the next day. */

@@ -594,28 +594,21 @@ function planDelete(plan) {
   return b;
 }
 
-// The new plan dialog: what to read (a text, or the whole of a Testament), in how long (days,
-// weeks, months, a year), from when; what each day would be is shown as it's chosen.
-let planDialog = null;
-function openPlanDialog() {
-  if (!library?.categories) return;
-  if (!planDialog) planDialog = buildPlanDialog();
-  planDialog.showModal();
-  planDialog.update();
+// A dialog's row: its name, and its inputs.
+function planField(label, ...inputs) {
+  const l = el("label", "plan-field");
+  const row = el("span", "plan-inputs");
+  row.append(...inputs);
+  l.append(el("span", "plan-label", label), row);
+  return l;
 }
-function buildPlanDialog() {
-  const d = el("dialog");
-  d.id = "plan-dialog";
-  d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
-  const head = el("div", "dl-head");
-  const close = el("button", "dl-close", "×");
-  close.setAttribute("aria-label", tr("Close"));
-  close.addEventListener("click", () => d.close());
-  head.append(el("h2", null, tr("New reading plan")), close);
-  const form = el("form", "plan-form");
-  // What to read, narrowed a step at a time: a category (or all of it), a collection in it
-  // (a Testament) or a text, a text in the collection, and of a text in several books (or
-  // chapters), from which to which.
+
+// Part of the library, as a reading plan or a deck of flashcards is of, chosen a step at a
+// time: a category (or all of it), a collection in it (a Testament) or a text, a text in
+// the collection, and of a text in several books (or chapters), from which to which.
+// rows(label): the dialog's rows for it; target(): what's chosen, as /api/plans names it;
+// inputs: its selects, to listen to.
+function textPicker() {
   const pick = () => el("select", "plan-pick");
   const cat = pick(), item = pick(), member = pick(), from = pick(), to = pick();
   const cats = library.categories.filter((c) => c.texts.length);
@@ -652,25 +645,8 @@ function buildPlanDialog() {
     if (t.books.length < 2 || (Number(from.value) === t.books[0].n && Number(to.value) === t.books.at(-1).n)) return slugOf(t);
     return `${slugOf(t)}:${from.value}-${to.value}`;
   };
-  const count = el("input");
-  Object.assign(count, { type: "number", min: 1, max: 999, value: 30, name: "count", inputMode: "numeric" });
-  const unit = el("select");
-  unit.name = "unit";
-  for (const v of ["days", "weeks", "months", "years"]) unit.append(new Option(tr(v), v));
-  const start = el("input");
-  Object.assign(start, { type: "date", name: "start", value: isoDate() });
-  const field = (label, ...inputs) => {
-    const l = el("label", "plan-field");
-    const row = el("span", "plan-inputs");
-    row.append(...inputs);
-    l.append(el("span", "plan-label", label), row);
-    return l;
-  };
-  const preview = el("div", "plan-preview");
-  const create = el("button", "plan-create", tr("Start plan"));
-  create.type = "submit";
-  const memberRow = field("", member), booksRow = field(tr("Books"), from, el("span", "plan-to", tr("to")), to);
-  form.append(field(tr("Read"), cat), field("", item), memberRow, booksRow, field(tr("In"), count, unit), field(tr("Starting"), start), preview);
+  const memberRow = planField("", member), booksRow = planField(tr("Books"), from, el("span", "plan-to", tr("to")), to);
+  const rows = (label) => [planField(label, cat), planField("", item), memberRow, booksRow];
   fillItems();
   fillMembers();
   fillBooks();
@@ -679,6 +655,41 @@ function buildPlanDialog() {
   member.addEventListener("change", fillBooks);
   from.addEventListener("change", () => { if (Number(to.value) < Number(from.value)) to.value = from.value; });
   to.addEventListener("change", () => { if (Number(to.value) < Number(from.value)) from.value = to.value; });
+  return { rows, target, chosenText, inputs: [cat, item, member, from, to] };
+}
+
+// The new plan dialog: what to read (a text, or the whole of a Testament), in how long (days,
+// weeks, months, a year), from when; what each day would be is shown as it's chosen.
+let planDialog = null;
+function openPlanDialog() {
+  if (!library?.categories) return;
+  if (!planDialog) planDialog = buildPlanDialog();
+  planDialog.showModal();
+  planDialog.update();
+}
+function buildPlanDialog() {
+  const d = el("dialog");
+  d.id = "plan-dialog";
+  d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+  const head = el("div", "dl-head");
+  const close = el("button", "dl-close", "×");
+  close.setAttribute("aria-label", tr("Close"));
+  close.addEventListener("click", () => d.close());
+  head.append(el("h2", null, tr("New reading plan")), close);
+  const form = el("form", "plan-form");
+  const picked = textPicker(), { target } = picked;
+  const count = el("input");
+  Object.assign(count, { type: "number", min: 1, max: 999, value: 30, name: "count", inputMode: "numeric" });
+  const unit = el("select");
+  unit.name = "unit";
+  for (const v of ["days", "weeks", "months", "years"]) unit.append(new Option(tr(v), v));
+  const start = el("input");
+  Object.assign(start, { type: "date", name: "start", value: isoDate() });
+  const field = planField;
+  const preview = el("div", "plan-preview");
+  const create = el("button", "plan-create", tr("Start plan"));
+  create.type = "submit";
+  form.append(...picked.rows(tr("Read")), field(tr("In"), count, unit), field(tr("Starting"), start), preview);
   const foot = el("div", "dl-foot");
   foot.append(create);
   form.append(foot);
@@ -724,7 +735,7 @@ function buildPlanDialog() {
       if (ask === asked) preview.replaceChildren(el("p", "plan-note", navigator.onLine === false ? tr("Plans need the connection.") : tr("Couldn't work out the days.")));
     }
   };
-  for (const input of [cat, item, member, from, to, unit, start]) input.addEventListener("change", d.update);
+  for (const input of [...picked.inputs, unit, start]) input.addEventListener("change", d.update);
   let typing = null;
   count.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(d.update, 300); });
   form.addEventListener("submit", async (e) => {
@@ -744,6 +755,141 @@ function buildPlanDialog() {
   document.body.append(d);
   return d;
 }
+
+// Flashcards: the words of part of the library, a text or some of its books, and of a text
+// some of its verses, as a deck for Anki (/api/anki: an .apkg), a card per lemma, in the
+// order they're first met, with its meaning, where asked its picture and on the back the
+// sentence it's first met in. A lemma's note is the same in every deck made, so importing
+// decks from one text after another adds only the lemmas not had already. The device counts
+// the cards it has made (ANKI_MADE), so each deck's new cards come after the last's in Anki.
+const ANKI_MADE = "ankiCardsMade";
+let ankiDialog = null;
+function openAnkiDialog() {
+  if (!library?.categories) return;
+  if (!ankiDialog) ankiDialog = buildAnkiDialog();
+  ankiDialog.showModal();
+  ankiDialog.update();
+}
+function buildAnkiDialog() {
+  const d = el("dialog");
+  d.id = "anki-dialog";
+  d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+  const head = el("div", "dl-head");
+  const close = el("button", "dl-close", "×");
+  close.setAttribute("aria-label", tr("Close"));
+  close.addEventListener("click", () => d.close());
+  head.append(el("h2", null, tr("Flashcards for Anki")), close);
+  const form = el("form", "plan-form");
+  const picked = textPicker();
+  // Some of a text's verses (lines, Stephanus sections): "1-50, 72", "3:5-4:12" across books.
+  const verses = el("input");
+  Object.assign(verses, { type: "text", name: "verses", inputMode: "text", spellcheck: false, autocomplete: "off" });
+  const versesRow = planField(tr("Verses"), verses);
+  const versesHint = el("p", "plan-note anki-hint");
+  const check = (name, label, on) => {
+    const l = el("label", "anki-option");
+    const box = el("input");
+    Object.assign(box, { type: "checkbox", name, checked: on });
+    l.append(box, el("span", null, label));
+    return [l, box];
+  };
+  const [picturesRow, pictures] = check("pictures", tr("With pictures"), true);
+  const [sentencesRow, sentences] = check("sentences", tr("With the sentence each is found in, on the back"), true);
+  const options = el("div", "anki-options");
+  options.append(picturesRow, sentencesRow);
+  const preview = el("div", "plan-preview");
+  const make = el("button", "plan-create", tr("Download deck"));
+  make.type = "submit";
+  form.append(...picked.rows(tr("Words of")), versesRow, versesHint, options, preview);
+  const foot = el("div", "dl-foot");
+  foot.append(make);
+  form.append(foot);
+  const made = () => { try { return Math.max(0, parseInt(localStorage.getItem(ANKI_MADE), 10) || 0); } catch { return 0; } };
+  const query = (extra) => new URLSearchParams({ target: picked.target(), v: versesRow.hidden ? "" : verses.value.trim(),
+                                                 pictures: pictures.checked ? 1 : 0, ...extra });
+  const showVerses = () => {
+    const t = picked.chosenText();
+    versesRow.hidden = versesHint.hidden = !t;
+    if (!t) return;
+    const books = picked.target().match(/:(\d+)-(\d+)$/);  // (some of its books: "iliad:1-3")
+    const several = books ? books[1] !== books[2] : t.books.length > 1;
+    verses.placeholder = tr("All");
+    versesHint.textContent = several ? tr("All, or some: 1-50, 72 (in the first book), 2:10-3:40 (book:verse)")
+      : tr("All, or some: 1-50, 72");
+  };
+  let asked = 0, shown = null, asking = null;
+  d.update = async () => {
+    const ask = ++asked;
+    make.disabled = true;
+    shown = null;
+    asking?.abort();  // (a whole category's takes a moment: one asked since makes it moot)
+    asking = new AbortController();
+    if (preview.children.length) preview.classList.add("stale");
+    else preview.replaceChildren(el("p", "plan-note", "…"));
+    try {
+      const r = await fetch(`/api/anki/preview?${query()}`, { signal: asking.signal });
+      if (r.status === 404) throw new Error("none");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const p = await r.json();
+      if (ask !== asked) return;
+      shown = p;
+      preview.classList.remove("stale");
+      const n = (x) => x.toLocaleString(UI_LOCALE);
+      let note = tr("{lemmas} cards, one for each lemma of {words} words", { lemmas: n(p.lemmas), words: n(p.words) });
+      if (p.pictures != null) note += `, ${tr("{n} with a picture", { n: n(p.pictures) })}`;
+      preview.replaceChildren(el("p", "plan-note", `${p.title}: ${note}.`));
+      const ol = el("ol", "plan-sample anki-sample");
+      for (const x of p.sample) {
+        const li = el("li");
+        li.append(el("span", "anki-lemma", x.lemma), el("span", "plan-row-label", x.definition ?? ""));
+        ol.append(li);
+      }
+      if (p.lemmas > p.sample.length) ol.append(el("li", "plan-gap", "…"));
+      preview.append(ol, el("p", "plan-note", tr("Lemmas already in your Acroaterium deck are left as they are: Anki adds only the new ones.")));
+      make.disabled = !p.lemmas;
+    } catch (e) {
+      if (ask !== asked) return;
+      preview.classList.remove("stale");
+      preview.replaceChildren(el("p", "plan-note", navigator.onLine === false ? tr("Flashcards need the connection.")
+        : e.message === "none" ? tr("No such verses there.") : tr("Couldn't work out the cards.")));
+    }
+  };
+  showVerses();
+  for (const input of picked.inputs) input.addEventListener("change", () => { showVerses(); d.update(); });
+  pictures.addEventListener("change", d.update);
+  let typing = null;
+  verses.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(d.update, 400); });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!shown) return;
+    const label = make.textContent;
+    make.disabled = true;
+    make.textContent = tr("Making the deck…");
+    try {
+      const r = await fetch(`/api/anki?${query({ sentences: sentences.checked ? 1 : 0, start: made() })}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      const a = el("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `Acroaterium - ${shown.title}.apkg`;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      try { localStorage.setItem(ANKI_MADE, String(made() + shown.lemmas)); } catch {}
+      toast(tr("Deck saved: open it with Anki to import it."));
+    } catch {
+      preview.append(el("p", "plan-note", tr("Couldn't make the deck (offline?)")));
+    } finally {
+      make.textContent = label;
+      make.disabled = false;
+    }
+  });
+  d.append(head, form);
+  document.body.append(d);
+  return d;
+}
+document.getElementById("anki-button")?.addEventListener("click", openAnkiDialog);
 
 // Bookmarks: each opens the reader at its verse; × deletes it.
 // One made in a reading plan's day, while that day isn't read: opens the plan's day at

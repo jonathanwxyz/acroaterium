@@ -50,6 +50,13 @@ Routes:
                        so many days, a reading a day (target: a slug, "<slug>:<from book>-<to
                        book>", "collection:<name>" or "category:<name>"). The plans, and the
                        bookmarks, are kept by each device, in its browser (web/shared.js)
+  /api/anki?target=…&v=…&pictures=1&sentences=1&start=  an Anki deck (.apkg, scripts/anki.py) of the
+                       lemmas of part of the library (target: as a plan's; v: some of a text's
+                       verses, "1-50, 60" or "3:5-4:12"), a note per lemma, with its picture
+                       and the sentence it's first met in where asked; a lemma's note is the
+                       same in every deck, so Anki adds only the lemmas it hasn't yet
+                       (start: the cards the device made before, where its new ones begin)
+  /api/anki/preview?…  JSON: what that deck would hold ({title, lemmas, words, pictures, sample})
   /api/compact         data/library_compact.sqlite (scripts/compact_library.py), the whole
                        library in one file, for an app to keep (with Range support; its
                        version, the start of its SHA-256, in X-Version and ETag; HEAD to ask
@@ -61,6 +68,7 @@ import argparse
 import datetime
 import gzip
 import hashlib
+import html
 import xml.etree.ElementTree as ElementTree
 import json
 import mimetypes
@@ -74,6 +82,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from import_treebank import POSTAG
+import anki
 import morpheus
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1360,6 +1369,225 @@ def plan_preview(query):
     return split and {**split, "days": len(split["portions"])}
 
 
+# Flashcards: the lemmas of part of the library as an Anki deck (scripts/anki.py), a note
+# per lemma, in the order first met, whose ids are the lemma's own, so that decks made from
+# one text after another add only the lemmas not had before.
+VERSE_PIECE = re.compile(r"(?:(\d+)[:.])?(\d+[a-z]*)(?:\s*[-–]\s*(?:(\d+)[:.])?(\d+[a-z]*))?")
+SENTENCE_STOP = ".;;··!?"
+SENTENCE_REACH = 30  # (words either side of a word, at most, of its sentence on a card)
+
+
+def ref_key(ref):
+    """(number, letters) of a ref ("12a": (12, "a")), or None for one that isn't numbered."""
+    m = re.fullmatch(r"(\d+)([a-z]*)", ref or "")
+    return (int(m[1]), m[2]) if m else None
+
+
+def verse_ranges(verses, first_div):
+    """[(low, high)] of (div, number, letters), for the verses asked for: "1-50, 60" (in the
+    first book chosen), "3:5-4:12" (book:verse), each piece's book the one before's unless
+    named. None if they don't read."""
+    ranges, div = [], first_div
+    for piece in re.split(r"\s*[,;]\s*", verses.strip()):
+        m = VERSE_PIECE.fullmatch(piece)
+        if not m:
+            return None
+        div = int(m[1]) if m[1] else div
+        a = ref_key(m[2])
+        if m[4]:
+            end_div = int(m[3]) if m[3] else div
+            b = ref_key(m[4])
+        else:
+            end_div, b = div, a
+        ranges.append(((div, *a), (end_div, b[0], b[1] or "~")))  # ("~": 12 takes in 12a, 12b)
+        div = end_div
+    return ranges
+
+
+def anki_selection(con, target, verses):
+    """(title, [(slug, title, cite, form, labels, [(div, seq, ref)])]): the segments of part of
+    the library (a reading plan's target), or of a text's verses there (verses, as
+    verse_ranges reads them; a single text's only). None if there's no such, or no verses."""
+    found = plan_target(con, target)
+    if not found:
+        return None
+    title, texts, _ = found
+    if verses and len(texts) != 1:
+        return None
+    out = []
+    for slug, text_title, cite in ((t[0], t[1], t[2]) for t in texts):
+        books = next(t[3] for t in texts if t[0] == slug)
+        form = con.execute("SELECT form FROM texts WHERE slug = ?", (slug,)).fetchone()[0]
+        labels = dict(con.execute("SELECT n, label FROM divisions WHERE text = ?", (slug,)))
+        rows, section = [], None
+        for div, seq, ref in con.execute("SELECT div, seq, ref FROM segments WHERE text = ? AND seq > 0 ORDER BY div, seq",
+                                         (slug,)):
+            if books and not books[0] <= div <= books[1]:
+                continue
+            if cite == "section":  # (a Stephanus section's later segments: its ref)
+                if ref_key(ref) or not ref:
+                    ref = section = ref or section
+            rows.append((div, seq, ref))
+        if verses:
+            ranges = cite in ("line", "verse", "section") and verse_ranges(verses, books[0] if books else min(labels))
+            if not ranges:
+                return None
+            rows = [r for r in rows if (k := ref_key(r[2])) and any(lo <= (r[0], *k) <= hi for lo, hi in ranges)]
+            if not rows:
+                return None
+            one_book = books and books[0] == books[1] and ":" not in verses
+            title = f"{title}{':' if one_book and cite == 'verse' else ' '}{verses.strip()}"  # (Ἰωάννης 3:1-16, Ἰλιάς Α 1-50)
+        out.append((slug, text_title, cite, form, labels, rows))
+    return title, out
+
+
+def place_label(title, cite, labels, div, ref):
+    """Where a segment is, as a card names it: Ἰλιάς Α 1, Γένεσις 1:1, Εὐθύφρων 2a."""
+    if cite == "verse":
+        return f"{title} {ref}" if ":" in (ref or "") else f"{title} {div}:{ref}"
+    if cite == "label":
+        return f"{title}, {ref}" if ref else title
+    book = shortLabel(labels.get(div), div) if len(labels) > 1 else None
+    return " ".join(x for x in (title, book, ref) if x)
+
+
+def sentence_of(words, at, prose_breaks):
+    """The sentence word at of words ([(seq, index, word)], a division's) is in, as HTML,
+    the word in bold: from the stop before it (. ; · ? !, or a prose paragraph's start) to
+    the one after, SENTENCE_REACH words either side at most (… where cut)."""
+    def ends(k):  # (a sentence ends after word k)
+        return words[k][2].rstrip("»”’\"')]⟩᾽").endswith(tuple(SENTENCE_STOP)) \
+            or words[k + 1][0] != words[k][0] and words[k + 1][0] in prose_breaks
+    a = at
+    while a > 0 and at - a < SENTENCE_REACH and not ends(a - 1):
+        a -= 1
+    b = at
+    while b < len(words) - 1 and b - at < SENTENCE_REACH and not ends(b):
+        b += 1
+    cut_before = a > 0 and not ends(a - 1)
+    cut_after = b < len(words) - 1 and not ends(b)
+    parts = [f"<b>{html.escape(w, False)}</b>" if k == at else html.escape(w, False)
+             for k, (_, _, w) in enumerate(words[a:b + 1], a)]
+    return ("… " if cut_before else "") + " ".join(parts) + (" …" if cut_after else "")
+
+
+def anki_notes(con, selection, pictures, sentences):
+    """The notes for a selection (anki_selection's): a lemma each, first met first, with its
+    definition, where asked its picture (the best deck's; else, for the Iliad, its Gaza
+    paraphrase's word's, as the reader shows them) and the sentence and place it's first met
+    in. ([{lemma, fields, tags}], {media name: path}, words in all)."""
+    notes, media, seen, total = [], {}, {}, 0
+    slugs = [t[0] for t in selection[1]]
+    lemma_rows = {}  # (one pass over the lemma index for them all: it has no index by text)
+    for row in con.execute(f"SELECT w.text, w.div, w.seq, w.word_index, l.lemma, l.definition FROM lemma_words w "
+                           f"JOIN lemmas l ON l.id = w.lemma WHERE w.text IN ({','.join('?' * len(slugs))}) "
+                           "ORDER BY w.text, w.div, w.seq, w.word_index, w.part", slugs):
+        lemma_rows.setdefault(row[0], []).append(row[1:])
+    for slug, title, cite, form, labels, rows in selection[1]:
+        first = len(notes)  # (this text's notes: from here)
+        chosen = {(div, seq): ref for div, seq, ref in rows}
+        divs = sorted({div for div, _, _ in rows})
+        segments = {}
+        for div, seq, content, para in con.execute("SELECT div, seq, content, para FROM segments WHERE text = ? AND seq > 0 "
+                                                   "ORDER BY div, seq", (slug,)):
+            if div in divs:
+                segments.setdefault(div, []).append((seq, content, para))
+        by_word = {}
+        for div, seq, index, lemma, definition in lemma_rows.get(slug, []):
+            if (div, seq) not in chosen:
+                continue
+            total += 1
+            by_word.setdefault((div, seq, index), []).append(lemma)
+            if lemma in seen:
+                continue
+            seen[lemma] = len(notes)
+            fields = {"Lemma": html.escape(lemma), "Definition": html.escape(definition or "")}
+            if sentences:
+                words = [(s, i, w) for s, content, _ in segments[div] for i, w in enumerate(content.split())]
+                at = next((k for k, (s, i, _) in enumerate(words) if s == seq and i == index), None)
+                if at is not None:
+                    breaks = {s for s, _, para in segments[div] if para} if form == "prose" else set()
+                    fields["Sentence"] = sentence_of(words, at, breaks)
+                fields["Reference"] = html.escape(place_label(title, cite, labels, div, chosen[div, seq]))
+            notes.append({"lemma": lemma, "fields": fields, "tags": [f"acroaterium::{slug}"]})
+        if pictures:
+            # The Gaza paraphrase's word's pictures, for the Iliad's words without their own.
+            borrowed = {}
+            if con.execute("SELECT 1 FROM paraphrase_links WHERE text = ? LIMIT 1", (slug,)).fetchone():
+                for div in divs:
+                    shown = images_json(slug, div)
+                    for seq, line in shown["lines"].items():
+                        for index, value in enumerate(line):
+                            if isinstance(value, list):
+                                for lemma in by_word.get((div, seq, index), []):
+                                    borrowed.setdefault(lemma, shown["lemmas"][value[0]]["lemma"])
+            for note in notes[first:]:
+                lemma = note["lemma"]
+                file = picture_of(con, lemma) or (lemma in borrowed and picture_of(con, borrowed[lemma]))
+                if file and (LEMMA_IMAGES / file).is_file():
+                    name = "acroaterium-" + file.replace("/", "-")
+                    media[name] = LEMMA_IMAGES / file
+                    note["fields"]["Picture"] = f'<img src="{html.escape(name)}">'
+    return notes, media, total
+
+
+def picture_of(con, lemma):
+    """A lemma's best picture (its file under data/lemma_images/), as the reader shows it first."""
+    try:
+        row = con.execute("SELECT i.file FROM lemma_images i JOIN image_sources s USING (source) "
+                          "WHERE i.lemma = ? AND NOT s.hidden ORDER BY s.rank, i.method != 'lemma', i.note, i.ord LIMIT 1",
+                          (lemma,)).fetchone()
+    except sqlite3.OperationalError:  # (a library without pictures)
+        return None
+    return row and row[0]
+
+
+def anki_query(query):
+    q = urllib.parse.parse_qs(query)
+    target = q.get("target", [""])[0]
+    verses = q.get("v", [""])[0].strip()
+    yes = lambda k: q.get(k, ["0"])[0] == "1"  # noqa: E731
+    start = q.get("start", ["0"])[0]
+    return target, verses, yes("pictures"), yes("sentences"), int(start) if start.isdigit() else 0
+
+
+def anki_preview(query):
+    """JSON for the export dialog: {title, lemmas, words, pictures, sample: [{lemma,
+    definition}]}, what a deck of that part of the library would hold."""
+    target, verses, pictures, *_ = anki_query(query)
+    if not LIBRARY.exists() or not target:
+        return None
+    con = sqlite3.connect(LIBRARY)
+    try:
+        selection = anki_selection(con, target, verses)
+        if not selection:
+            return None
+        notes, media, total = anki_notes(con, selection, pictures, False)
+    finally:
+        con.close()
+    return {"title": selection[0], "lemmas": len(notes), "words": total,
+            "pictures": sum("Picture" in n["fields"] for n in notes) if pictures else None,
+            "sample": [{"lemma": n["lemma"], "definition": html.unescape(n["fields"]["Definition"])} for n in notes[:6]]}
+
+
+def anki_package(query):
+    """(file name, the .apkg's bytes) of a selection's deck, or None."""
+    target, verses, pictures, sentences, start = anki_query(query)
+    if not LIBRARY.exists() or not target:
+        return None
+    con = sqlite3.connect(LIBRARY)
+    try:
+        selection = anki_selection(con, target, verses)
+        if not selection:
+            return None
+        notes, media, _ = anki_notes(con, selection, pictures, sentences)
+    finally:
+        con.close()
+    if not notes:
+        return None
+    return f"Acroaterium - {selection[0]}.apkg", anki.package(notes, media, start)
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB), **kwargs)
@@ -1421,6 +1649,10 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(lemmas_json(m[1] or ""))
         elif m := re.fullmatch(r"/api/references/([^/?]+)(?:\?(.*))?", self.path):
             self.send_json(references_json(urllib.parse.unquote(m[1]), m[2] or ""))
+        elif self.path.startswith("/api/anki/preview?"):
+            self.send_json(anki_preview(self.path.split("?", 1)[1]))
+        elif self.path.startswith("/api/anki?"):
+            self.send_package(anki_package(self.path.split("?", 1)[1]))
         elif self.path.startswith("/api/plans/preview?"):
             self.send_json(plan_preview(self.path.split("?", 1)[1]))
         elif self.path.startswith("/audio/"):
@@ -1445,6 +1677,20 @@ class Handler(SimpleHTTPRequestHandler):
         if compress:
             self.send_header("Content-Encoding", "gzip")
             self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_package(self, found):
+        """A file to save (an Anki deck): (name, bytes), or None (404)."""
+        if found is None:
+            return self.send_error(HTTPStatus.NOT_FOUND)
+        name, body = found
+        plain = name if name.isascii() and '"' not in name else "Acroaterium" + Path(name).suffix  # (for a browser without filename*)
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Disposition",
+                         f'attachment; filename="{plain}"; filename*=UTF-8\'\'{urllib.parse.quote(name)}')
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

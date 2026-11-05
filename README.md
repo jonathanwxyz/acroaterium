@@ -32,6 +32,11 @@ the notes, B bookmarks the verse.
 
 - **Reading plans**: a text, a collection or a category read in so many days, a reading
   a day, each ending where a chapter ends if one is near.
+- **Flashcards**: the cards button, by the search, makes an Anki deck (.apkg) of the words
+  of a text, some of its books, or some of its verses ("1-50, 72"), a card per lemma in
+  the order first met, with its meaning, and if wanted its picture and the sentence it's
+  first met in on the back. A lemma's note is the same in every deck made, so importing
+  decks from one text after another adds only the lemmas not had already.
 - **Bookmarks**: the bookmark button (or B) marks the verse being read. Bookmarks and
   plans are kept by each device, in its browser.
 - **Downloads**: a text with a recording can be kept on the device, books and recording,
