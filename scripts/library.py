@@ -1497,6 +1497,23 @@ def capitals_heading(line):
     return len(caps) >= 2 and all(w in caps or sum(c.isalpha() for c in w) <= 2 for w in words)
 
 
+# Misprints in the prayer texts, corrected as they're read (local, like the texts:
+# {"prayer_texts/<file>": {"misprint": "correction"}}, every place it's found).
+PRAYER_FIXES = ROOT / "library" / "prayer_text_fixes.json"
+
+
+def fix_prayer_misprints(file, text):
+    """The text with its misprints corrected (PRAYER_FIXES); one found nowhere is reported."""
+    fixes = json.loads(PRAYER_FIXES.read_text(encoding="utf-8")).get(file, {}) if PRAYER_FIXES.exists() else {}
+    for old, new in fixes.items():
+        old, new = unicodedata.normalize("NFC", old), unicodedata.normalize("NFC", new)
+        if old in text:
+            text = text.replace(old, new)
+        elif new not in text:
+            print(f"  {file}: misprint {old!r} not found", flush=True)
+    return text
+
+
 def prayers(src, verbose, title, labels_out):
     """A service or prayers from a local text file ("file", under the project): "# name"
     (its title, given by the catalogue instead), then its parts, each opened by "## id",
@@ -1538,7 +1555,7 @@ def prayers(src, verbose, title, labels_out):
         ref, new_para = el, True
         labels_out.append((ref, "en", en))
 
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in fix_prayer_misprints(src["file"], nfc(path.read_text(encoding="utf-8"))).splitlines():
         line = nfc(line.strip())
         if re.match(r"#(?!#)", line):
             continue
