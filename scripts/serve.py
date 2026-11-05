@@ -84,6 +84,7 @@ from pathlib import Path
 
 from import_treebank import POSTAG
 import anki
+import headwords
 import morpheus
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1474,11 +1475,12 @@ def sentence_of(words, at, prose_breaks):
     return ("… " if cut_before else "") + " ".join(parts) + (" …" if cut_after else "")
 
 
-def anki_notes(con, selection, pictures, sentences):
+def anki_notes(con, selection, pictures, sentences, forms=True):
     """The notes for a selection (anki_selection's): a lemma each, first met first, with its
     definition, where asked its picture (the best deck's; else, for the Iliad, its Gaza
     paraphrase's word's, as the reader shows them) and the sentence and place it's first met
-    in. ([{lemma, fields, tags}], {media name: path}, words in all)."""
+    in, and (forms) a noun's or an adjective's dictionary form for the front (headwords.py: ὁ
+    λόγος, -ου; ἀγαθός, -ή, -όν). ([{lemma, fields, tags}], {media name: path}, words in all)."""
     notes, media, seen, total = [], {}, {}, 0
     slugs = [t[0] for t in selection[1]]
     lemma_rows = {}  # (one pass over the lemma index for them all: it has no index by text)
@@ -1531,7 +1533,63 @@ def anki_notes(con, selection, pictures, sentences):
                     name = "acroaterium-" + file.replace("/", "-")
                     media[name] = LEMMA_IMAGES / file
                     note["fields"]["Picture"] = f'<img src="{html.escape(name)}">'
+    if forms:
+        add_forms(con, notes)
     return notes, media, total
+
+
+def add_forms(con, notes):
+    """A noun's or an adjective's dictionary form (ὁ λόγος, -ου; ἀγαθός, -ή, -όν) as notes' Form."""
+    kinds = lemma_kinds(con)
+    made = headwords.headwords([(n["lemma"], *kinds.get(n["lemma"], ("other", {}))) for n in notes])
+    for note in notes:
+        if note["lemma"] in made:
+            note["fields"]["Form"] = html.escape(made[note["lemma"]])
+
+
+_kinds = {}  # LIBRARY's mtime -> {lemma: (noun or adj, {gender: words})}
+
+
+def lemma_kinds(con):
+    """{lemma: ("noun" or "adj", {"masc": n, "fem": n, "neut": n})}: the library's nouns and
+    adjectives, as most of their words are parsed (the treebanks, the New Testament's
+    Robinson, the lemmatiser's), a noun's genders counted, for its article. Made once a run
+    (of the library as it is)."""
+    stamp = LIBRARY.stat().st_mtime
+    if stamp in _kinds:
+        return _kinds[stamp]
+    pos = {}  # lemma -> Counter of n, a, other
+    genders = {}
+    names = {"m": "masc", "f": "fem", "n": "neut"}
+
+    def count(lemma, kind, gender=None):
+        c = pos.setdefault(lemma, {})
+        c[kind] = c.get(kind, 0) + 1
+        if kind == "n" and gender:
+            g = genders.setdefault(lemma, {})
+            g[gender] = g.get(gender, 0) + 1
+    try:
+        for lemma, postag in con.execute("SELECT lemma, postag FROM treebank WHERE lemma IS NOT NULL AND postag IS NOT NULL"):
+            count(re.sub(r"\d+$", "", lemma), postag[0] if postag[0] in "na" else "x", names.get(postag[6:7]))
+        for lemma, upos, morph in con.execute("SELECT lemma, pos, morph FROM auto_words WHERE lemma IS NOT NULL"):
+            kind = {"NOUN": "n", "ADJ": "a"}.get(upos, "x")
+            count(lemma, kind, next((g for g in ("masc", "fem", "neut") if morph and g in morph), None))
+        for lemma, morph in con.execute("SELECT coalesce(l.lemma, w.lemma), w.morph FROM words w "
+                                        "LEFT JOIN lexicon l ON l.strongs = w.strongs WHERE w.morph IS NOT NULL"):
+            if not lemma:
+                continue
+            m = re.match(r"([NA])[-.]\w\w(\w)?", morph)  # (Robinson's N-NSF, CATSS's N.NSF)
+            count(lemma, m[1].lower() if m else "x", names.get((m[2] or "").lower()) if m else None)
+    except sqlite3.OperationalError:  # (a library without some of them)
+        pass
+    out = {}
+    for lemma, c in pos.items():
+        kind = max(c, key=c.get)
+        if kind in "na" and c[kind] * 2 >= sum(c.values()):
+            out[lemma] = ("noun" if kind == "n" else "adj", genders.get(lemma, {}))
+    _kinds.clear()
+    _kinds[stamp] = out
+    return out
 
 
 def picture_of(con, lemma):
@@ -1587,12 +1645,14 @@ def anki_preview(query):
         selection = anki_selection(con, target, verses) if verses else whole
         if not selection:  # (verses that aren't there: what there are, to say so)
             return {"title": whole[0], "parts": parts, "none": True, "lemmas": 0, "words": 0, "pictures": None, "sample": []}
-        notes, media, total = anki_notes(con, selection, pictures, False)
+        notes, media, total = anki_notes(con, selection, pictures, False, forms=False)
+        add_forms(con, notes[:6])  # (the sample's only: a whole category's take a while the first time)
     finally:
         con.close()
     return {"title": selection[0], "parts": parts, "lemmas": len(notes), "words": total,
             "pictures": sum("Picture" in n["fields"] for n in notes) if pictures else None,
-            "sample": [{"lemma": n["lemma"], "definition": html.unescape(n["fields"]["Definition"])} for n in notes[:6]]}
+            "sample": [{"lemma": html.unescape(n["fields"].get("Form") or n["fields"]["Lemma"]),
+                        "definition": html.unescape(n["fields"]["Definition"])} for n in notes[:6]]}
 
 
 def anki_package(query):

@@ -1,5 +1,6 @@
 """An Anki deck package (.apkg) of the library's lemmas, one note per lemma, for
-serve.py's /api/anki (standard library only).
+serve.py's /api/anki (standard library only). The front shows a noun's or an adjective's
+dictionary form where there is one (its Form: ὁ λόγος, -ου; headwords.py), else the lemma.
 
 The package is Anki's older format (collection.anki2, schema 11), which every Anki imports,
 the desktop's, AnkiDroid and AnkiMobile alike. What makes decks made from different texts
@@ -24,9 +25,10 @@ DECK_ID = 1730000000002
 DECK_NAME = "Acroaterium"
 FIXED_MOD = 1730000000  # (seconds: 2024-10-27; notes and the note type, so none is "newer")
 MAX_POSITION = 1_000_000
-FIELDS = ["Lemma", "Definition", "Picture", "Sentence", "Reference"]
+FIELDS = ["Lemma", "Definition", "Picture", "Sentence", "Reference", "Form"]  # (Form: added last, as Anki adds a field)
 
-FRONT = '<div class="lemma">{{Lemma}}</div>'
+# The front: the dictionary form where there is one (ὁ λόγος, -ου), else the lemma.
+FRONT = '<div class="lemma">{{#Form}}{{Form}}{{/Form}}{{^Form}}{{Lemma}}{{/Form}}</div>'
 BACK = """{{FrontSide}}
 <hr id="answer">
 <div class="definition">{{Definition}}</div>
