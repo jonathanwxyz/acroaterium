@@ -2382,6 +2382,7 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
 .anki-sample li { min-width: 0; }
 .anki-sample .plan-row-label { flex: 1; min-width: 0; font-family: system-ui, sans-serif; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #anki-dialog .plan-preview { min-height: 11rem; }
+.anki-warning { color: var(--text); background: color-mix(in srgb, var(--current-bar) 14%, transparent); border-radius: 6px; padding: 0.35rem 0.55rem; }
 
 /* In the reader, a reading plan's day: what it is, above the verses; at their end, its next
    part, or marking it read and the next day. */

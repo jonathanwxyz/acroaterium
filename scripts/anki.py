@@ -1,6 +1,7 @@
 """An Anki deck package (.apkg) of the library's lemmas, one note per lemma, for
 serve.py's /api/anki (standard library only). The front shows a noun's or an adjective's
-dictionary form where there is one (its Form: ὁ λόγος, -ου; headwords.py), else the lemma.
+dictionary form where there is one (its Form: ὁ λόγος, -ου; headwords.py), else the lemma;
+where asked (its Reverse field filled), a second card goes from the meaning to the Greek.
 
 The package is Anki's older format (collection.anki2, schema 11), which every Anki imports,
 the desktop's, AnkiDroid and AnkiMobile alike. What makes decks made from different texts
@@ -25,7 +26,7 @@ DECK_ID = 1730000000002
 DECK_NAME = "Acroaterium"
 FIXED_MOD = 1730000000  # (seconds: 2024-10-27; notes and the note type, so none is "newer")
 MAX_POSITION = 1_000_000
-FIELDS = ["Lemma", "Definition", "Picture", "Sentence", "Reference", "Form"]  # (Form: added last, as Anki adds a field)
+FIELDS = ["Lemma", "Definition", "Picture", "Sentence", "Reference", "Form", "Reverse"]
 
 # The front: the dictionary form where there is one (ὁ λόγος, -ου), else the lemma.
 FRONT = '<div class="lemma">{{#Form}}{{Form}}{{/Form}}{{^Form}}{{Lemma}}{{/Form}}</div>'
@@ -33,6 +34,15 @@ BACK = """{{FrontSide}}
 <hr id="answer">
 <div class="definition">{{Definition}}</div>
 {{#Picture}}<div class="picture">{{Picture}}</div>{{/Picture}}
+{{#Sentence}}<div class="sentence">{{Sentence}}</div>{{/Sentence}}
+{{#Reference}}<div class="reference">{{Reference}}</div>{{/Reference}}"""
+# The reverse card, from the meaning (and the picture) to the Greek: made only for a note
+# whose Reverse field has something in it, as Anki's "Basic (optional reversed card)".
+REVERSE_FRONT = """{{#Reverse}}<div class="definition">{{Definition}}</div>
+{{#Picture}}<div class="picture">{{Picture}}</div>{{/Picture}}{{/Reverse}}"""
+REVERSE_BACK = """{{FrontSide}}
+<hr id="answer">
+<div class="lemma">{{#Form}}{{Form}}{{/Form}}{{^Form}}{{Lemma}}{{/Form}}</div>
 {{#Sentence}}<div class="sentence">{{Sentence}}</div>{{/Sentence}}
 {{#Reference}}<div class="reference">{{Reference}}</div>{{/Reference}}"""
 CSS = """.card { font-family: "Gentium Book Plus", "GFS Didot", "Times New Roman", serif; font-size: 22px;
@@ -93,10 +103,12 @@ def checksum(text):
 def model():
     return {
         "id": MODEL_ID, "name": "Acroaterium lemma", "type": 0, "mod": FIXED_MOD, "usn": -1, "sortf": 0,
-        "did": DECK_ID, "tags": [], "vers": [], "latexPre": "", "latexPost": "", "latexsvg": False, "req": [[0, "any", [0]]],
+        "did": DECK_ID, "tags": [], "vers": [], "latexPre": "", "latexPost": "", "latexsvg": False, "req": [[0, "any", [0]], [1, "all", [FIELDS.index("Reverse")]]],
         "flds": [{"name": name, "ord": i, "sticky": False, "rtl": False, "font": "Gentium Book Plus", "size": 20,
                   "media": [], "description": ""} for i, name in enumerate(FIELDS)],
-        "tmpls": [{"name": "Greek → meaning", "ord": 0, "qfmt": FRONT, "afmt": BACK, "did": None, "bqfmt": "", "bafmt": ""}],
+        "tmpls": [{"name": "Greek → meaning", "ord": 0, "qfmt": FRONT, "afmt": BACK, "did": None, "bqfmt": "", "bafmt": ""},
+                  {"name": "Meaning → Greek", "ord": 1, "qfmt": REVERSE_FRONT, "afmt": REVERSE_BACK, "did": None,
+                   "bqfmt": "", "bafmt": ""}],
         "css": CSS,
     }
 
@@ -141,6 +153,9 @@ def package(notes, media, start=0):
                      "\x1f".join(values), values[0], checksum(values[0])))
         con.execute("INSERT INTO cards VALUES (?, ?, ?, 0, ?, -1, 0, 0, ?, 0, 0, 0, 0, 0, 0, 0, 0, '')",
                     (nid + 1, nid, DECK_ID, FIXED_MOD, start + pos))
+        if note["fields"].get("Reverse") and note["fields"].get("Definition"):  # (its sibling, at the same place)
+            con.execute("INSERT INTO cards VALUES (?, ?, ?, 1, ?, -1, 0, 0, ?, 0, 0, 0, 0, 0, 0, 0, 0, '')",
+                        (nid, nid, DECK_ID, FIXED_MOD, start + pos))  # (even: no other card's id, all odd)
     con.commit()
     collection = con.serialize()
     con.close()

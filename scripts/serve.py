@@ -50,14 +50,16 @@ Routes:
                        so many days, a reading a day (target: a slug, "<slug>:<from book>-<to
                        book>", "collection:<name>" or "category:<name>"). The plans, and the
                        bookmarks, are kept by each device, in its browser (web/shared.js)
-  /api/anki?target=…&v=…&pictures=1&sentences=1&start=  an Anki deck (.apkg, scripts/anki.py) of the
-                       lemmas of part of the library (target: as a plan's; v: some of a text's
-                       verses, "1-50, 60" or "3:5-4:12"), a note per lemma, with its picture
-                       and the sentence it's first met in where asked; a lemma's note is the
-                       same in every deck, so Anki adds only the lemmas it hasn't yet
-                       (start: the cards the device made before, where its new ones begin)
+  /api/anki?target=…&v=…&pictures=1&sentences=1&reverse=1&start=
+                       an Anki deck (.apkg, scripts/anki.py) of the lemmas of part of the
+                       library (target: as a plan's; v: some of a text's verses, "1-50, 60" or
+                       "3:5-4:12"), a note per lemma, with its picture and the sentence it's
+                       first met in where asked (reverse: a meaning → Greek card too); a
+                       lemma's note is the same in every deck, so Anki adds only the lemmas it
+                       hasn't yet (start: the cards the device made before, where its new ones begin)
   /api/anki/preview?…  JSON: what that deck would hold ({title, lemmas, words, pictures, sample}),
-                       and of a single text, what its verses are and which there are ("parts")
+                       of a single text, what its verses are and which there are ("parts"),
+                       and whether it's poetry (Homer's: its forms are given in Attic)
   /api/compact         data/library_compact.sqlite (scripts/compact_library.py), the whole
                        library in one file, for an app to keep (with Range support; its
                        version, the start of its SHA-256, in X-Version and ETag; HEAD to ask
@@ -1626,7 +1628,7 @@ def anki_query(query):
     verses = q.get("v", [""])[0].strip()
     yes = lambda k: q.get(k, ["0"])[0] == "1"  # noqa: E731
     start = q.get("start", ["0"])[0]
-    return target, verses, yes("pictures"), yes("sentences"), int(start) if start.isdigit() else 0
+    return target, verses, yes("pictures"), yes("sentences"), int(start) if start.isdigit() else 0, yes("reverse")
 
 
 def anki_preview(query):
@@ -1650,6 +1652,7 @@ def anki_preview(query):
     finally:
         con.close()
     return {"title": selection[0], "parts": parts, "lemmas": len(notes), "words": total,
+            "poetry": any(t[2] == "line" for t in selection[1]),  # (Homer: its forms are given in Attic)
             "pictures": sum("Picture" in n["fields"] for n in notes) if pictures else None,
             "sample": [{"lemma": html.unescape(n["fields"].get("Form") or n["fields"]["Lemma"]),
                         "definition": html.unescape(n["fields"]["Definition"])} for n in notes[:6]]}
@@ -1657,7 +1660,7 @@ def anki_preview(query):
 
 def anki_package(query):
     """(file name, the .apkg's bytes) of a selection's deck, or None."""
-    target, verses, pictures, sentences, start = anki_query(query)
+    target, verses, pictures, sentences, start, reverse = anki_query(query)
     if not LIBRARY.exists() or not target:
         return None
     con = sqlite3.connect(LIBRARY)
@@ -1670,6 +1673,9 @@ def anki_package(query):
         con.close()
     if not notes:
         return None
+    if reverse:  # (the meaning-to-Greek card too)
+        for note in notes:
+            note["fields"]["Reverse"] = "y"
     return f"Acroaterium - {selection[0]}.apkg", anki.package(notes, media, start)
 
 

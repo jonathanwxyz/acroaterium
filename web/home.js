@@ -797,8 +797,9 @@ function buildAnkiDialog() {
   };
   const [picturesRow, pictures] = check("pictures", tr("With pictures (where available)"), true);
   const [sentencesRow, sentences] = check("sentences", tr("With the sentence each is found in, on the back"), true);
+  const [reverseRow, reverse] = check("reverse", tr("Reversed cards too: from the meaning to the Greek"), false);
   const options = el("div", "anki-options");
-  options.append(picturesRow, sentencesRow);
+  options.append(picturesRow, sentencesRow, reverseRow);
   const preview = el("div", "plan-preview");
   const make = el("button", "plan-create", tr("Download deck"));
   make.type = "submit";
@@ -854,6 +855,8 @@ function buildAnkiDialog() {
         ol.append(li);
       }
       if (p.lemmas > p.sample.length) ol.append(el("li", "plan-gap", "…"));
+      // (Homer's nouns and adjectives: their genitives and endings are Attic's, Morpheus's, for now)
+      if (p.poetry) preview.append(el("p", "plan-note anki-warning", tr("⚠ Genitives and endings are given in Attic, not as Homer has them: ἡ μῆνις, -εως, where Homer has μήνιος.")));
       preview.append(ol, el("p", "plan-note", tr("Lemmas already in your Acroaterium deck are left as they are: Anki adds only the new ones.")));
       make.disabled = !p.lemmas;
     } catch (e) {
@@ -876,7 +879,7 @@ function buildAnkiDialog() {
     make.disabled = true;
     make.textContent = tr("Making the deck…");
     try {
-      const r = await fetch(`/api/anki?${query({ sentences: sentences.checked ? 1 : 0, start: made() })}`);
+      const r = await fetch(`/api/anki?${query({ sentences: sentences.checked ? 1 : 0, reverse: reverse.checked ? 1 : 0, start: made() })}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const blob = await r.blob();
       const a = el("a");
