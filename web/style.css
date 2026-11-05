@@ -2372,6 +2372,8 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
 #anki-dialog .plan-form { overflow-y: auto; min-height: 0; grid-template-columns: minmax(0, 1fr); }  /* (a long meaning cut short, not widening it) */
 #anki-dialog .dl-foot { position: sticky; bottom: 0; background: var(--bg); }  /* (the button in view, the cards under it scrolling) */
 .plan-form input[name="verses"] { flex: 1; font-family: var(--greek); font-size: 16px; }
+.plan-form input[name="skip"] { width: 6rem; }
+.anki-skip-note { align-self: center; color: var(--muted); }
 #anki-dialog .plan-field { grid-template-columns: 5.4rem 1fr; }  /* (room for "Stephanus") */
 .anki-hint { padding: 0 0.9rem 0 calc(0.9rem + 5.9rem); margin: -0.2rem 0 0; font-size: 12px; }
 .anki-hint[hidden] { display: none; }

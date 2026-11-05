@@ -50,11 +50,12 @@ Routes:
                        so many days, a reading a day (target: a slug, "<slug>:<from book>-<to
                        book>", "collection:<name>" or "category:<name>"). The plans, and the
                        bookmarks, are kept by each device, in its browser (web/shared.js)
-  /api/anki?target=…&v=…&pictures=1&sentences=1&reverse=1&start=
+  /api/anki?target=…&v=…&pictures=1&sentences=1&reverse=1&skip=&start=
                        an Anki deck (.apkg, scripts/anki.py) of the lemmas of part of the
                        library (target: as a plan's; v: some of a text's verses, "1-50, 60" or
                        "3:5-4:12"), a note per lemma, with its picture and the sentence it's
-                       first met in where asked (reverse: a meaning → Greek card too); a
+                       first met in where asked (reverse: a meaning → Greek card too; skip: the
+                       library's commonest so many lemmas left out); a
                        lemma's note is the same in every deck, so Anki adds only the lemmas it
                        hasn't yet (start: the cards the device made before, where its new ones begin)
   /api/anki/preview?…  JSON: what that deck would hold ({title, lemmas, words, pictures, sample}),
@@ -79,6 +80,7 @@ import re
 import urllib.parse
 import urllib.request
 import sqlite3
+import threading
 import unicodedata
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -1477,13 +1479,14 @@ def sentence_of(words, at, prose_breaks):
     return ("… " if cut_before else "") + " ".join(parts) + (" …" if cut_after else "")
 
 
-def anki_notes(con, selection, pictures, sentences, forms=True):
+def anki_notes(con, selection, pictures, sentences, forms=True, skip=frozenset()):
     """The notes for a selection (anki_selection's): a lemma each, first met first, with its
     definition, where asked its picture (the best deck's; else, for the Iliad, its Gaza
     paraphrase's word's, as the reader shows them) and the sentence and place it's first met
     in, and (forms) a noun's or an adjective's dictionary form for the front (headwords.py: ὁ
-    λόγος, -ου; ἀγαθός, -ή, -όν). ([{lemma, fields, tags}], {media name: path}, words in all)."""
-    notes, media, seen, total = [], {}, {}, 0
+    λόγος, -ου; ἀγαθός, -ή, -όν); none for the lemmas in skip (the commonest, known already).
+    ([{lemma, fields, tags}], {media name: path}, words in all, lemmas left out)."""
+    notes, media, seen, total, left = [], {}, {}, 0, set()
     slugs = [t[0] for t in selection[1]]
     lemma_rows = {}  # (one pass over the lemma index for them all: it has no index by text)
     for row in con.execute(f"SELECT w.text, w.div, w.seq, w.word_index, l.lemma, l.definition FROM lemma_words w "
@@ -1505,7 +1508,10 @@ def anki_notes(con, selection, pictures, sentences, forms=True):
                 continue
             total += 1
             by_word.setdefault((div, seq, index), []).append(lemma)
-            if lemma in seen:
+            if lemma in seen or lemma in left:
+                continue
+            if lemma in skip:
+                left.add(lemma)
                 continue
             seen[lemma] = len(notes)
             fields = {"Lemma": html.escape(lemma), "Definition": html.escape(definition or "")}
@@ -1537,7 +1543,7 @@ def anki_notes(con, selection, pictures, sentences, forms=True):
                     note["fields"]["Picture"] = f'<img src="{html.escape(name)}">'
     if forms:
         add_forms(con, notes)
-    return notes, media, total
+    return notes, media, total, len(left)
 
 
 def add_forms(con, notes):
@@ -1622,20 +1628,54 @@ def anki_parts(selection):
     return {"kind": kind, "first": name(keyed[0]), "last": name(keyed[-1]), "multi": multi}
 
 
+_ranks = {}  # LIBRARY's mtime -> [lemma, ...], commonest first
+
+
+def commonest(con, k):
+    """The library's k commonest lemmas (by their words in every text: lemmas.n), to leave
+    out of a deck for someone who knows them."""
+    stamp = LIBRARY.stat().st_mtime
+    if stamp not in _ranks:
+        _ranks.clear()
+        _ranks[stamp] = [lemma for (lemma,) in con.execute("SELECT lemma FROM lemmas ORDER BY n DESC, lemma")]
+    return frozenset(_ranks[stamp][:k])
+
+
 def anki_query(query):
+    """A deck's asking: {target, verses, pictures, sentences, reverse, start, skip}."""
     q = urllib.parse.parse_qs(query)
-    target = q.get("target", [""])[0]
-    verses = q.get("v", [""])[0].strip()
     yes = lambda k: q.get(k, ["0"])[0] == "1"  # noqa: E731
-    start = q.get("start", ["0"])[0]
-    return target, verses, yes("pictures"), yes("sentences"), int(start) if start.isdigit() else 0, yes("reverse")
+    number = lambda k: int(v) if (v := q.get(k, ["0"])[0]).isdigit() else 0  # noqa: E731
+    return {"target": q.get("target", [""])[0], "verses": q.get("v", [""])[0].strip(), "pictures": yes("pictures"),
+            "sentences": yes("sentences"), "reverse": yes("reverse"), "start": number("start"), "skip": number("skip")}
+
+
+# Decks are made one at a time: their work, a whole category's 700,000 words, goes through
+# Python, and several at once (a dialog's previews, one after another as its choices change,
+# each going on after the page has given up on it) slowed each other several times over.
+ANKI_LOCK = threading.Lock()
+_previews = {}  # (query, LIBRARY's mtime) -> preview, the last few
 
 
 def anki_preview(query):
+    key = (query, LIBRARY.stat().st_mtime if LIBRARY.exists() else None)
+    if key in _previews:
+        return _previews[key]
+    with ANKI_LOCK:
+        if key not in _previews:
+            if len(_previews) >= 64:
+                _previews.pop(next(iter(_previews)))
+            _previews[key] = make_preview(query)
+    return _previews[key]
+
+
+def make_preview(query):
     """JSON for the export dialog: {title, lemmas, words, pictures, sample: [{lemma,
     definition}], parts (anki_parts)}, what a deck of that part of the library would hold
-    ("none": true, verses asked for that aren't there)."""
-    target, verses, pictures, *_ = anki_query(query)
+    ("none": true, verses asked for that aren't there), "skipped": its lemmas left out as
+    among the commonest (skip)."""
+    ask = anki_query(query)
+    target, verses, pictures = ask["target"], ask["verses"], ask["pictures"]
     if not LIBRARY.exists() or not target:
         return None
     con = sqlite3.connect(LIBRARY)
@@ -1647,11 +1687,12 @@ def anki_preview(query):
         selection = anki_selection(con, target, verses) if verses else whole
         if not selection:  # (verses that aren't there: what there are, to say so)
             return {"title": whole[0], "parts": parts, "none": True, "lemmas": 0, "words": 0, "pictures": None, "sample": []}
-        notes, media, total = anki_notes(con, selection, pictures, False, forms=False)
+        notes, media, total, skipped = anki_notes(con, selection, pictures, False, forms=False,
+                                                  skip=commonest(con, ask["skip"]))
         add_forms(con, notes[:6])  # (the sample's only: a whole category's take a while the first time)
     finally:
         con.close()
-    return {"title": selection[0], "parts": parts, "lemmas": len(notes), "words": total,
+    return {"title": selection[0], "parts": parts, "lemmas": len(notes), "words": total, "skipped": skipped,
             "poetry": any(t[2] == "line" for t in selection[1]),  # (Homer: its forms are given in Attic)
             "pictures": sum("Picture" in n["fields"] for n in notes) if pictures else None,
             "sample": [{"lemma": html.unescape(n["fields"].get("Form") or n["fields"]["Lemma"]),
@@ -1660,23 +1701,28 @@ def anki_preview(query):
 
 def anki_package(query):
     """(file name, the .apkg's bytes) of a selection's deck, or None."""
-    target, verses, pictures, sentences, start, reverse = anki_query(query)
-    if not LIBRARY.exists() or not target:
+    with ANKI_LOCK:
+        return make_package(query)
+
+
+def make_package(query):
+    ask = anki_query(query)
+    if not LIBRARY.exists() or not ask["target"]:
         return None
     con = sqlite3.connect(LIBRARY)
     try:
-        selection = anki_selection(con, target, verses)
+        selection = anki_selection(con, ask["target"], ask["verses"])
         if not selection:
             return None
-        notes, media, _ = anki_notes(con, selection, pictures, sentences)
+        notes, media, *_ = anki_notes(con, selection, ask["pictures"], ask["sentences"], skip=commonest(con, ask["skip"]))
     finally:
         con.close()
     if not notes:
         return None
-    if reverse:  # (the meaning-to-Greek card too)
+    if ask["reverse"]:  # (the meaning-to-Greek card too)
         for note in notes:
             note["fields"]["Reverse"] = "y"
-    return f"Acroaterium - {selection[0]}.apkg", anki.package(notes, media, start)
+    return f"Acroaterium - {selection[0]}.apkg", anki.package(notes, media, ask["start"])
 
 
 class Handler(SimpleHTTPRequestHandler):

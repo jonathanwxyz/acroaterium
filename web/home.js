@@ -762,7 +762,7 @@ function buildPlanDialog() {
 // sentence it's first met in. A lemma's note is the same in every deck made, so importing
 // decks from one text after another adds only the lemmas not had already. The device counts
 // the cards it has made (ANKI_MADE), so each deck's new cards come after the last's in Anki.
-const ANKI_MADE = "ankiCardsMade";
+const ANKI_MADE = "ankiCardsMade", ANKI_SKIP = "ankiSkip";
 let ankiDialog = null;
 function openAnkiDialog() {
   if (!library?.categories) return;
@@ -800,16 +800,23 @@ function buildAnkiDialog() {
   const [reverseRow, reverse] = check("reverse", tr("Reversed cards too: from the meaning to the Greek"), false);
   const options = el("div", "anki-options");
   options.append(picturesRow, sentencesRow, reverseRow);
+  // The library's commonest so many words left out, for someone who knows them (remembered
+  // on the device: what's known doesn't change from deck to deck).
+  const skip = el("input");
+  Object.assign(skip, { type: "number", name: "skip", min: 0, max: 20000, step: 100, placeholder: "0", inputMode: "numeric" });
+  try { skip.value = localStorage.getItem(ANKI_SKIP) || ""; } catch {}
+  const skipRow = planField(tr("Leave out"), skip, el("span", "anki-skip-note", tr("commonest words")));
   const preview = el("div", "plan-preview");
   const make = el("button", "plan-create", tr("Download deck"));
   make.type = "submit";
-  form.append(...picked.rows(tr("Words of")), versesRow, versesHint, options, preview);
+  form.append(...picked.rows(tr("Words of")), versesRow, versesHint, skipRow, options, preview);
   const foot = el("div", "dl-foot");
   foot.append(make);
   form.append(foot);
+  const skipped = () => Math.max(0, Math.min(20000, Math.floor(Number(skip.value)) || 0));
   const made = () => { try { return Math.max(0, parseInt(localStorage.getItem(ANKI_MADE), 10) || 0); } catch { return 0; } };
   const query = (extra) => new URLSearchParams({ target: picked.target(), v: versesRow.hidden ? "" : verses.value.trim(),
-                                                 pictures: pictures.checked ? 1 : 0, ...extra });
+                                                 pictures: pictures.checked ? 1 : 0, skip: skipped(), ...extra });
   verses.placeholder = tr("All");
   const PART_NAMES = { lines: "Lines", verses: "Verses", stephanus: "Stephanus", chapters: "Chapters" };
   const showVerses = (parts) => {  // (undefined: a text, until its preview comes)
@@ -848,6 +855,7 @@ function buildAnkiDialog() {
       let note = tr("{lemmas} cards, one for each lemma of {words} words", { lemmas: n(p.lemmas), words: n(p.words) });
       if (p.pictures != null) note += `, ${tr("{n} with a picture", { n: n(p.pictures) })}`;
       preview.replaceChildren(el("p", "plan-note", `${p.title}: ${note}.`));
+      if (p.skipped) preview.append(el("p", "plan-note", tr("{n} of its lemmas are among the {k} commonest, and left out.", { n: n(p.skipped), k: n(skipped()) })));
       const ol = el("ol", "plan-sample anki-sample");
       for (const x of p.sample) {
         const li = el("li");
@@ -872,6 +880,11 @@ function buildAnkiDialog() {
   pictures.addEventListener("change", d.update);
   let typing = null;
   verses.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(d.update, 400); });
+  skip.addEventListener("input", () => {
+    try { localStorage.setItem(ANKI_SKIP, skipped() ? String(skipped()) : ""); } catch {}
+    clearTimeout(typing);
+    typing = setTimeout(d.update, 400);
+  });
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!shown) return;
