@@ -14,7 +14,8 @@ departs): by the alignment model's likelihood of each over the verse. The books'
 is fetched once, into data/raw/wikisource/; the verses go to library/church_text.json, which
 scripts/library.py applies (realign after). A name left without accents (Rahlfs's Αδαμ, where
 the reader follows Rahlfs, or a capital) is accented as Wikisource accents it elsewhere, or spelled as Wikisource spells it in that chapter
-where that's a little otherwise (Ιωαχας: Ἰωάχαζ).
+where that's a little otherwise (Ιωαχας: Ἰωάχαζ). Misprints in Wikisource's text (ὔρήματα,
+σφό δρα, καὶἀπεκρίθη) are corrected as listed in library/church_text_fixes.json (local).
 
     .venv/bin/python scripts/church_text.py [--jobs N] [--fetch-only] [--library DB] [slug ...]
 """
@@ -43,6 +44,10 @@ import align_library as A  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "data" / "raw" / "wikisource"
 OUT = ROOT / "library" / "church_text.json"
+# Misprints in Wikisource's text, corrected in the verses written (local, like the text:
+# {slug: {"div:ref": {"misprint": "correction"}}}, each found once in its verse once the
+# verse is as the reader reads it; one no longer found is reported and left).
+FIXES = ROOT / "library" / "church_text_fixes.json"
 API = "https://el.wikisource.org/w/api.php?action=parse&prop=wikitext&format=json&redirects=1&page={page}"
 AGENT = {"User-Agent": "acroaterium/1.0 (personal study tool)"}
 REVERT = 3.0  # log-likelihood going back to Rahlfs's wording must gain over a verse's audio
@@ -372,7 +377,8 @@ def book(slug, library):
     for div, seq, ref, content in lib.execute(
             "SELECT div, seq, ref, content FROM segments WHERE text = ? AND seq > 0 ORDER BY div, seq", (slug,)):
         ours_by_ch.setdefault(div, []).append((seq, ref, content))
-    changed, report = {}, {"verses": 0, "differ": 0, "places": 0, "reverted": 0, "moved": 0, "chapters": []}
+    changed, report = {}, {"verses": 0, "differ": 0, "places": 0, "reverted": 0, "moved": 0, "fixed": 0, "chapters": []}
+    fixes = json.loads(FIXES.read_text(encoding="utf-8")).get(slug, {}) if FIXES.exists() else {}
     chosen = {}
     for div, rows in ours_by_ch.items():
         key = [norm(w) for _, _, content in rows for w in content.split()]
@@ -440,9 +446,22 @@ def book(slug, library):
                 if verse.count(old) != 1:
                     report["chapters"].append(f"{div}:{ref}: {old} found {verse.count(old)} times")
                 verse = verse.replace(old, new, 1)
+            verse = fix_misprints(verse, fixes.get(f"{div}:{ref}", {}), f"{div}:{ref}", report)
             if verse != " ".join(ours):
                 changed[f"{div}:{ref}"] = verse
     return slug, changed, report
+
+
+def fix_misprints(verse, fixes, where, report):
+    """The verse with its misprints corrected (FIXES: {misprint: correction}); a misprint not
+    found exactly once is left, and reported (unless its correction is there already)."""
+    for old, new in fixes.items():
+        if verse.count(old) == 1:
+            verse = verse.replace(old, new)
+            report["fixed"] += 1
+        elif new not in verse:
+            report["chapters"].append(f"{where}: misprint {old!r} found {verse.count(old)} times")
+    return verse
 
 
 def main():
@@ -465,7 +484,7 @@ def main():
     if args.fetch_only:
         return
     out = json.loads(OUT.read_text()) if OUT.exists() and args.slugs else {}
-    total = {"verses": 0, "differ": 0, "places": 0, "reverted": 0, "moved": 0}
+    total = {"verses": 0, "differ": 0, "places": 0, "reverted": 0, "moved": 0, "fixed": 0}
     with ProcessPoolExecutor(args.jobs) as pool:
         for slug, changed, report in pool.map(functools.partial(book, library=args.library), slugs):
             out[slug] = changed
@@ -473,12 +492,13 @@ def main():
                 total[k] += report[k]
             print(f"{slug}: {report['differ']} of {report['verses']} verses differ in wording; at {report['reverted']} "
                   f"of {report['places']} places the reader follows Rahlfs; {report['moved']} verses moved across a chapter's "
-                  f"end; {len(changed)} verses changed"
+                  f"end; {report['fixed']} misprints corrected; {len(changed)} verses changed"
                   + (f"  ({'; '.join(report['chapters'])})" if report["chapters"] else ""), flush=True)
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1, sort_keys=True))
     print(f"all: {total['differ']} of {total['verses']} verses differ in wording; at {total['reverted']} of "
           f"{total['places']} places the reader follows Rahlfs; {total['moved']} verses moved across a chapter's end; "
+          f"{total['fixed']} misprints corrected ({FIXES.relative_to(ROOT)}); "
           f"{sum(map(len, out.values()))} verses changed "
           f"-> {OUT.relative_to(ROOT)}")
 
