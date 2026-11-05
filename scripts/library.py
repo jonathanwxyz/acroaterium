@@ -106,6 +106,7 @@ import urllib.request
 import unicodedata
 import zipfile
 from collections import Counter
+import html
 from html.parser import HTMLParser
 from pathlib import Path
 from xml.etree import ElementTree
@@ -192,6 +193,7 @@ def clean_wiki(line):
     line = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]*)\]\]", r"\1", line)  # [[link|text]] -> text
     line = re.sub(r"<[^>]+>", "", line)                         # tags
     line = line.replace("'''", "").replace("''", "")
+    line = html.unescape(line)                                  # entities (&nbsp; between words)
     return re.sub(r"\s+", " ", line).strip()
 
 
