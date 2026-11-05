@@ -1543,6 +1543,7 @@ def anki_notes(con, selection, pictures, sentences, forms=True, skip=frozenset()
                     note["fields"]["Picture"] = f'<img src="{html.escape(name)}">'
     if forms:
         add_forms(con, notes)
+    add_synonyms(con, notes)
     return notes, media, total, len(left)
 
 
@@ -1553,6 +1554,33 @@ def add_forms(con, notes):
     for note in notes:
         if note["lemma"] in made:
             note["fields"]["Form"] = html.escape(made[note["lemma"]])
+
+
+_synonyms = {}  # LIBRARY's mtime -> {definition as compared: [lemma, ...], commonest first}
+
+
+def same_definition(d):
+    """A short definition as compared with others: small letters, spaces as one, no stop after."""
+    return re.sub(r"\s+", " ", re.sub(r"[.;,]+$", "", d.strip().lower()))
+
+
+def add_synonyms(con, notes):
+    """The other lemmas in the library with a note's short definition, commonest first, as its
+    Synonyms (πόντος for θάλασσα's "the sea"): every one, the card keeps them small."""
+    stamp = LIBRARY.stat().st_mtime
+    if stamp not in _synonyms:
+        groups = {}
+        for lemma, definition in con.execute("SELECT lemma, definition FROM lemmas WHERE definition IS NOT NULL "
+                                             "AND definition != '' ORDER BY n DESC, lemma"):
+            groups.setdefault(same_definition(definition), []).append(lemma)
+        _synonyms.clear()
+        _synonyms[stamp] = {d: g for d, g in groups.items() if len(g) > 1}
+    groups = _synonyms[stamp]
+    for note in notes:
+        definition = html.unescape(note["fields"].get("Definition", ""))
+        others = [x for x in groups.get(same_definition(definition), []) if x != note["lemma"]] if definition else []
+        if others:
+            note["fields"]["Synonyms"] = html.escape(" · ".join(others))
 
 
 _kinds = {}  # LIBRARY's mtime -> {lemma: (noun or adj, {gender: words})}

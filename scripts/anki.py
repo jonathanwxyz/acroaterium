@@ -26,19 +26,23 @@ DECK_ID = 1730000000002
 DECK_NAME = "Acroaterium"
 FIXED_MOD = 1730000000  # (seconds: 2024-10-27; notes and the note type, so none is "newer")
 MAX_POSITION = 1_000_000
-FIELDS = ["Lemma", "Definition", "Picture", "Sentence", "Reference", "Form", "Reverse"]
+FIELDS = ["Lemma", "Definition", "Picture", "Sentence", "Reference", "Form", "Reverse", "Synonyms"]
 
 # The front: the dictionary form where there is one (ὁ λόγος, -ου), else the lemma.
 FRONT = '<div class="lemma">{{#Form}}{{Form}}{{/Form}}{{^Form}}{{Lemma}}{{/Form}}</div>'
 BACK = """{{FrontSide}}
 <hr id="answer">
 <div class="definition">{{Definition}}</div>
+{{#Synonyms}}<div class="synonyms">Same meaning: {{Synonyms}}</div>{{/Synonyms}}
 {{#Picture}}<div class="picture">{{Picture}}</div>{{/Picture}}
 {{#Sentence}}<div class="sentence">{{Sentence}}</div>{{/Sentence}}
 {{#Reference}}<div class="reference">{{Reference}}</div>{{/Reference}}"""
+# Synonyms: the other lemmas with the same short definition (θάλασσα, πόντος: "the sea"),
+# after the answer on the Greek card, and on the reverse's front as the answers it isn't.
 # The reverse card, from the meaning (and the picture) to the Greek: made only for a note
 # whose Reverse field has something in it, as Anki's "Basic (optional reversed card)".
 REVERSE_FRONT = """{{#Reverse}}<div class="definition">{{Definition}}</div>
+{{#Synonyms}}<div class="synonyms">not {{Synonyms}}</div>{{/Synonyms}}
 {{#Picture}}<div class="picture">{{Picture}}</div>{{/Picture}}{{/Reverse}}"""
 REVERSE_BACK = """{{FrontSide}}
 <hr id="answer">
@@ -50,6 +54,7 @@ CSS = """.card { font-family: "Gentium Book Plus", "GFS Didot", "Times New Roman
 .nightMode.card, .night_mode .card { color: #ddd; background: #1f1d1a; }
 .lemma { font-size: 1.8em; }
 .definition { font-family: system-ui, sans-serif; font-size: 0.85em; margin: 0.4em 0; }
+.synonyms { font-size: 0.7em; color: #888; margin: -0.2em auto 0.4em; max-width: 30em; line-height: 1.4; }
 .picture img { max-width: 14rem; max-height: 14rem; border-radius: 6px; margin: 0.4em 0; }
 .sentence { margin: 0.8em auto 0.2em; max-width: 34em; line-height: 1.5; }
 .sentence b { color: #b5651d; }
