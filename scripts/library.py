@@ -1497,21 +1497,34 @@ def capitals_heading(line):
     return len(caps) >= 2 and all(w in caps or sum(c.isalpha() for c in w) <= 2 for w in words)
 
 
-# Misprints in the prayer texts, corrected as they're read (local, like the texts:
-# {"prayer_texts/<file>": {"misprint": "correction"}}, every place it's found).
-PRAYER_FIXES = ROOT / "library" / "prayer_text_fixes.json"
+# Misprints in a local source text (the prayers, a parallel text), corrected as it's read
+# (local, like the texts: {"<file under the project>": {"misprint": "correction"}}, every
+# place it's found; one found nowhere is reported).
+TEXT_FIXES = ROOT / "library" / "text_fixes.json"
 
 
-def fix_prayer_misprints(file, text):
-    """The text with its misprints corrected (PRAYER_FIXES); one found nowhere is reported."""
-    fixes = json.loads(PRAYER_FIXES.read_text(encoding="utf-8")).get(file, {}) if PRAYER_FIXES.exists() else {}
+def text_fixes(file):
+    """{misprint: correction} for a source file (TEXT_FIXES), in Unicode's composed form."""
+    if not TEXT_FIXES.exists():
+        return {}
+    fixes = json.loads(TEXT_FIXES.read_text(encoding="utf-8")).get(file, {})
+    return {unicodedata.normalize("NFC", a): unicodedata.normalize("NFC", b) for a, b in fixes.items()}
+
+
+def fix_misprints(text, fixes, found):
+    """text with its misprints corrected; found gets each misprint seen (or its correction)."""
     for old, new in fixes.items():
-        old, new = unicodedata.normalize("NFC", old), unicodedata.normalize("NFC", new)
         if old in text:
             text = text.replace(old, new)
-        elif new not in text:
-            print(f"  {file}: misprint {old!r} not found", flush=True)
+            found.add(old)
+        elif new in text:
+            found.add(old)
     return text
+
+
+def report_misprints(file, fixes, found):
+    for old in fixes.keys() - found:
+        print(f"  {file}: misprint {old!r} not found", flush=True)
 
 
 def prayers(src, verbose, title, labels_out):
@@ -1555,7 +1568,10 @@ def prayers(src, verbose, title, labels_out):
         ref, new_para = el, True
         labels_out.append((ref, "en", en))
 
-    for line in fix_prayer_misprints(src["file"], nfc(path.read_text(encoding="utf-8"))).splitlines():
+    fixes, found = text_fixes(src["file"]), set()
+    text = fix_misprints(nfc(path.read_text(encoding="utf-8")), fixes, found)
+    report_misprints(src["file"], fixes, found)
+    for line in text.splitlines():
         line = nfc(line.strip())
         if re.match(r"#(?!#)", line):
             continue
@@ -1711,6 +1727,7 @@ def parallel(src, verbose, title, passages_out, marks_out):
     tree.feed((ROOT / src["file"]).read_text(encoding="utf-8"))
     until = src.get("until")
     nfc = lambda x: unicodedata.normalize("NFC", x)
+    fixes, found = text_fixes(src["file"]), set()
     # Each class's colour: the body text's is the commonest; a paragraph all in another is a heading.
     colour = {c: m[1].lower() for c, m in ((c, re.search(r"(?<![-\w])color:(#\w+)", body))
                                             for c, body in re.findall(r"\.(c\d+)\{([^}]*)\}", tree.style)) if m}
@@ -1723,6 +1740,7 @@ def parallel(src, verbose, title, passages_out, marks_out):
             for t, col in runs:
                 weight[col] += len(t.strip())
             text = nfc(re.sub(r"\s+", " ", "".join(t for t, _ in runs).replace("\xa0", " ")).strip())
+            text = fix_misprints(text, fixes, found)
             if text:
                 out.append((text, {col for t, col in runs if t.strip()}))
         return out
@@ -1731,6 +1749,7 @@ def parallel(src, verbose, title, passages_out, marks_out):
     for tr in tree.root.find("tr"):
         cells = [c for c in tr.kids if isinstance(c, _Node) and c.tag == "td"]
         rows.append([paragraphs(c) for c in cells[:2]] if len(cells) >= 2 else [[], []])
+    report_misprints(src["file"], fixes, found)
     body = weight.most_common(1)[0][0]
     heading = lambda colours: bool(colours - {None}) and body not in colours
 
