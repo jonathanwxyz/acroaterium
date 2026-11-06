@@ -970,7 +970,7 @@ def lexword_json(slug, n, seq, index):
                 if row:
                     token["references"] = {"lemma": row[0], "n": row[1]}
                     if period:
-                        notes = con.execute("SELECT homer, bible, homer_n, bible_n, ours FROM lemma_notes WHERE lemma = ?",
+                        notes = con.execute("SELECT homer, bible, homer_n, bible_n, ours, epic FROM lemma_notes WHERE lemma = ?",
                                             (row[2],)).fetchone()
                         compose_definition(token, period, row[3], notes)
         except sqlite3.OperationalError:  # a library built before the lemma index
@@ -1000,7 +1000,7 @@ def compose_definition(token, period, classical, notes):
     the Fathers and the services: ours, else the Bible's, else the short definition), then, as
     "periods", the others always in this order, Classical, Biblical, Homeric, each where the lemma is read
     in that part of the library and it adds a word."""
-    homer, bible, homer_n, bible_n, ours = notes or (None, None, 0, 0, 0)
+    homer, bible, homer_n, bible_n, ours, epic = notes or (None, None, 0, 0, 0, 0)
     own = token.get("definition")
     if period == "homer":
         main, key = (homer, "homer") if homer else (own or classical, "classical")
@@ -1021,6 +1021,8 @@ def compose_definition(token, period, classical, notes):
     token["definition"] = main
     if periods:
         token["periods"] = periods
+    if epic:  # (a Homeric word: Homer's sense its only one, said so)
+        token["register"] = "Homeric"
 
 
 def references_json(lemma, query):
@@ -1591,6 +1593,7 @@ def anki_notes(con, selection, pictures, sentences, forms=True, skip=frozenset()
                     note["fields"]["Picture"] = f'<img src="{html.escape(name)}">'
     if forms:
         add_forms(con, notes)
+        add_homeric_label(con, notes)
     add_periods(con, notes)
     add_synonyms(con, notes)
     return notes, media, total, len(left)
@@ -1619,6 +1622,22 @@ def lemma_rows(con, sql, lemmas):
     except sqlite3.OperationalError:  # (a library built before scripts/lemma_definitions.py)
         pass
     return out
+
+
+# A Homeric word's label under its Greek on the card's front (lemma_notes.epic, lemma_definitions.py):
+# in the Form field and styled where it stands, so that the note type stays as decks already
+# imported have it (a field or a style of its own would make Anki add another).
+HOMERIC_LABEL = ('<div style="font: 600 0.32em/1.9 system-ui, sans-serif; letter-spacing: 0.14em; '
+                 'text-transform: uppercase; color: #9a7b4f;">Homeric</div>')
+
+
+def add_homeric_label(con, notes):
+    """"Homeric" under a Homeric word's Greek (one LSJ cites from Homer and the epic poets only)."""
+    epic = lemma_rows(con, "SELECT l.lemma, n.epic FROM lemma_notes n JOIN lemmas l ON l.id = n.lemma "
+                           "WHERE n.epic = 1 AND l.lemma IN ({})", [n["lemma"] for n in notes])
+    for note in notes:
+        if note["lemma"] in epic:
+            note["fields"]["Form"] = (note["fields"].get("Form") or html.escape(note["lemma"])) + HOMERIC_LABEL
 
 
 def add_periods(con, notes):

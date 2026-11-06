@@ -1393,7 +1393,13 @@ function renderCard(data) {
     // The New Testament's words: Strong's number, and Robinson's code under the parsing.
     if (t.strongs) lemma.append(el("code", "strongs", `G${t.strongs}`));
     box.append(lemma);
-    if (t.definition) box.append(el("div", "definition", t.definition));
+    if (t.definition) {
+      const def = el("div", "definition");
+      // (a Homeric word, LSJ's citations Homer's and the epic poets' only: its definition Homer's, labelled)
+      if (t.register) def.append(el("span", "label register", capitals(tr(t.register))));
+      def.append(t.definition);
+      box.append(def);
+    }
     // How classical Greek, the Bible and Homer use the word, where it adds to the definition
     // (the server's compose_definition): always in that order, without the text's own.
     if (t.periods?.length) {

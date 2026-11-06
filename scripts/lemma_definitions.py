@@ -167,6 +167,8 @@ def cunliffe_senses(entry):
         p = re.sub(r"(?<![A-Za-z])['‘’]|['‘’](?![A-Za-z])", "", p)  # (quotation marks, not one's)
         p = re.sub(r"\s+", " ", p).strip(" ,;.")
         p = re.sub(r"^In (?:pl|dual|sing|mid|pass)\.,?\s*", "", p)  # ("In pl., small cattle": its sense)
+        p = re.sub(r"^With (?:neg|genit|dat|acc|infin|pple|inf|adv|prep)\.(?:\s+(?:and|or)\s+\w+\.)?,?\s*", "", p)  # ("With neg., not to care for")
+        p = re.sub(r"^Absol\.,?\s*", "", p)
         p = re.sub(r"\s+in gen\b\.?", "", p)
         p = re.sub(r"\.\s+Epithet of ([^.]+)$", r" (epithet of \1)", p)  # ("slayer of men (epithet of Enyalius)")
         p = re.split(r"\.\s+(?=[A-Z])", p)[0]  # (not a sense's later note, "thoughtlessness. In pl"; but "i.e. as")
@@ -189,11 +191,25 @@ def autenrieth():
 
 
 def autenrieth_senses(entry):
-    t = entry.split("):", 1)[1] if "):" in entry[:80] else entry.split(":", 1)[-1]
-    t = re.sub(r"\b[a-z]*[)(/\\=|+][a-z)(/\\=|+]*\b", " ", t)  # (its Greek, in Beta Code)
-    t = re.sub(r"\([^)]*\)", " ", re.split(r"[;.—]", t)[0])
-    t = re.sub(r",?\s+\w$", "", re.sub(r"\s+,", ",", re.sub(r"\s+", " ", t)).strip(" ,"))
-    return [t] if re.search(r"[a-z]{3}", t) else []
+    """The English of Autenrieth's entry, before its first reference ("Il. 4.472", "†"): its Greek
+    (in Beta Code), grammatical asides ("only ipf.") and doubts left out; "epith. of X" as
+    "epithet of X"."""
+    t = entry.split("):", 1)[1] if "):" in entry[:90] else entry.split(":", 1)[-1]
+    t = re.sub(r"\bepith\.\s+of\b", "epithet of", t)
+    t = re.split(r"[,;]?\s*\b(?:Il|Od|Hes|h\.\s*\w+)\.\s*\d|†|\bcf\.|\bv\.\s", t)[0]  # (to its first reference)
+    words = []
+    for w in t.split():
+        if re.search(r"[)(/\\=|+_*]|^-|\d", w) or re.fullmatch(r"[a-z]{1,3}['’]\W*", w):  # (Beta Code, a hyphen, a number, d')
+            continue
+        words.append(w)
+    t = " ".join(words)
+    t = re.sub(r",?\s*\b(only|freq|ipf|aor|perf|pres|fut|mid|pass|act|adv|subst|pl|sing|dual|ep|poet)\b\.?.*$", "", t)
+    t = re.sub(r"^\s*(doubtful word|prob\.|perh\.|i\.e\.)\s*,?\s*", "", t)
+    t = re.sub(r"[‘’“”]", "", t)
+    t = re.sub(r"\s*,(\s*,)+", ",", re.sub(r"\s+,", ",", re.sub(r"\s+", " ", t)))
+    t = re.sub(r"\s+(from|of|by|in|with|to|and|or)\W*$", "", t.strip(" ,;.'"))  # (a phrase cut short)
+    t = t.strip(" ,;.'")
+    return [t] if re.search(r"[a-z]{3}", t) and not re.fullmatch(r"(epith|epithet)", t) else []
 
 
 # ---------------------------------------------------------------- epic words (LSJ)

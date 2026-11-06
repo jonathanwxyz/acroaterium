@@ -202,6 +202,7 @@
     }
     token.definition = main;
     if (periods.length) token.periods = periods;
+    if (notes?.epic) token.register = "Homeric";  // (a Homeric word: Homer's sense its only one, said so)
   }
 
   const ILIAD_FEATURES = ["audio", "paraphrase", "modern", "translation", "scholia", "words"];

@@ -1088,6 +1088,7 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
 /* How classical Greek, the Bible and Homer use the word, where that adds: smaller, under it. */
 #card .periods { display: grid; gap: 0.15rem; margin-top: 0.3rem; font-family: system-ui, sans-serif; font-size: 13px; color: var(--muted); }
 #card .period .label { margin-right: 0.4rem; }
+#card .definition .register { margin-right: 0.45rem; color: var(--current-bar); }
 #card .morph { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.45rem 0; }
 #card .morph span {
   font-family: system-ui, sans-serif; font-size: 12.5px;
