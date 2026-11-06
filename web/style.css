@@ -2012,14 +2012,19 @@ body.library { padding-top: env(safe-area-inset-top); }
 .dl-head h2 { margin: 0; font: 600 15px system-ui, sans-serif; flex: 1; }
 .dl-head .dl-total { color: var(--muted); font-size: 12px; }
 /* The flashcards' guide: a ? by the ×, folding out above the choices. */
-/* Round icons (the guide's ?, Leave out's i), drawn alike: muted, the text's colour hovered,
-   the accent while what they open is open. */
-.round-icon { display: inline-grid; place-items: center; padding: 0; color: var(--muted); background: transparent; border: 0; border-radius: 50%; cursor: pointer; }
-.round-icon svg { width: 100%; height: 100%; }
-.round-icon[aria-expanded="true"] { color: var(--current-bar); }
+/* The round buttons (the guide's ?, Leave out's i), as the library's others (search, Aa): a
+   hairline border, a muted mark; the border the accent and the mark the text's colour when
+   hovered or while what they open is open. */
+.round-icon {
+  display: inline-grid; place-items: center; padding: 0; color: var(--muted); background: transparent;
+  border: 1px solid var(--rule); border-radius: 50%; cursor: pointer; box-sizing: border-box;
+}
+.round-icon svg { width: 70%; height: 70%; }
+.round-icon[aria-expanded="true"] { color: var(--text); border-color: var(--current-bar); }
 .round-icon:focus-visible { outline: 2px solid var(--current-bar); outline-offset: 1px; }
-@media (hover: hover) { .round-icon:hover { color: var(--text); } .round-icon[aria-expanded="true"]:hover { color: var(--current-bar); } }
-.dl-help { width: 1.4rem; height: 1.4rem; }
+@media (hover: hover) { .round-icon:hover { color: var(--text); border-color: var(--current-bar); } }
+.dl-help { width: 1.85rem; height: 1.85rem; }  /* (as tall as the search button, its mark as large) */
+.dl-help svg { width: 18px; height: 18px; }  /* (a ? is narrow: a little larger than the search icon) */
 .anki-help { flex: 1; min-height: 0; overflow-y: auto; padding: 0.6rem 0.9rem 0.7rem; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--current-bar) 6%, var(--bg)); display: grid; gap: 0.55rem; font-size: 13px; line-height: 1.45; }
 .anki-help[hidden], #anki-dialog .plan-form[hidden] { display: none; }  /* (their display: grid would show them otherwise) */
 .anki-help-back { justify-self: start; font: 600 13px system-ui, sans-serif; padding: 0.35rem 0.8rem; color: var(--text); background: transparent; border: 1px solid var(--rule); border-radius: 999px; cursor: pointer; }
@@ -2395,7 +2400,7 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
 .anki-skip-note { align-self: center; color: var(--muted); }
 /* (i) by Leave out (drawn, so it's centred whatever the fonts), and what it does in a little
    box above it, a pointer at the (i); x as in mathematics. */
-.anki-info { width: 1.05rem; height: 1.05rem; vertical-align: -0.22em; cursor: help; }  /* (level with the small letters) */
+.anki-info { width: 1.2rem; height: 1.2rem; vertical-align: -0.1em; cursor: help; }  /* (level with the small letters) */
 .anki-pop {
   position: fixed; z-index: 10; width: max-content; max-width: min(17rem, calc(100vw - 16px)); box-sizing: border-box;
   padding: 0.5rem 0.65rem; font: 12.5px/1.4 system-ui, sans-serif; color: var(--text);

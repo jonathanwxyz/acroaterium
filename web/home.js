@@ -756,14 +756,13 @@ function buildPlanDialog() {
   return d;
 }
 
-// Round icons drawn alike (the guide's ?, Leave out's i): a circle, its mark, in currentColor,
-// centred whatever the fonts.
-const ROUND_ICON = (mark) => `<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.6" fill="none" `
-  + `stroke="currentColor" stroke-width="1.4"/>${mark}</svg>`;
-const INFO_ICON = ROUND_ICON('<circle cx="10" cy="6.1" r="1.2" fill="currentColor"/>'
-  + '<rect x="9.1" y="8.6" width="1.8" height="6.2" rx="0.9" fill="currentColor"/>');
-const QUESTION_ICON = ROUND_ICON('<path d="M7.55 7.7a2.5 2.5 0 1 1 3.55 2.25c-.75.36-1.1.85-1.1 1.6v.45" fill="none" '
-  + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="14.6" r="1.05" fill="currentColor"/>');
+// The marks of the round buttons (the guide's ?, Leave out's i), drawn as the search button's
+// icon is (24 units, strokes of 2), centred whatever the fonts; the circle is the button's border.
+const INFO_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.8" r="1.6" fill="currentColor"/>'
+  + '<path d="M12 10.2v9" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg>';
+const QUESTION_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.8 8.3a4.2 4.2 0 1 1 6.3 3.64'
+  + 'c-1.27.73-2.1 1.68-2.1 3.1v.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+  + 'stroke-linejoin="round"/><circle cx="12" cy="19.4" r="1.3" fill="currentColor"/></svg>';
 
 // Flashcards: the words of part of the library, a text or some of its books, and of a text
 // some of its verses, as a deck for Anki (/api/anki: an .apkg), a card per lemma, in the
