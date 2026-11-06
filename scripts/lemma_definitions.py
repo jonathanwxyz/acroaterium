@@ -15,7 +15,8 @@ use the word (κύριος: "having power"), the numbered homonym that does ("a 
 else as library.py made it. The notes (lemma_notes) are a Homer one, from Cunliffe's
 Lexicon of the Homeric Dialect (else Autenrieth's Homeric Dictionary), and a Bible one, from
 STEPBible's brief lexicon (TBESG), each where the lemma's words are read in that part of the
-library (Homer: the texts cited by line; the Bible: by verse; three words at least) and the
+library (Homer: the texts cited by line; the Bible: the Septuagint, the New Testament, the
+Fathers and the services, all but Plato; three words at least) and the
 note adds a word the card hasn't yet; the part it's read in most first. Names have none.
 
 The sources are fetched once into data/raw/definitions/:
@@ -231,10 +232,22 @@ def parts_of_speech(con):
 
 
 def where_read(con):
-    """{lemma id: (words in the texts cited by line (Homer), by verse (the Bible))}."""
-    return {lid: (h, b) for lid, h, b in con.execute(
-        "SELECT w.lemma, sum(t.cite = 'line'), sum(t.cite = 'verse') FROM lemma_words w "
-        "JOIN texts t ON t.slug = w.text GROUP BY w.lemma")}
+    """{lemma id: (words in Homer, in the Bible, the Fathers and the services)}: Homer, the texts
+    cited by line; the rest, but Plato's (cited by Stephanus sections: 172a), the Bible's Greek
+    and the Church's after it."""
+    stephanus = {slug for (slug,) in con.execute(
+        "SELECT DISTINCT text FROM segments WHERE text IN (SELECT slug FROM texts WHERE cite = 'section') "
+        "AND ref GLOB '[0-9]*[a-e]'")}
+    out = {}
+    for lid, slug, cite, n in con.execute("SELECT w.lemma, t.slug, t.cite, count(*) FROM lemma_words w "
+                                          "JOIN texts t ON t.slug = w.text GROUP BY w.lemma, t.slug"):
+        h, b = out.get(lid, (0, 0))
+        if cite == "line":
+            h += n
+        elif slug not in stephanus:
+            b += n
+        out[lid] = (h, b)
+    return out
 
 
 def apply(con, show=(), fresh=False, verbose=False):
