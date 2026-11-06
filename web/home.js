@@ -819,11 +819,11 @@ function buildAnkiDialog() {
     l.append(box, el("span", null, label));
     return [l, box];
   };
-  const [picturesRow, pictures] = check("pictures", tr("With pictures (where available)"), true);
-  const [sentencesRow, sentences] = check("sentences", tr("With the sentence each is found in, on the back"), true);
-  const [reverseRow, reverse] = check("reverse", tr("Reversed cards too: from the meaning to the Greek"), false);
+  const [reverseRow, reverse] = check("reverse", tr("Include reversed cards: from the meaning to the Greek"), true);
+  const [picturesRow, pictures] = check("pictures", tr("With pictures (where available)"), false);
+  const [sentencesRow, sentences] = check("sentences", tr("With the sentence each is found in, on the back"), false);
   const options = el("div", "anki-options");
-  options.append(picturesRow, sentencesRow, reverseRow);
+  options.append(reverseRow, picturesRow, sentencesRow);
   // The library's commonest so many words left out, for someone who knows them (remembered
   // on the device: what's known doesn't change from deck to deck).
   const skip = el("input");
