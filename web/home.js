@@ -756,6 +756,15 @@ function buildPlanDialog() {
   return d;
 }
 
+// Round icons drawn alike (the guide's ?, Leave out's i): a circle, its mark, in currentColor,
+// centred whatever the fonts.
+const ROUND_ICON = (mark) => `<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.6" fill="none" `
+  + `stroke="currentColor" stroke-width="1.4"/>${mark}</svg>`;
+const INFO_ICON = ROUND_ICON('<circle cx="10" cy="6.1" r="1.2" fill="currentColor"/>'
+  + '<rect x="9.1" y="8.6" width="1.8" height="6.2" rx="0.9" fill="currentColor"/>');
+const QUESTION_ICON = ROUND_ICON('<path d="M7.55 7.7a2.5 2.5 0 1 1 3.55 2.25c-.75.36-1.1.85-1.1 1.6v.45" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="14.6" r="1.05" fill="currentColor"/>');
+
 // Flashcards: the words of part of the library, a text or some of its books, and of a text
 // some of its verses, as a deck for Anki (/api/anki: an .apkg), a card per lemma, in the
 // order they're first met, with its meaning, where asked its picture and on the back the
@@ -779,7 +788,8 @@ function buildAnkiDialog() {
   close.setAttribute("aria-label", tr("Close"));
   close.addEventListener("click", () => d.close());
   // How to get Anki and bring the decks in: a guide that folds out above the choices (?).
-  const helpButton = el("button", "dl-help", "?");
+  const helpButton = el("button", "dl-help round-icon");
+  helpButton.innerHTML = QUESTION_ICON;
   helpButton.type = "button";
   helpButton.title = tr("How to use these decks in Anki");
   helpButton.setAttribute("aria-label", tr("How to use these decks in Anki"));
@@ -821,11 +831,9 @@ function buildAnkiDialog() {
   Object.assign(skip, { type: "number", name: "skip", min: 0, max: 20000, step: 100, placeholder: "0", inputMode: "numeric" });
   try { skip.value = localStorage.getItem(ANKI_SKIP) || ""; } catch {}
   // What it does, in a little box above the (i): while it's hovered or focused, or after a tap.
-  const skipInfo = el("button", "anki-info");
+  const skipInfo = el("button", "anki-info round-icon");
   skipInfo.type = "button";
-  skipInfo.innerHTML = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.6" '
-    + 'fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.1" r="1.25" fill="currentColor"/>'
-    + '<rect x="9.05" y="8.6" width="1.9" height="6.3" rx="0.95" fill="currentColor"/></svg>';
+  skipInfo.innerHTML = INFO_ICON;
   skipInfo.setAttribute("aria-label", tr("What Leave out does"));
   skipInfo.setAttribute("aria-expanded", "false");
   const skipTip = el("div", "anki-pop");
@@ -856,7 +864,9 @@ function buildAnkiDialog() {
   skipInfo.addEventListener("focus", () => tip(true));
   skipInfo.addEventListener("blur", () => { pinned = false; tip(false); });
   skipInfo.addEventListener("click", (e) => { e.preventDefault(); pinned = !pinned || skipTip.hidden; tip(pinned); });
-  const skipRow = planField(tr("Leave out"), skip, el("span", "anki-skip-note", tr("commonest words")), skipInfo);
+  const skipNote = el("span", "anki-skip-note", tr("commonest words"));
+  skipNote.append(" ", skipInfo);  // (in the text: level with its small letters)
+  const skipRow = planField(tr("Leave out"), skip, skipNote);
   const preview = el("div", "plan-preview");
   const make = el("button", "plan-create", tr("Download deck"));
   make.type = "submit";
