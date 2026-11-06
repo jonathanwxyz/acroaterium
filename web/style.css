@@ -1085,6 +1085,9 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
 }
 @media (hover: hover) { #card .lemma a:hover { text-decoration: underline; } }
 #card .definition { margin-top: 0.15rem; font-family: system-ui, sans-serif; font-size: 14.5px; }
+/* How the Bible, classical Greek and Homer use the word, where that adds: smaller, under it. */
+#card .periods { display: grid; gap: 0.15rem; margin-top: 0.3rem; font-family: system-ui, sans-serif; font-size: 13px; color: var(--muted); }
+#card .period .label { margin-right: 0.4rem; }
 #card .morph { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.45rem 0; }
 #card .morph span {
   font-family: system-ui, sans-serif; font-size: 12.5px;

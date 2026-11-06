@@ -145,7 +145,11 @@ another (link precision/recall, per-word agreement).
   homonym repaired (κύριος: "a lord, master", not "having power"); and how Homer and the
   Bible use it where that adds to it ("Homer: to take, grasp; to kill, slay" for αἱρέω),
   from Cunliffe's and Autenrieth's Homeric lexicons and STEPBible's brief lexicon (TBESG),
-  fetched into `raw/definitions/`. The search, the references and the flashcards show them.
+  fetched into `raw/definitions/`; the Bible's from Dodson's lexicon first, STEPBible for the
+  Septuagint's own words. The search, the references and the flashcards show them; the
+  reader's word card leads with the sense of the text's own period (`text_periods`: Homer,
+  Cunliffe's; the Bible, Dodson's; Plato, the short definition; the Fathers and services,
+  ours, else the Bible's), then the others, always Bible, Classical, Homer, where they add.
 - **translation_passages** `(translation, book, line_from)`: A. T. Murray's prose
   translation (Loeb, 1924; public domain) from Perseus (`perseus-eng3`, encoding CC BY-SA
   4.0). Perseus marks the Greek line numbers every 5 lines, so each row covers ~5 lines

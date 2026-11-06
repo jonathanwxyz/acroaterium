@@ -167,6 +167,43 @@
   // A word's letters, without accents or breathings, lowercase: Δαυίδ and Δαυιδ alike.
   const letters = (w) => w.toLowerCase().normalize("NFD").replace(/[^\p{L}]/gu, "");
 
+  // A word card's definition for the text it's read in, as the server's compose_definition
+  // (scripts/serve.py): its main line from the source of that text's Greek, then the others,
+  // always Bible, Classical, Homer, each where the lemma is read there and it adds a word.
+  const NOTE_MIN = 3;
+  const CONTENT_STOP = new Set("the with from into its his her their being thing things".split(" "));
+  const contentWords = (s) => new Set(((s ?? "").toLowerCase().match(/[a-z]{3,}/g) ?? [])
+    .filter((w) => !CONTENT_STOP.has(w)).map((w) => w.slice(0, 5)));
+  const PERIOD_LABELS = { bible: "Bible", classical: "Classical", homer: "Homer" };
+  function composeDefinition(token, period, classical, notes) {
+    const homer = notes?.homer ?? null, bible = notes?.bible ?? null;
+    const own = token.definition ?? null;
+    let main, key;
+    if (period === "homer") [main, key] = truthy(homer) ? [homer, "homer"] : [truthy(own) ? own : classical, "classical"];
+    else if (period === "classical") [main, key] = [truthy(classical) ? classical : own, "classical"];
+    else if (period === "bible") {
+      [main, key] = token.strongs != null && truthy(own) ? [own, "bible"] : truthy(bible) ? [bible, "bible"]
+        : [truthy(own) ? own : classical, "own"];
+    } else {
+      [main, key] = notes?.ours && truthy(classical) ? [classical, "classical"] : truthy(bible) ? [bible, "bible"]
+        : [truthy(classical) ? classical : own, "classical"];
+    }
+    const texts = { bible: (notes?.bible_n ?? 0) >= NOTE_MIN ? bible : null, classical,
+                    homer: (notes?.homer_n ?? 0) >= NOTE_MIN ? homer : null };
+    const seen = contentWords(main), periods = [];
+    for (const k of ["bible", "classical", "homer"]) {
+      const text = texts[k];
+      if (k === key || !truthy(text) || text === main) continue;
+      const words = contentWords(text);
+      if ([...words].some((w) => !seen.has(w))) {
+        periods.push([PERIOD_LABELS[k], text]);
+        words.forEach((w) => seen.add(w));
+      }
+    }
+    token.definition = main;
+    if (periods.length) token.periods = periods;
+  }
+
   const ILIAD_FEATURES = ["audio", "paraphrase", "modern", "translation", "scholia", "words"];
 
   class LocalApi {
@@ -469,12 +506,20 @@
     // /api/references knows it), where the compact library has the lemma index's lemmas.
     async lexwordJson(slug, n, seq, index) {
       const card = await this.parsingJson(slug, n, seq, index);
+      const tables = this.db.file.tables;
+      const period = card?.tokens?.length && tables.text_periods ? (await this.db.byKey("text_periods", [slug]))?.period : null;
       for (const token of card?.tokens ?? []) {
         const form = token._lemma;
         delete token._lemma;
-        const ref = this.db.file.tables.lemma_forms && form != null ? await this.db.byKey("lemma_forms", [form]) : null;
+        const ref = tables.lemma_forms && form != null ? await this.db.byKey("lemma_forms", [form]) : null;
         const lemma = ref && await this.db.byKey("lemmas", [ref.lemma]);
-        if (lemma) token.references = { lemma: lemma.lemma, n: lemma.n };
+        if (lemma) {
+          token.references = { lemma: lemma.lemma, n: lemma.n };
+          if (period) {
+            const notes = tables.lemma_notes ? await this.db.byKey("lemma_notes", [lemma.id]) : null;
+            composeDefinition(token, period, lemma.definition, notes);
+          }
+        }
       }
       return card;
     }

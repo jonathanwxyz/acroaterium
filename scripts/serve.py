@@ -89,6 +89,7 @@ from pathlib import Path
 from import_treebank import POSTAG
 import anki
 import headwords
+import lemma_definitions
 import morpheus
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -962,17 +963,64 @@ def lexword_json(slug, n, seq, index):
     if card and card.get("tokens"):
         con = sqlite3.connect(LIBRARY)
         try:
+            period = text_period(con, slug)
             for token in card["tokens"]:
-                row = con.execute("SELECT l.lemma, l.n FROM lemma_forms f JOIN lemmas l ON l.id = f.lemma "
+                row = con.execute("SELECT l.lemma, l.n, l.id, l.definition FROM lemma_forms f JOIN lemmas l ON l.id = f.lemma "
                                   "WHERE f.form = ?", (token.pop("_lemma", None) or "",)).fetchone()
                 if row:
                     token["references"] = {"lemma": row[0], "n": row[1]}
+                    if period:
+                        notes = con.execute("SELECT homer, bible, homer_n, bible_n, ours FROM lemma_notes WHERE lemma = ?",
+                                            (row[2],)).fetchone()
+                        compose_definition(token, period, row[3], notes)
         except sqlite3.OperationalError:  # a library built before the lemma index
             for token in card["tokens"]:
                 token.pop("_lemma", None)
         finally:
             con.close()
     return card
+
+
+def text_period(con, slug):
+    """A text's period (lemma_definitions.py's text_periods: homer, classical, bible, church), or None."""
+    try:
+        row = con.execute("SELECT period FROM text_periods WHERE text = ?", (slug,)).fetchone()
+    except sqlite3.OperationalError:  # (a library built before it)
+        return None
+    return row and row[0]
+
+
+PERIOD_LABELS = {"bible": "Bible", "classical": "Classical", "homer": "Homer"}
+
+
+def compose_definition(token, period, classical, notes):
+    """A word card's definition for the text it's read in (web/local/library.js does the same):
+    its main line from the source of that text's Greek (Homer: Cunliffe's; Plato: ours or the short
+    definition; the Bible: the word's own Dodson entry, else Dodson's or STEPBible's for the lemma;
+    the Fathers and the services: ours, else the Bible's, else the short definition), then, as
+    "periods", the others always in this order, Bible, Classical, Homer, each where the lemma is read
+    in that part of the library and it adds a word."""
+    homer, bible, homer_n, bible_n, ours = notes or (None, None, 0, 0, 0)
+    own = token.get("definition")
+    if period == "homer":
+        main, key = (homer, "homer") if homer else (own or classical, "classical")
+    elif period == "classical":
+        main, key = classical or own, "classical"
+    elif period == "bible":
+        main, key = (own, "bible") if token.get("strongs") and own else (bible, "bible") if bible else (own or classical, "own")
+    else:  # church
+        main, key = (classical, "classical") if ours and classical else (bible, "bible") if bible else (classical or own, "classical")
+    texts = {"bible": bible if (bible_n or 0) >= lemma_definitions.NOTE_MIN else None, "classical": classical,
+             "homer": homer if (homer_n or 0) >= lemma_definitions.NOTE_MIN else None}
+    seen, periods = lemma_definitions.content(main), []
+    for k in ("bible", "classical", "homer"):
+        text = texts[k]
+        if k != key and text and text != main and lemma_definitions.content(text) - seen:
+            periods.append([PERIOD_LABELS[k], text])
+            seen |= lemma_definitions.content(text)
+    token["definition"] = main
+    if periods:
+        token["periods"] = periods
 
 
 def references_json(lemma, query):

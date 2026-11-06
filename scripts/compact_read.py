@@ -75,10 +75,10 @@ FULL = {
 # kept, for the word cards).
 DERIVED = {"lemma_words", "lemma_inflections"}
 
-# Tables the compact library leaves out altogether: the words' pictures, and the
-# definitions' notes (lemma_definitions.py, for the flashcards): the server serves them, the
-# device never keeps them (import_anki_images.py).
-SERVED = {"image_sources", "lemma_images", "lemma_notes", "lemma_base_definitions"}
+# Tables the compact library leaves out altogether: the words' pictures (import_anki_images.py)
+# and the definitions as library.py made them, before lemma_definitions.py: the server serves
+# the pictures, the device never keeps them.
+SERVED = {"image_sources", "lemma_images", "lemma_base_definitions"}
 
 
 def unpack(blob):
@@ -169,6 +169,10 @@ def restore(compact_path, out_dir):
     if any(name in DERIVED for (name,) in lib.con.execute("SELECT name FROM schema WHERE type = 'table'")):
         from library import lemma_index
         lemma_index(cons["library"])
+        # (and the lemmas' definitions as kept, lemma_definitions.py's, not as lemma_index made them)
+        if lib.con.execute("SELECT 1 FROM sqlite_master WHERE name = 'lemmas'").fetchone():
+            cons["library"].executemany("UPDATE lemmas SET definition = ? WHERE id = ?",
+                                        lib.con.execute("SELECT definition, id FROM lemmas"))
     for con in cons.values():
         con.commit()
         con.close()

@@ -14,10 +14,10 @@ as library.py matched them), where that is a homonym that shares nothing with ho
 use the word (κύριος: "having power"), the numbered homonym that does ("a lord, master");
 else as library.py made it. The notes (lemma_notes) are a Homer one, from Cunliffe's
 Lexicon of the Homeric Dialect (else Autenrieth's Homeric Dictionary), and a Bible one, from
-STEPBible's brief lexicon (TBESG), each where the lemma's words are read in that part of the
+Dodson's New Testament lexicon (else STEPBible's brief lexicon, TBESG), each where the lemma's words are read in that part of the
 library (Homer: the texts cited by line; the Bible: the Septuagint, the New Testament, the
 Fathers and the services, all but Plato; three words at least) and the
-note adds a word the card hasn't yet; the part it's read in most first. Names have none.
+note adds a word the card hasn't yet; the Bible's first, then Homer's. Names have none.
 
 The sources are fetched once into data/raw/definitions/:
   STEPBible TBESG (Tyndale House, CC BY 4.0), github.com/STEPBible/STEPBible-Data
@@ -231,23 +231,37 @@ def parts_of_speech(con):
     return {k: c.most_common(1)[0][0] for k, c in pos.items()}
 
 
-def where_read(con):
-    """{lemma id: (words in Homer, in the Bible, the Fathers and the services)}: Homer, the texts
-    cited by line; the rest, but Plato's (cited by Stephanus sections: 172a), the Bible's Greek
-    and the Church's after it."""
+def text_periods(con):
+    """{text: its period, for the reader's word card}: "homer" (cited by line), "classical" (Plato:
+    by Stephanus sections, 172a), "bible" (by verse: the Septuagint, the New Testament), else
+    "church" (the Fathers, the services)."""
     stephanus = {slug for (slug,) in con.execute(
         "SELECT DISTINCT text FROM segments WHERE text IN (SELECT slug FROM texts WHERE cite = 'section') "
         "AND ref GLOB '[0-9]*[a-e]'")}
+    return {slug: "homer" if cite == "line" else "classical" if slug in stephanus else "bible" if cite == "verse" else "church"
+            for slug, cite in con.execute("SELECT slug, cite FROM texts")}
+
+
+def where_read(con, periods):
+    """{lemma id: (words in Homer, in the Bible's Greek and the Church's after it: the Septuagint,
+    the New Testament, the Fathers, the services)}."""
     out = {}
-    for lid, slug, cite, n in con.execute("SELECT w.lemma, t.slug, t.cite, count(*) FROM lemma_words w "
-                                          "JOIN texts t ON t.slug = w.text GROUP BY w.lemma, t.slug"):
+    for lid, slug, n in con.execute("SELECT lemma, text, count(*) FROM lemma_words GROUP BY lemma, text"):
         h, b = out.get(lid, (0, 0))
-        if cite == "line":
-            h += n
-        elif slug not in stephanus:
-            b += n
-        out[lid] = (h, b)
+        out[lid] = (h + n, b) if periods.get(slug) == "homer" else (h, b + n) if periods.get(slug) in ("bible", "church") else (h, b)
     return out
+
+
+def dodson(con):
+    """{lemma: Dodson's brief gloss} (the New Testament's lexicon), of a lemma's Strong's numbers the
+    one our texts use most."""
+    best = {}
+    for lemma, gloss, n in con.execute("SELECT l.lemma, l.gloss, count(w.strongs) FROM lexicon l LEFT JOIN words w "
+                                       "ON w.strongs = l.strongs WHERE l.gloss IS NOT NULL GROUP BY l.strongs"):
+        lemma = nfc(lemma)
+        if lemma not in best or n > best[lemma][1]:
+            best[lemma] = (re.sub(r"^I ", "to ", gloss.strip().rstrip(".")), n)  # ("I bless": "to bless", as the others)
+    return {k: v[0] for k, v in best.items()}
 
 
 def apply(con, show=(), fresh=False, verbose=False):
@@ -256,7 +270,8 @@ def apply(con, show=(), fresh=False, verbose=False):
     defs = load_list()
     match = matcher(defs)
     step, cun, aut, ours = stepbible(), cunliffe(), autenrieth(), overrides()
-    usage, counts, pos = usage_glosses(con), where_read(con), parts_of_speech(con)
+    periods = text_periods(con)
+    usage, counts, pos, nt = usage_glosses(con), where_read(con, periods), parts_of_speech(con), dodson(con)
     # The definitions as library.py made them, kept: run again, this starts from them, not from its
     # own (an override taken out gives the list's back). Made again with the lemma index (fresh).
     count = con.execute("SELECT count(*) FROM lemmas").fetchone()[0]
@@ -268,11 +283,22 @@ def apply(con, show=(), fresh=False, verbose=False):
             INSERT INTO lemma_base_definitions SELECT id, definition FROM lemmas;""")
     con.executescript("""
         DROP TABLE IF EXISTS lemma_notes;
-        CREATE TABLE lemma_notes (       -- how Homer and the Bible use a lemma, where it differs (scripts/lemma_definitions.py)
-            lemma  INTEGER PRIMARY KEY REFERENCES lemmas,
-            notes  TEXT,                 -- JSON: [[label, text], …] ("Homer", "Bible"), the part it's read in most first
-            front  TEXT);                -- the flashcards' front, where ours: "-" the lemma alone (μήν: two words)
+        CREATE TABLE lemma_notes (       -- how Homer and the Bible use a lemma (scripts/lemma_definitions.py)
+            lemma   INTEGER PRIMARY KEY REFERENCES lemmas,
+            notes   TEXT,                -- the flashcards': JSON [[label, text], …] ("Bible", "Homer"), where they
+                                         --   add to the definition
+            front   TEXT,                -- the flashcards' front, where ours: "-" the lemma alone (μήν: two words)
+            homer   TEXT,                -- Homer's sense (Cunliffe, else Autenrieth), for the word card
+            bible   TEXT,                -- the Bible's (Dodson, else STEPBible), likewise
+            homer_n INTEGER,             -- its words in Homer; in the Bible, the Fathers and the services
+            bible_n INTEGER,
+            ours    INTEGER);            -- 1: lemmas.definition is ours (data/lemma_definitions.tsv)
+        DROP TABLE IF EXISTS text_periods;
+        CREATE TABLE text_periods (      -- a text's period, for the word card's order: homer, classical, bible, church
+            text   TEXT PRIMARY KEY,
+            period TEXT NOT NULL);
     """)
+    con.executemany("INSERT INTO text_periods VALUES (?, ?)", periods.items())
     changed, repaired, rows = 0, 0, []
     for lid, lemma, definition, now in con.execute("SELECT l.id, l.lemma, b.definition, l.definition FROM lemmas l "
                                                    "JOIN lemma_base_definitions b ON b.lemma = l.id").fetchall():
@@ -282,7 +308,7 @@ def apply(con, show=(), fresh=False, verbose=False):
             a = lookup(aut, lemma)
             homer_senses = autenrieth_senses(a) if a else []
         homer_note = fill([s for s in homer_senses if not GRAMMAR.search(s)])
-        bible_note = lookup(step, lemma)
+        bible_note = lookup(nt, lemma) or lookup(step, lemma)  # (Dodson: fuller, for the New Testament's words)
         used = content(" ".join(x for x in (usage.get(lemma), bible_note, homer_note) if x))
         main, front = definition, None
         if lemma in ours:
@@ -300,22 +326,23 @@ def apply(con, show=(), fresh=False, verbose=False):
             con.execute("UPDATE lemmas SET definition = ? WHERE id = ?", (main, lid))
         changed += main != definition
         notes = []
+        h, b = counts.get(lid, (0, 0))
+        function = pos.get(lemma) and pos[lemma] in "rcgpl"
         if not lemma[:1].isupper():  # (names: none)
-            h, b = counts.get(lid, (0, 0))
             seen = content(main)
             # (no Homer note for a preposition, particle, conjunction, pronoun or the article: Cunliffe
             # describes their uses, "into something, and", rather than giving a meaning)
-            if pos.get(lemma) and pos[lemma] in "rcgpl":
-                h = 0
-            for label, n, text in sorted((("Homer", h or 0, homer_note), ("Bible", b or 0, bible_note)), key=lambda x: -x[1]):
+            for label, n, text in (("Bible", b or 0, bible_note), ("Homer", 0 if function else h or 0, homer_note)):  # (always so)
                 if text and n >= NOTE_MIN and text != main and content(text) - seen:
                     notes.append([label, text])
                     seen |= content(text)
-        if notes or front:
-            rows.append((lid, json.dumps(notes, ensure_ascii=False) if notes else None, front))
+        homer_card = None if function or lemma[:1].isupper() else homer_note
+        if notes or front or homer_card or bible_note or lemma in ours:
+            rows.append((lid, json.dumps(notes, ensure_ascii=False) if notes else None, front, homer_card,
+                         None if lemma[:1].isupper() else bible_note, h or 0, b or 0, int(lemma in ours)))
         if lemma in show:
             print(f"{lemma}: {main}" + "".join(f"\n    {k}: {v}" for k, v in notes) + (f"\n    (front: {front})" if front else ""))
-    con.executemany("INSERT INTO lemma_notes VALUES (?, ?, ?)", rows)
+    con.executemany("INSERT INTO lemma_notes VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
     print(f"definitions: {changed} changed ({len(ours)} ours, {repaired} homonyms repaired); "
           f"notes for {sum(1 for r in rows if r[1])} lemmas")
 
