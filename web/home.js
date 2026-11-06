@@ -778,7 +778,19 @@ function buildAnkiDialog() {
   const close = el("button", "dl-close", "×");
   close.setAttribute("aria-label", tr("Close"));
   close.addEventListener("click", () => d.close());
-  head.append(el("h2", null, tr("Flashcards for Anki")), close);
+  // How to get Anki and bring the decks in: a guide that folds out above the choices (?).
+  const helpButton = el("button", "dl-help", "?");
+  helpButton.type = "button";
+  helpButton.title = tr("How to use these decks in Anki");
+  helpButton.setAttribute("aria-label", tr("How to use these decks in Anki"));
+  helpButton.setAttribute("aria-expanded", "false");
+  head.append(el("h2", null, tr("Flashcards for Anki")), helpButton, close);
+  const help = ankiHelp();
+  help.hidden = true;
+  helpButton.addEventListener("click", () => {
+    help.hidden = !help.hidden;
+    helpButton.setAttribute("aria-expanded", String(!help.hidden));
+  });
   const form = el("form", "plan-form");
   const picked = textPicker();
   // Some of a text's verses, named as it numbers them (lines, verses, Stephanus sections,
@@ -911,11 +923,54 @@ function buildAnkiDialog() {
       make.disabled = false;
     }
   });
-  d.append(head, form);
+  d.append(head, help, form);
   document.body.append(d);
   return d;
 }
 document.getElementById("anki-button")?.addEventListener("click", openAnkiDialog);
+
+// The flashcards' guide: getting Anki, bringing a deck in, what's in it, and adding more.
+function ankiHelp() {
+  const box = el("section", "anki-help");
+  box.setAttribute("aria-label", tr("How to use these decks in Anki"));
+  const link = (text, href) => {
+    const a = el("a", null, text);
+    Object.assign(a, { href, target: "_blank", rel: "noopener" });
+    return a;
+  };
+  const part = (title, ...lines) => {
+    const p = el("div", "anki-help-part");
+    p.append(el("h3", null, tr(title)));
+    for (const line of lines) {
+      const para = el("p");
+      for (const bit of [].concat(line)) para.append(typeof bit === "string" ? tr(bit) : bit, " ");
+      p.append(para);
+    }
+    box.append(p);
+  };
+  part("1. Get Anki",
+       ["Anki is a free flashcard program that shows each card again just before you'd forget it. On a computer (Windows, Mac, Linux):",
+        link("apps.ankiweb.net", "https://apps.ankiweb.net/")],
+       ["On Android:", link("AnkiDroid", "https://play.google.com/store/apps/details?id=com.ichi2.anki"),
+        "(free). On iPhone and iPad:", link("AnkiMobile", "https://apps.apple.com/app/ankimobile-flashcards/id373493387"), "(paid)."],
+       ["To study on more than one device, make a free AnkiWeb account and press Sync in each.",
+        link("ankiweb.net", "https://ankiweb.net/")]);
+  part("2. Bring a deck in",
+       "Choose the words here and press Download deck: you get an .apkg file.",
+       "On a computer, double-click the file, or in Anki choose File › Import. The import window's defaults are right: press Import.",
+       "On a phone, open the downloaded file with AnkiDroid or AnkiMobile; or import it on the computer and sync.");
+  part("3. What's in it",
+       "A deck called Acroaterium, a card for each lemma: the Greek on the front (a noun with its article and genitive, an adjective with its endings), its meaning on the back, with how the Bible and Homer use it where that differs, and, as chosen, its picture and the sentence it was first met in. Reversed cards ask from the meaning to the Greek.",
+       "New cards come in the order the words appear in the text.");
+  part("4. Adding more texts",
+       "Make a deck from another text and import it the same way: the lemmas you already have are skipped, so only new words are added, and your progress and your own edits are kept.",
+       "To skip the commonest words you already know, use the Leave out box below.");
+  part("5. How many a day",
+       "Anki shows 20 new cards a day by default. To change it, click the gear by the Acroaterium deck and choose Options › New cards/day.");
+  part("6. Refreshing cards",
+       "Cards you already have aren't changed by a new import. To bring in a newer version of them (a better definition, say), choose Update notes: Always in the import window.");
+  return box;
+}
 
 // Bookmarks: each opens the reader at its verse; × deletes it.
 // One made in a reading plan's day, while that day isn't read: opens the plan's day at
