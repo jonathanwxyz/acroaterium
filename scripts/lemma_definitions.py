@@ -12,7 +12,8 @@ The definition (lemmas.definition) is, first, ours where data/lemma_definitions.
 (the commonest lemmas whose short definition misleads); else the short definitions' (LSJ's,
 as library.py matched them), where that is a homonym that shares nothing with how our texts
 use the word (κύριος: "having power"), the numbered homonym that does ("a lord, master");
-else as library.py made it. The notes (lemma_notes) are a Homer one, from Cunliffe's
+else as library.py made it; a Homeric word's (one LSJ cites from Homer and the epic poets after him only:
+μεταυδάω, ἐπορούω, δουρικλειτός) is Homer's, alone, and labelled Homeric. The notes (lemma_notes) are a Homer one, from Cunliffe's
 Lexicon of the Homeric Dialect (else Autenrieth's Homeric Dictionary), and a Bible one, from
 Dodson's New Testament lexicon (else STEPBible's brief lexicon, TBESG), each where the lemma's words are read in that part of the
 library (Homer: the texts cited by line; the Bible: the Septuagint, the New Testament, the
@@ -167,6 +168,8 @@ def cunliffe_senses(entry):
         p = re.sub(r"\s+", " ", p).strip(" ,;.")
         p = re.sub(r"^In (?:pl|dual|sing|mid|pass)\.,?\s*", "", p)  # ("In pl., small cattle": its sense)
         p = re.sub(r"\s+in gen\b\.?", "", p)
+        p = re.sub(r"\.\s+Epithet of ([^.]+)$", r" (epithet of \1)", p)  # ("slayer of men (epithet of Enyalius)")
+        p = re.split(r"\.\s+(?=[A-Z])", p)[0]  # (not a sense's later note, "thoughtlessness. In pl"; but "i.e. as")
         p = re.sub(r"^(?:The|A|An)\s+", "", p)
         heading = re.match(r"^(?:As |Of |In |Referring|Hence|With |Said |Used |Applied |Vaguely|without|Specifically$)", p) \
             or p.endswith(("hence", "Hence"))
@@ -191,6 +194,59 @@ def autenrieth_senses(entry):
     t = re.sub(r"\([^)]*\)", " ", re.split(r"[;.—]", t)[0])
     t = re.sub(r",?\s+\w$", "", re.sub(r"\s+,", ",", re.sub(r"\s+", " ", t)).strip(" ,"))
     return [t] if re.search(r"[a-z]{3}", t) else []
+
+
+# ---------------------------------------------------------------- epic words (LSJ)
+
+LSJ_FILES = [f"grc.lsj.perseus-eng{i}.xml" for i in range(1, 28)]
+LSJ_URL = "https://raw.githubusercontent.com/PerseusDL/lexica/master/CTS_XML_TEI/perseus/pdllex/grc/lsj/{}"
+# Homer (0012) and the epic poets after him, by TLG number as LSJ's citations give it: the
+# Hymns, Hesiod, Apollonius, Quintus, Nonnus, Oppian, Aratus, the Orphica, Tryphiodorus,
+# Musaeus, the Batrachomyomachia, Callimachus, Theocritus, Moschus, Bion, the epic fragments.
+EPIC_TLG = {"0012", "0013", "0020", "0001", "2046", "2045", "0023", "0024", "0653", "0579", "0647", "0576",
+            "1220", "0533", "0005", "0035", "0036", "1444", "1445"}
+# The same, cited without a number (h.Cer., Hes.Th.); and those who cite Homer's words as his:
+# the scholia, Eustathius, the grammarians and lexica (Sch. Od. 17.407 is a scholion on that line).
+EPIC_AUTHOR = re.compile(r"^(h\.|Hom|Il\.|Od\.|Hes\.|A\.R\.|Q\.S\.|Nonn|Opp|Arat|Orph|Tryph|Musae|Colluth|Batr|Call\.|Theoc|"
+                         r"Mosch|Bion|Epic|Cypr|Id\.|ib\.)")
+COMMENTATOR = re.compile(r"\b(Sch|Eust|Hsch|EM|Suid|Phot|Gramm|Et\.Gud|Et\.Magn|Apollon|Hdn|A\.D|Aristarch|Zenod|Ammon|Poll|Gal)\.?"
+                         r"(\s*(ad|in)?\s*)?$")
+
+
+def lsj_epic():
+    """The lemmas LSJ cites from Homer and the epic poets after him only (the scholia and
+    grammarians aside, who cite Homer's words as his), every entry of the headword so; not one
+    whose entry says "etc." or "freq.", which may hide others. {lemma: "homer" (Homer alone) or
+    "epic"}. The files are fetched once into data/raw/definitions/lsj/ (Perseus, CC BY-SA)."""
+    from import_commentaries import beta_to_unicode
+    verdicts = {}
+    for name in LSJ_FILES:
+        path = RAW / "lsj" / name
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            print(f"fetching LSJ {name} …", file=sys.stderr)
+            with urllib.request.urlopen(LSJ_URL.format(name), timeout=300) as r:
+                path.write_bytes(r.read())
+        for key, body in re.findall(r'<entryFree[^>]*key="([^"]+)"[^>]*>(.*?)</entryFree>', path.read_text(encoding="utf-8"), re.S):
+            lemma = plain(beta_to_unicode(re.sub(r"\d+$", "", key)))
+            kinds = set()
+            for m in re.finditer(r"<bibl\b([^>]*)>(.*?)</bibl>", body, re.S):
+                before = re.sub(r"<[^>]+>", "", body[max(0, m.start() - 60):m.start()])[-16:]
+                tlg = re.search(r"urn:cts:greekLit:tlg(\d{4})", m[1])
+                author = re.search(r"<author[^>]*>([^<]+)", m[2])
+                if COMMENTATOR.search(before) or (author and COMMENTATOR.match(author[1].strip() + ".")):
+                    continue
+                if tlg:
+                    kinds.add("homer" if tlg[1] == "0012" else "epic" if tlg[1] in EPIC_TLG else "other")
+                elif author and EPIC_AUTHOR.match(author[1].strip()):
+                    kinds.add("homer" if re.match(r"^(Hom|Il\.|Od\.)", author[1].strip()) else "epic")
+                elif author or m[2].strip():
+                    kinds.add("other")
+            text = re.sub(r"<[^>]+>", " ", body)
+            verdict = None if "other" in kinds or "homer" not in kinds or re.search(r"\b(etc|freq)\.", text) \
+                else "homer" if kinds == {"homer"} else "epic"
+            verdicts.setdefault(lemma, []).append(verdict)
+    return {k: ("homer" if all(v == "homer" for v in vs) else "epic") for k, vs in verdicts.items() if all(vs)}
 
 
 def overrides():
@@ -274,6 +330,7 @@ def apply(con, show=(), fresh=False, verbose=False):
     step, cun, aut, ours = stepbible(), cunliffe(), autenrieth(), overrides()
     periods = text_periods(con)
     usage, counts, pos, nt = usage_glosses(con), where_read(con, periods), parts_of_speech(con), dodson(con)
+    epic = lsj_epic()
     # The definitions as library.py made them, kept: run again, this starts from them, not from its
     # own (an override taken out gives the list's back). Made again with the lemma index (fresh).
     count = con.execute("SELECT count(*) FROM lemmas").fetchone()[0]
@@ -294,7 +351,9 @@ def apply(con, show=(), fresh=False, verbose=False):
             bible   TEXT,                -- the Bible's (Dodson, else STEPBible), likewise
             homer_n INTEGER,             -- its words in Homer; in the Bible, the Fathers and the services
             bible_n INTEGER,
-            ours    INTEGER);            -- 1: lemmas.definition is ours (data/lemma_definitions.tsv)
+            ours    INTEGER,             -- 1: lemmas.definition is ours (data/lemma_definitions.tsv)
+            epic    INTEGER);            -- 1: a Homeric word (LSJ cites it from Homer and the epic poets only):
+                                         --   its definition Homer's, labelled so
         DROP TABLE IF EXISTS text_periods;
         CREATE TABLE text_periods (      -- a text's period, for the word card's order: homer, classical, bible, church
             text   TEXT PRIMARY KEY,
@@ -329,13 +388,19 @@ def apply(con, show=(), fresh=False, verbose=False):
                     if verbose:
                         print(f"  repaired {lemma}: {definition!r} -> {alt!r}")
                     break
+        h, b = counts.get(lid, (0, 0))
+        # A Homeric word (LSJ's citations Homer's and the epic poets' only; not one our library
+        # has outside them, nor a name, nor ours): its definition Homer's, alone, with room for
+        # more of it; no other period's.
+        is_epic = bool(lookup(epic, lemma) and not b and not lemma[:1].isupper() and lemma not in ours and homer_senses)
+        if is_epic:
+            main = fill([s for s in homer_senses if not GRAMMAR.search(s)], limit=60, most=4) or main
         if main != now:
             con.execute("UPDATE lemmas SET definition = ? WHERE id = ?", (main, lid))
         changed += main != definition
         notes = []
-        h, b = counts.get(lid, (0, 0))
         function = pos.get(lemma) and pos[lemma] in "rcgpl"
-        if not lemma[:1].isupper():  # (names: none)
+        if not lemma[:1].isupper() and not is_epic:  # (names: none; a Homeric word: its definition is Homer's)
             seen = content(main)
             # (no Homer note for a preposition, particle, conjunction, pronoun or the article: Cunliffe
             # describes their uses, "into something, and", rather than giving a meaning)
@@ -343,15 +408,15 @@ def apply(con, show=(), fresh=False, verbose=False):
                 if text and n >= NOTE_MIN and text != main and content(text) - seen:
                     notes.append([label, text])
                     seen |= content(text)
-        homer_card = None if function or lemma[:1].isupper() else homer_note
+        homer_card = None if function or lemma[:1].isupper() else main if is_epic else homer_note
         if notes or front or homer_card or bible_note or lemma in ours:
             rows.append((lid, json.dumps(notes, ensure_ascii=False) if notes else None, front, homer_card,
-                         None if lemma[:1].isupper() else bible_note, h or 0, b or 0, int(lemma in ours)))
+                         None if lemma[:1].isupper() else bible_note, h or 0, b or 0, int(lemma in ours), int(is_epic)))
         if lemma in show:
             print(f"{lemma}: {main}" + "".join(f"\n    {k}: {v}" for k, v in notes) + (f"\n    (front: {front})" if front else ""))
-    con.executemany("INSERT INTO lemma_notes VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
-    print(f"definitions: {changed} changed ({len(ours)} ours, {repaired} homonyms repaired); "
-          f"notes for {sum(1 for r in rows if r[1])} lemmas")
+    con.executemany("INSERT INTO lemma_notes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    print(f"definitions: {changed} changed ({len(ours)} ours, {repaired} homonyms repaired, "
+          f"{sum(r[8] for r in rows)} Homeric words Homer's); notes for {sum(1 for r in rows if r[1])} lemmas")
 
 
 def main():
