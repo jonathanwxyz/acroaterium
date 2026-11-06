@@ -2393,11 +2393,16 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
 
 /* The flashcards dialog (as the new plan's): the verses' hint, the options, the first cards. */
 #anki-dialog[open] { display: flex; flex-direction: column; }
-#anki-dialog .plan-form { overflow-y: auto; min-height: 0; grid-template-columns: minmax(0, 1fr); }  /* (a long meaning cut short, not widening it) */
+#anki-dialog .plan-form {
+  overflow-y: auto; min-height: 0;
+  grid-template-columns: minmax(0, 1fr);  /* (a long meaning cut short, not widening it) */
+  grid-auto-rows: max-content;  /* (each row as tall as it is, the form scrolling: else, short of room, rows were
+                                   squeezed to their minimum, the preview's spilling under the Download bar) */
+}
 #anki-dialog .dl-foot { position: sticky; bottom: 0; background: var(--bg); }  /* (the button in view, the cards under it scrolling) */
 .plan-form input[name="verses"] { flex: 1; font-family: var(--greek); font-size: 16px; }
 .plan-form input[name="skip"] { width: 6rem; }
-.anki-skip-note { align-self: center; color: var(--muted); }
+.anki-skip-note { align-self: center; color: var(--muted); white-space: nowrap; }  /* (the i with its words) */
 /* (i) by Leave out (drawn, so it's centred whatever the fonts), and what it does in a little
    box above it, a pointer at the (i); x as in mathematics. */
 .anki-info { width: 1.2rem; height: 1.2rem; vertical-align: -0.1em; cursor: help; }  /* (level with the small letters) */
