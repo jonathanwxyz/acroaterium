@@ -949,7 +949,7 @@ function ankiHelp() {
     box.append(p);
   };
   part("1. Get Anki",
-       ["Anki is a free flashcard program that shows each card again just before you'd forget it. On a computer (Windows, Mac, Linux):",
+       ["Anki is a free spaced-repetition based flashcard program. On a computer (Windows, Mac, Linux):",
         link("apps.ankiweb.net", "https://apps.ankiweb.net/")],
        ["On Android:", link("AnkiDroid", "https://play.google.com/store/apps/details?id=com.ichi2.anki"),
         "(free). On iPhone and iPad:", link("AnkiMobile", "https://apps.apple.com/app/ankimobile-flashcards/id373493387"), "(paid)."],
@@ -960,8 +960,7 @@ function ankiHelp() {
        "On a computer, double-click the file, or in Anki choose File › Import. The import window's defaults are right: press Import.",
        "On a phone, open the downloaded file with AnkiDroid or AnkiMobile; or import it on the computer and sync.");
   part("3. Setup",
-       "Turn on FSRS, Anki's modern scheduler: it times each review to how well you remember that card, for fewer reviews at the same recall. In Anki on a computer, click the gear by the Acroaterium deck, choose Options, and switch on FSRS near the bottom; a desired retention of 0.90 is a good start.",
-       ["This guide explains it step by step, on a computer, AnkiDroid and AnkiMobile:",
+       ["We recommend using FSRS, which is an improved scheduler over the default. Read this article to set it up:",
         link("How to use FSRS in Anki", "https://slidetoanki.com/blog/how-to-use-fsrs-anki-guide")]);
   part("4. Adding more texts",
        "Make a deck from another text and import it the same way: the lemmas you already have are skipped, so only new words are added, and your progress and your own edits are kept.",
