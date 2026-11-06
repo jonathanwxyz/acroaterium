@@ -2391,7 +2391,8 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
 /* (i) by Leave out, and what it does under the row; x as in mathematics. */
 .anki-info {
   flex: none; align-self: center; width: 1.25rem; height: 1.25rem; padding: 0;
-  font: italic 600 12px Georgia, "Times New Roman", serif; color: var(--muted);
+  display: inline-grid; place-items: center;  /* (the i in the middle of its circle) */
+  font: 700 12px/1 Georgia, "Times New Roman", serif; color: var(--muted);
   background: transparent; border: 1px solid var(--rule); border-radius: 50%; cursor: help;
 }
 .anki-info[aria-expanded="true"], .anki-info:focus-visible { color: var(--text); border-color: var(--current-bar); outline: none; }
