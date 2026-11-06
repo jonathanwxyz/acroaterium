@@ -91,6 +91,8 @@ def variants(lemma):
     for a, b in (("γιγν", "γιν"), ("ττ", "σσ"), ("ρρ", "ρσ"), ("ναῦς", "νηῦς"), ("παῖς", "πάϊς"), ("ἴσος", "ἶσος")):
         out += [lemma.replace(a, b), lemma.replace(b, a)]  # (one at a time)
     out.append(re.sub(r"α(ς?)$", r"η\1", lemma))
+    if lemma.endswith("ομαι"):  # (a lexicon's active for our middle: μεθορμάομαι, Cunliffe's μεθορμάω)
+        out.append(lemma[:-4] + "ω")
     return list(dict.fromkeys(out))
 
 
@@ -98,7 +100,7 @@ def lookup(table, lemma):
     return next((table[v] for v in variants(lemma) if v in table), None)
 
 
-def fill(senses, limit=50, most=3):
+def fill(senses, limit=50, most=3, item=40):
     """A note from a lexicon's senses: each sense's first item, then its second, as fit
     (about limit letters, most items); an item's commas as fit."""
     items = []
@@ -106,12 +108,12 @@ def fill(senses, limit=50, most=3):
         its = []
         for x in s.split(";"):
             x = x.strip()
-            if len(x) > 32:
+            if len(x) > item - 8:
                 parts = x.split(",")
-                while len(parts) > 1 and len(",".join(parts)) > 32:
+                while len(parts) > 1 and len(",".join(parts)) > item - 8:
                     parts.pop()
                 x = ",".join(parts).strip()
-            if x and len(x) <= 40 and meaningful(x):  # (not a fragment the cut left: "thus", "to")
+            if x and len(x) <= item and meaningful(x):  # (not a fragment the cut left: "thus", "to")
                 its.append(x)
         items.append(its)
     chosen, seen = [], set()
@@ -164,7 +166,9 @@ def meaningful(sense):
     return bool(words) and not re.match(r"^(=|app\b|pple\b|prob\b|perh\b|see\b|cf\b|sc\b|i\.e\b|v\.\s)", sense) \
         and not (len(words) == 1 and words[0].lower() in {"thus", "so", "as", "to", "on", "in", "of", "by", "with", "for", "at",
                                                           "the", "subj", "opt", "imp", "inf", "ind", "gen", "dat", "acc", "nom",
-                                                          "voc", "pf", "aor", "fut", "mid", "pass", "app", "pple"}) \
+                                                          "voc", "pf", "aor", "fut", "mid", "pass", "app", "pple", "genit",
+                                                          "contr", "sim", "pl", "sing", "fem", "masc", "neut", "pres", "impf",
+                                                          "plupf", "comp", "superl", "adv", "adj", "act", "also"}) \
         and any(len(w) >= 3 for w in words)
 
 
@@ -173,7 +177,20 @@ def cunliffe_senses(entry):
     body = re.sub(r"\[[^\]]*\]", " ", entry)  # (the etymology first: it may have stops of its own)
     body = re.sub(rf"^[†*]*[{GREEK}̀-ͯ]+[^.]*?\.\s*", "", body, count=1)  # (headword, endings, gender)
     out = []
-    for p in re.split(r"\s(?:[IVX]+|\d{1,2}|[a-h]|\([a-hα-ω]\))\.\s", " " + body):
+    head = re.match(rf"^[†*]*([{GREEK}\u0300-\u036f]+)", entry)
+    verb = bool(head) and plain(head[1]).endswith(("ω", "μαι", "μι"))
+    parts = []
+    for k, p in enumerate(re.split(r"\s(?:[IVX]+|\d{1,2}|[a-h]|\([a-hα-ω]\))\.\s", " " + body)):
+        first, *more = p.split("--")
+        if k == 0 and re.search(rf"[{GREEK}]", re.sub(r"\([^)]*\)", "", re.split(r":", first)[0])):  # (forms first, then English: "To break …:")
+            # (an English phrase that a quotation or a line follows: "Satiety, one's fill: …", "To break …:")
+            parts += [x for x in re.split(r"(?<=[.;])\s+", first)
+                      if re.match(r"^\s*[A-Z][a-z]", x) and (":" in x or re.search(rf"\s[{GREEK}]\d{{1,3}}\b", x))]
+        else:
+            parts.append(first)
+        if verb:  # (a verb's further sense: "--To make a dart …"; a noun's "--To a river" is what it's said of)
+            parts += [m for m in more if re.match(r"^\s*To\s+[a-z]", m)]
+    for p in parts:
         p = re.split(rf"\s[{GREEK}]\d{{1,3}}\b|:|\(cf\.|\bCf\.|--|\bSee\b", p)[0]
         p = re.sub(r"\([^)]*\)", "", p)
         p = re.sub(r"(?<![A-Za-z])['‘’]|['‘’](?![A-Za-z])", "", p)  # (quotation marks, not one's)
@@ -402,6 +419,7 @@ def apply(con, show=(), fresh=False, verbose=False):
                                                    "JOIN lemma_base_definitions b ON b.lemma = l.id").fetchall():
         homer = lookup(cun, lemma)
         homer_senses = [s for e in (homer or []) for s in cunliffe_senses(e)]
+        from_cunliffe = bool(homer_senses)
         if not homer_senses:
             a = lookup(aut, lemma)
             homer_senses = autenrieth_senses(a) if a else []
@@ -430,8 +448,10 @@ def apply(con, show=(), fresh=False, verbose=False):
         # has outside them, nor a name, nor ours): its definition Homer's, alone, with room for
         # more of it; no other period's.
         is_epic = bool(lookup(epic, lemma) and not b and not lemma[:1].isupper() and lemma not in ours and homer_senses)
-        if is_epic:
-            main = fill([s for s in homer_senses if not GRAMMAR.search(s)], limit=60, most=4) or main
+        # (from Cunliffe; else LSJ's short definition, which for such a word is Homer's sense, rather
+        # than Autenrieth's, who glosses a verb Homer has only as a participle as one: "starting after")
+        if is_epic and (from_cunliffe or not main):
+            main = fill([s for s in homer_senses if not GRAMMAR.search(s)], limit=90, most=4, item=60) or main
         if main != now:
             con.execute("UPDATE lemmas SET definition = ? WHERE id = ?", (main, lid))
         changed += main != definition
