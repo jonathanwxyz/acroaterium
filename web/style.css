@@ -2388,6 +2388,16 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
 .plan-form input[name="verses"] { flex: 1; font-family: var(--greek); font-size: 16px; }
 .plan-form input[name="skip"] { width: 6rem; }
 .anki-skip-note { align-self: center; color: var(--muted); }
+/* (i) by Leave out, and what it does under the row; x as in mathematics. */
+.anki-info {
+  flex: none; align-self: center; width: 1.25rem; height: 1.25rem; padding: 0;
+  font: italic 600 12px Georgia, "Times New Roman", serif; color: var(--muted);
+  background: transparent; border: 1px solid var(--rule); border-radius: 50%; cursor: help;
+}
+.anki-info[aria-expanded="true"], .anki-info:focus-visible { color: var(--text); border-color: var(--current-bar); outline: none; }
+.anki-tip { padding: 0 0.9rem 0 calc(0.9rem + 5.9rem); margin: -0.2rem 0 0; font-size: 12.5px; }
+.anki-tip[hidden] { display: none; }
+.anki-tip .math { font: italic 1.15em "Times New Roman", "STIX Two Text", Cambria, Georgia, serif; padding: 0 0.05em; }
 #anki-dialog .plan-field { grid-template-columns: 5.4rem 1fr; }  /* (room for "Stephanus") */
 .anki-hint { padding: 0 0.9rem 0 calc(0.9rem + 5.9rem); margin: -0.2rem 0 0; font-size: 12px; }
 .anki-hint[hidden] { display: none; }

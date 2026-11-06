@@ -820,11 +820,29 @@ function buildAnkiDialog() {
   const skip = el("input");
   Object.assign(skip, { type: "number", name: "skip", min: 0, max: 20000, step: 100, placeholder: "0", inputMode: "numeric" });
   try { skip.value = localStorage.getItem(ANKI_SKIP) || ""; } catch {}
-  const skipRow = planField(tr("Leave out"), skip, el("span", "anki-skip-note", tr("commonest words")));
+  // What it does, under the row: while the (i) is hovered or focused, or after a tap.
+  const skipInfo = el("button", "anki-info", "i");
+  skipInfo.type = "button";
+  skipInfo.setAttribute("aria-label", tr("What Leave out does"));
+  skipInfo.setAttribute("aria-expanded", "false");
+  const skipTip = el("p", "plan-note anki-tip");
+  skipTip.id = "anki-skip-tip";
+  skipInfo.setAttribute("aria-controls", skipTip.id);
+  const [before, after] = tr("Exclude the {x} words which occur most frequently in the entire corpus, to avoid repetition of easy words.").split("{x}");
+  skipTip.append(before, el("i", "math", "x"), after ?? "");
+  skipTip.hidden = true;
+  let pinned = false;
+  const tip = (yes) => { skipTip.hidden = !yes; skipInfo.setAttribute("aria-expanded", String(yes)); };
+  skipInfo.addEventListener("mouseenter", () => tip(true));
+  skipInfo.addEventListener("mouseleave", () => tip(pinned));
+  skipInfo.addEventListener("focus", () => tip(true));
+  skipInfo.addEventListener("blur", () => { pinned = false; tip(false); });
+  skipInfo.addEventListener("click", (e) => { e.preventDefault(); pinned = !pinned || skipTip.hidden; tip(pinned); });
+  const skipRow = planField(tr("Leave out"), skip, el("span", "anki-skip-note", tr("commonest words")), skipInfo);
   const preview = el("div", "plan-preview");
   const make = el("button", "plan-create", tr("Download deck"));
   make.type = "submit";
-  form.append(...picked.rows(tr("Words of")), versesRow, versesHint, skipRow, options, preview);
+  form.append(...picked.rows(tr("Words of")), versesRow, versesHint, skipRow, skipTip, options, preview);
   const foot = el("div", "dl-foot");
   foot.append(make);
   form.append(foot);
