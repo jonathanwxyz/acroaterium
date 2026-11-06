@@ -138,6 +138,14 @@ another (link precision/recall, per-word agreement).
   `no_diacritics` (Πηλείδης ~ Πηλεΐδης) or `accents` (ποτέ ~ ποτε). Covers 99.4% of
   Book 1's words and 99.0% of the Iliad's; unmatched are mostly names (Μηριόνης) and
   Homeric forms (ἱρός, εἷος) — add them to `lemma_aliases.tsv`.
+- **lemmas.definition**, **lemma_notes** (in `library.sqlite`, by `scripts/lemma_definitions.py`,
+  which `library.py` runs after the lemma index; it can be run alone on the library as it
+  is): each lemma's definition, ours first where `lemma_definitions.tsv` has one (the
+  commonest lemmas whose short definition misleads), else the short definition, a wrong
+  homonym repaired (κύριος: "a lord, master", not "having power"); and how Homer and the
+  Bible use it where that adds to it ("Homer: to take, grasp; to kill, slay" for αἱρέω),
+  from Cunliffe's and Autenrieth's Homeric lexicons and STEPBible's brief lexicon (TBESG),
+  fetched into `raw/definitions/`. The search, the references and the flashcards show them.
 - **translation_passages** `(translation, book, line_from)`: A. T. Murray's prose
   translation (Loeb, 1924; public domain) from Perseus (`perseus-eng3`, encoding CC BY-SA
   4.0). Perseus marks the Greek line numbers every 5 lines, so each row covers ~5 lines
@@ -235,6 +243,8 @@ licence. Share-alike reaches the data, not the code that displays it.
 | `verses` | Homeric text and Theodorus Gaza's paraphrase, [vasilestancu.ro](https://vasilestancu.ro/) | none stated: ask before publishing a copy |
 | `tokens`, `sentences`, `word_links` | Perseus [Ancient Greek Dependency Treebank](https://perseusdl.github.io/treebank_data/) 2.1 | CC BY-SA 3.0 US |
 | `shortdefs`, `lemma_defs` | Perseus/Logeion short definitions via [helmadik/shortdefs](https://github.com/helmadik/shortdefs) | none stated; credit Perseus and Logeion |
+| `lemma_notes` (Homer), `lemmas.definition` | R. J. Cunliffe, *A Lexicon of the Homeric Dialect* (1924), the Internet Archive's text as cleaned at [jtauber/cunliffe](https://github.com/jtauber/cunliffe); G. Autenrieth, *A Homeric Dictionary* (1876), [Perseus](https://www.perseus.tufts.edu/) | public domain; Perseus's encoding CC BY-SA 3.0 |
+| `lemma_notes` (Bible) | [STEPBible](https://www.stepbible.org/) TBESG, Translators Brief lexicon of Extended Strongs for Greek (Tyndale House), [STEPBible-Data](https://github.com/STEPBible/STEPBible-Data) | CC BY 4.0: credit STEPBible.org |
 | `translation_passages`, `translation_lines` (murray) | A. T. Murray (Loeb, 1924), [Perseus](https://github.com/PerseusDL/canonical-greekLit) `perseus-eng3` | text public domain; encoding CC BY-SA 4.0 |
 | `translation_lines` (polylas) | Iakovos Polylas (1923), [Greek Wikisource](https://el.wikisource.org/) | public domain (Wikisource's own edits CC BY-SA 4.0) |
 | `commentaries` | Leaf (1900), Seymour (1891), Benner (1903): Perseus's XML, [bulk download](https://www.perseus.tufts.edu/hopper/opensource/download) | texts public domain; encoding CC BY-SA 3.0 |

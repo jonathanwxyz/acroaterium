@@ -1,0 +1,54 @@
+lemma	definition	front
+# Our own definitions, for lemmas whose short definition (LSJ's first sense, as Logeion cut it)
+# misleads: a wrong homonym, a grammatical label, or a rare or early sense put first. Read by
+# scripts/lemma_definitions.py, before anything else. front (optional): the flashcards' front,
+# "-" for the lemma alone (μήν: a particle and a noun, two words under one lemma).
+# Wrong word or sense
+ὅτι	that; because
+πιστός	faithful, trustworthy; believing
+ὀξύς	sharp, keen; quick, swift
+ὥρα	season, time of year; hour
+εὐλογία	fine language, praise; blessing
+μήν	truly, surely (particle); month (noun: ὁ μήν, μηνός)	-
+ἐρέω	I will say, speak (future of λέγω); (Epic) to ask
+# A grammatical label for a meaning
+ἄν	would, might (modal particle); -ever (ὅς ἄν, whoever)
+δή	indeed, now, then (emphatic)
+ἄρα	so, then, therefore
+εἰ	if, whether; (with wishes) if only
+ὅστις	whoever, whatever; who, which
+αὐτός	self; the same (ὁ αὐτός); him, her, it
+ἔπω	to say, speak (aorist εἶπον)
+# A rare or early sense put first
+δόξα	opinion, expectation; reputation, honour, glory
+πονηρός	bad, evil, wicked; toilsome, painful
+ζωή	life; livelihood, a living
+λόγος	word, speech, account; reason, argument
+θυμός	spirit, heart, soul; passion, anger
+καθώς	as, just as, even as
+ὀπίσω	behind, back(wards); after
+πύλη	gate, gates; entrance
+προφήτης	prophet; spokesman of a god
+διαθήκη	will, testament; covenant
+τιμή	honour, esteem; price, value
+κελεύω	to order, command, bid; to urge
+κράζω	to cry out, shout, scream
+ῥύομαι	to rescue, deliver, save
+συντρίβω	to crush, shatter, break in pieces
+δοξάζω	to think, suppose; to glorify, honour
+κόσμος	order; ornament; the world
+γενεά	generation; family, race; birth
+παρεμβολή	camp, army in camp; insertion
+προσκυνέω	to bow down to, worship
+αἰώνιος	eternal, everlasting; lasting for an age
+δέομαι	to beg, ask, pray; to need, lack
+ἐπισκέπτομαι	to visit, look after; to inspect
+κιβωτός	box, chest; the ark
+πετεινός	winged; (as noun) bird
+ἄφεσις	release, letting go; forgiveness
+ἐξομολογέομαι	to confess; to praise, give thanks
+ὁμολογέω	to agree; to confess, acknowledge
+πάθος	experience, suffering; emotion, passion
+τεῦχος	tool, vessel; (pl., Homer) arms, armour
+κλισία	hut, tent; couch, seat
+πυκνός	close, thick, compact; frequent

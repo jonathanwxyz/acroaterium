@@ -2612,6 +2612,8 @@ def main():
         if t.get("reader") == "iliad" and ILIAD_DB.exists():
             iliad_into_library(con, t["slug"], verbose=args.v)
     lemma_index(con)
+    import lemma_definitions  # (the definitions, ours and the homonyms repaired, and how Homer and the Bible use each)
+    lemma_definitions.apply(con, fresh=True)
     con.commit()
     con.close()
     print(f"{len(rows_t)} texts, {len(rows_d)} divisions, {len(rows_s)} segments, {len(rows_n)} notes, "

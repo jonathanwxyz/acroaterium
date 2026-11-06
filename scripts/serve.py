@@ -1543,17 +1543,45 @@ def anki_notes(con, selection, pictures, sentences, forms=True, skip=frozenset()
                     note["fields"]["Picture"] = f'<img src="{html.escape(name)}">'
     if forms:
         add_forms(con, notes)
+    add_periods(con, notes)
     add_synonyms(con, notes)
     return notes, media, total, len(left)
 
 
 def add_forms(con, notes):
-    """A noun's or an adjective's dictionary form (ὁ λόγος, -ου; ἀγαθός, -ή, -όν) as notes' Form."""
+    """A noun's or an adjective's dictionary form (ὁ λόγος, -ου; ἀγαθός, -ή, -όν) as notes' Form; or
+    ours (data/lemma_definitions.tsv: lemma_notes.front), "-" none (μήν: a particle and a noun)."""
     kinds = lemma_kinds(con)
-    made = headwords.headwords([(n["lemma"], *kinds.get(n["lemma"], ("other", {}))) for n in notes])
+    fronts = lemma_rows(con, "SELECT l.lemma, n.front FROM lemma_notes n JOIN lemmas l ON l.id = n.lemma "
+                             "WHERE n.front IS NOT NULL AND l.lemma IN ({})", [n["lemma"] for n in notes])
+    made = headwords.headwords([(n["lemma"], *kinds.get(n["lemma"], ("other", {}))) for n in notes if n["lemma"] not in fronts])
     for note in notes:
-        if note["lemma"] in made:
-            note["fields"]["Form"] = html.escape(made[note["lemma"]])
+        front = fronts.get(note["lemma"], made.get(note["lemma"]))
+        if front and front != "-":
+            note["fields"]["Form"] = html.escape(front)
+
+
+def lemma_rows(con, sql, lemmas):
+    """{lemma: value} for a query of lemmas ({} for their placeholders), in chunks; {} in a library without its table."""
+    out = {}
+    try:
+        for i in range(0, len(lemmas), 500):
+            chunk = lemmas[i:i + 500]
+            out.update(con.execute(sql.format(",".join("?" * len(chunk))), chunk))
+    except sqlite3.OperationalError:  # (a library built before scripts/lemma_definitions.py)
+        pass
+    return out
+
+
+def add_periods(con, notes):
+    """How Homer and the Bible use a lemma, where it differs from its definition (lemma_notes, scripts/
+    lemma_definitions.py), as notes' Periods: "Homer: to take, grasp; to kill, slay"."""
+    found = lemma_rows(con, "SELECT l.lemma, n.notes FROM lemma_notes n JOIN lemmas l ON l.id = n.lemma "
+                            "WHERE n.notes IS NOT NULL AND l.lemma IN ({})", [n["lemma"] for n in notes])
+    for note in notes:
+        if note["lemma"] in found:
+            note["fields"]["Periods"] = "<br>".join(f"<b>{html.escape(label)}:</b> {html.escape(text)}"
+                                                    for label, text in json.loads(found[note["lemma"]]))
 
 
 _synonyms = {}  # LIBRARY's mtime -> {definition as compared: [lemma, ...], commonest first}

@@ -26,13 +26,14 @@ DECK_ID = 1730000000002
 DECK_NAME = "Acroaterium"
 FIXED_MOD = 1730000000  # (seconds: 2024-10-27; notes and the note type, so none is "newer")
 MAX_POSITION = 1_000_000
-FIELDS = ["Lemma", "Definition", "Picture", "Sentence", "Reference", "Form", "Reverse", "Synonyms"]
+FIELDS = ["Lemma", "Definition", "Picture", "Sentence", "Reference", "Form", "Reverse", "Synonyms", "Periods"]
 
 # The front: the dictionary form where there is one (ὁ λόγος, -ου), else the lemma.
 FRONT = '<div class="lemma">{{#Form}}{{Form}}{{/Form}}{{^Form}}{{Lemma}}{{/Form}}</div>'
 BACK = """{{FrontSide}}
 <hr id="answer">
 <div class="definition">{{Definition}}</div>
+{{#Periods}}<div class="periods">{{Periods}}</div>{{/Periods}}
 {{#Synonyms}}<div class="synonyms">Same meaning: {{Synonyms}}</div>{{/Synonyms}}
 {{#Picture}}<div class="picture">{{Picture}}</div>{{/Picture}}
 {{#Sentence}}<div class="sentence">{{Sentence}}</div>{{/Sentence}}
@@ -42,6 +43,7 @@ BACK = """{{FrontSide}}
 # The reverse card, from the meaning (and the picture) to the Greek: made only for a note
 # whose Reverse field has something in it, as Anki's "Basic (optional reversed card)".
 REVERSE_FRONT = """{{#Reverse}}<div class="definition">{{Definition}}</div>
+{{#Periods}}<div class="periods">{{Periods}}</div>{{/Periods}}
 {{#Synonyms}}<div class="synonyms">not {{Synonyms}}</div>{{/Synonyms}}
 {{#Picture}}<div class="picture">{{Picture}}</div>{{/Picture}}{{/Reverse}}"""
 REVERSE_BACK = """{{FrontSide}}
@@ -54,6 +56,8 @@ CSS = """.card { font-family: "Gentium Book Plus", "GFS Didot", "Times New Roman
 .nightMode.card, .night_mode .card { color: #ddd; background: #1f1d1a; }
 .lemma { font-size: 1.8em; }
 .definition { font-family: system-ui, sans-serif; font-size: 0.85em; margin: 0.4em 0; }
+.periods { font-family: system-ui, sans-serif; font-size: 0.7em; margin: -0.1em auto 0.5em; max-width: 30em; line-height: 1.45; }
+.periods b { font-weight: 600; color: #8a6d3b; }
 .synonyms { font-size: 0.7em; color: #888; margin: -0.2em auto 0.4em; max-width: 30em; line-height: 1.4; }
 .picture img { max-width: 14rem; max-height: 14rem; border-radius: 6px; margin: 0.4em 0; }
 .sentence { margin: 0.8em auto 0.2em; max-width: 34em; line-height: 1.5; }
@@ -119,7 +123,9 @@ def model():
 
 
 def deck():
-    return {"id": DECK_ID, "name": DECK_NAME, "desc": "Lemmas from the texts of Acroaterium, one note each.",
+    return {"id": DECK_ID, "name": DECK_NAME, "desc": "Lemmas from the texts of Acroaterium, one note each. Definitions: "
+            "LSJ's short definitions (Logeion; Perseus, CC BY-SA), Cunliffe's and Autenrieth's Homeric lexicons (Perseus), "
+            "STEPBible's brief lexicon (Tyndale House, STEPBible.org, CC BY 4.0).",
             "mod": FIXED_MOD, "usn": -1, "collapsed": False, "browserCollapsed": False, "dyn": 0, "conf": 1,
             "extendNew": 0, "extendRev": 0, "newToday": [0, 0], "revToday": [0, 0], "lrnToday": [0, 0], "timeToday": [0, 0]}
 

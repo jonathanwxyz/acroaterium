@@ -36,7 +36,8 @@ the notes, B bookmarks the verse.
   of a text, some of its books, or some of its verses ("1-50, 72"), a card per lemma in
   the order first met: on the front a noun with its article and genitive (ὁ λόγος, -ου),
   an adjective with its endings (ἀγαθός, -ή, -όν), from Morpheus; on the back its meaning,
-  and if wanted its picture and the sentence it's first met in; reversed cards
+  and if wanted its picture and the sentence it's first met in, with how Homer and the
+  Bible use it where that differs (Cunliffe, Autenrieth, STEPBible); reversed cards
   (meaning → Greek) if wanted, and the library's commonest so many words left out for
   someone who knows them. A lemma's note is the same in every deck made, so importing
   decks from one text after another adds only the lemmas not had already.

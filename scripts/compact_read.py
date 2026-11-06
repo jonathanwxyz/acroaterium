@@ -75,9 +75,10 @@ FULL = {
 # kept, for the word cards).
 DERIVED = {"lemma_words", "lemma_inflections"}
 
-# Tables the compact library leaves out altogether: the words' pictures
-# (import_anki_images.py), which the server serves and the device never keeps.
-SERVED = {"image_sources", "lemma_images"}
+# Tables the compact library leaves out altogether: the words' pictures, and the
+# definitions' notes (lemma_definitions.py, for the flashcards): the server serves them, the
+# device never keeps them (import_anki_images.py).
+SERVED = {"image_sources", "lemma_images", "lemma_notes", "lemma_base_definitions"}
 
 
 def unpack(blob):
