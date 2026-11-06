@@ -929,7 +929,7 @@ function buildAnkiDialog() {
 }
 document.getElementById("anki-button")?.addEventListener("click", openAnkiDialog);
 
-// The flashcards' guide: getting Anki, bringing a deck in, what's in it, and adding more.
+// The flashcards' guide: getting Anki, bringing a deck in, setting it up (FSRS), and adding more.
 function ankiHelp() {
   const box = el("section", "anki-help");
   box.setAttribute("aria-label", tr("How to use these decks in Anki"));
@@ -959,16 +959,13 @@ function ankiHelp() {
        "Choose the words here and press Download deck: you get an .apkg file.",
        "On a computer, double-click the file, or in Anki choose File › Import. The import window's defaults are right: press Import.",
        "On a phone, open the downloaded file with AnkiDroid or AnkiMobile; or import it on the computer and sync.");
-  part("3. What's in it",
-       "A deck called Acroaterium, a card for each lemma: the Greek on the front (a noun with its article and genitive, an adjective with its endings), its meaning on the back, with how the Bible and Homer use it where that differs, and, as chosen, its picture and the sentence it was first met in. Reversed cards ask from the meaning to the Greek.",
-       "New cards come in the order the words appear in the text.");
+  part("3. Setup",
+       "Turn on FSRS, Anki's modern scheduler: it times each review to how well you remember that card, for fewer reviews at the same recall. In Anki on a computer, click the gear by the Acroaterium deck, choose Options, and switch on FSRS near the bottom; a desired retention of 0.90 is a good start.",
+       ["This guide explains it step by step, on a computer, AnkiDroid and AnkiMobile:",
+        link("How to use FSRS in Anki", "https://slidetoanki.com/blog/how-to-use-fsrs-anki-guide")]);
   part("4. Adding more texts",
        "Make a deck from another text and import it the same way: the lemmas you already have are skipped, so only new words are added, and your progress and your own edits are kept.",
        "To skip the commonest words you already know, use the Leave out box below.");
-  part("5. How many a day",
-       "Anki shows 20 new cards a day by default. To change it, click the gear by the Acroaterium deck and choose Options › New cards/day.");
-  part("6. Refreshing cards",
-       "Cards you already have aren't changed by a new import. To bring in a newer version of them (a better definition, say), choose Update notes: Always in the import window.");
   return box;
 }
 
