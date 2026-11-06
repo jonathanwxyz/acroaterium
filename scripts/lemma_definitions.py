@@ -111,7 +111,7 @@ def fill(senses, limit=50, most=3):
                 while len(parts) > 1 and len(",".join(parts)) > 32:
                     parts.pop()
                 x = ",".join(parts).strip()
-            if x and len(x) <= 40:
+            if x and len(x) <= 40 and meaningful(x):  # (not a fragment the cut left: "thus", "to")
                 its.append(x)
         items.append(its)
     chosen, seen = [], set()
@@ -156,6 +156,18 @@ def cunliffe():
     return {k: [" ".join(e) for e in v] for k, v in out.items()}
 
 
+def meaningful(sense):
+    """Whether a sense says what the word means: not a cross-reference ("= prec.", "= next"), an
+    abbreviation ("app.", "pple."), or a stray word ("thus", "to")."""
+    sense = sense.strip(" ,;.")
+    words = re.findall(r"[A-Za-z]{2,}", sense)
+    return bool(words) and not re.match(r"^(=|app\b|pple\b|prob\b|perh\b|see\b|cf\b|sc\b|i\.e\b|v\.\s)", sense) \
+        and not (len(words) == 1 and words[0].lower() in {"thus", "so", "as", "to", "on", "in", "of", "by", "with", "for", "at",
+                                                          "the", "subj", "opt", "imp", "inf", "ind", "gen", "dat", "acc", "nom",
+                                                          "voc", "pf", "aor", "fut", "mid", "pass", "app", "pple"}) \
+        and any(len(w) >= 3 for w in words)
+
+
 def cunliffe_senses(entry):
     """The English of each numbered sense, before its references and quotations."""
     body = re.sub(r"\[[^\]]*\]", " ", entry)  # (the etymology first: it may have stops of its own)
@@ -177,7 +189,15 @@ def cunliffe_senses(entry):
             or p.endswith(("hence", "Hence"))
         if p and not heading and re.search(r"[a-z]{3}", p) and not re.search(rf"[{GREEK}]", p) and len(p) < 90:
             out.append(p[0].lower() + p[1:] if not p[:2].isupper() else p)
-    return out
+    out = [x for x in out if meaningful(x)]
+    if not out:  # (no numbered senses: its English sentences, after the forms, "To break in pieces, shiver:")
+        for sentence in re.split(r"(?<=[.:;])\s+|--", body):
+            sentence = re.split(rf"\s[{GREEK}]\d{{1,3}}\b|:|\(cf\.|\bCf\.", sentence)[0]
+            sentence = re.sub(r"\([^)]*\)", "", sentence).strip(" ,;.")
+            if re.match(r"^(To|A|An|The)\s+[a-z]", sentence) and not re.search(rf"[{GREEK}]", sentence) and len(sentence) < 90:
+                sentence = re.sub(r"^(?:The|A|An)\s+", "", sentence)
+                out.append(sentence[0].lower() + sentence[1:])
+    return [x for x in out if meaningful(x)]
 
 
 def autenrieth():
@@ -191,25 +211,26 @@ def autenrieth():
 
 
 def autenrieth_senses(entry):
-    """The English of Autenrieth's entry, before its first reference ("Il. 4.472", "†"): its Greek
-    (in Beta Code), grammatical asides ("only ipf.") and doubts left out; "epith. of X" as
-    "epithet of X"."""
-    t = entry.split("):", 1)[1] if "):" in entry[:90] else entry.split(":", 1)[-1]
+    """The English of Autenrieth's entry, before its first reference ("Il. 4.472", "†"): read a
+    comma's chunk at a time, those with its Greek (in Beta Code: "sun - a/gnu_mi", "aor. -e/aca")
+    or only grammar ("only ipf.") or doubt left out; "epith. of X" as "epithet of X"."""
+    t = entry.split("):", 1)[1] if "):" in entry[:90] else entry
     t = re.sub(r"\bepith\.\s+of\b", "epithet of", t)
     t = re.split(r"[,;]?\s*\b(?:Il|Od|Hes|h\.\s*\w+)\.\s*\d|†|\bcf\.|\bv\.\s", t)[0]  # (to its first reference)
-    words = []
-    for w in t.split():
-        if re.search(r"[)(/\\=|+_*]|^-|\d", w) or re.fullmatch(r"[a-z]{1,3}['’]\W*", w):  # (Beta Code, a hyphen, a number, d')
-            continue
-        words.append(w)
-    t = " ".join(words)
-    t = re.sub(r",?\s*\b(only|freq|ipf|aor|perf|pres|fut|mid|pass|act|adv|subst|pl|sing|dual|ep|poet)\b\.?.*$", "", t)
-    t = re.sub(r"^\s*(doubtful word|prob\.|perh\.|i\.e\.)\s*,?\s*", "", t)
-    t = re.sub(r"[‘’“”]", "", t)
-    t = re.sub(r"\s*,(\s*,)+", ",", re.sub(r"\s+,", ",", re.sub(r"\s+", " ", t)))
-    t = re.sub(r"\s+(from|of|by|in|with|to|and|or)\W*$", "", t.strip(" ,;.'"))  # (a phrase cut short)
-    t = t.strip(" ,;.'")
-    return [t] if re.search(r"[a-z]{3}", t) and not re.fullmatch(r"(epith|epithet)", t) else []
+    t = re.sub(r"\([^)]*\)|[‘’“”]", " ", t)
+    kept = []
+    for chunk in re.split(r"[,;:]", t):
+        chunk = re.sub(r"\s+", " ", chunk).strip(" .")
+        if not chunk or re.search(r"[)(/\\=|+_*]|\d|^-|\s-|-\s", chunk) or not re.search(r"[a-z]{3}", chunk):
+            continue  # (its Greek, a number, a stem's hyphen)
+        if re.match(r"^(only|freq|ipf|aor|perf|pres|fut|mid|pass|act|adv|subst|pl|sing|dual|ep|poet|also|w\.|abs|"
+                    r"doubtful word|prob|perh|i\.e|fig|lit|sc|esp|usu|cf)\b\.?", chunk):
+            continue  # (grammar, doubt)
+        if len(chunk.split()) == 1 and len(chunk) < 4:
+            continue  # (a stray syllable)
+        kept.append(chunk)
+    t = re.sub(r"\s+(from|of|by|in|with|to|and|or)$", "", ", ".join(k for k in kept if meaningful(k)))
+    return [t] if t and meaningful(t) and not re.fullmatch(r"(epith|epithet)", t) else []
 
 
 # ---------------------------------------------------------------- epic words (LSJ)
