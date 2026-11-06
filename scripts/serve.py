@@ -990,7 +990,7 @@ def text_period(con, slug):
     return row and row[0]
 
 
-PERIOD_LABELS = {"bible": "Bible", "classical": "Classical", "homer": "Homer"}
+PERIOD_LABELS = {"classical": "Classical", "bible": "Biblical", "homer": "Homeric"}
 
 
 def compose_definition(token, period, classical, notes):
@@ -998,7 +998,7 @@ def compose_definition(token, period, classical, notes):
     its main line from the source of that text's Greek (Homer: Cunliffe's; Plato: ours or the short
     definition; the Bible: the word's own Dodson entry, else Dodson's or STEPBible's for the lemma;
     the Fathers and the services: ours, else the Bible's, else the short definition), then, as
-    "periods", the others always in this order, Bible, Classical, Homer, each where the lemma is read
+    "periods", the others always in this order, Classical, Biblical, Homeric, each where the lemma is read
     in that part of the library and it adds a word."""
     homer, bible, homer_n, bible_n, ours = notes or (None, None, 0, 0, 0)
     own = token.get("definition")
@@ -1013,7 +1013,7 @@ def compose_definition(token, period, classical, notes):
     texts = {"bible": bible if (bible_n or 0) >= lemma_definitions.NOTE_MIN else None, "classical": classical,
              "homer": homer if (homer_n or 0) >= lemma_definitions.NOTE_MIN else None}
     seen, periods = lemma_definitions.content(main), []
-    for k in ("bible", "classical", "homer"):
+    for k in ("classical", "bible", "homer"):
         text = texts[k]
         if k != key and text and text != main and lemma_definitions.content(text) - seen:
             periods.append([PERIOD_LABELS[k], text])
@@ -1623,7 +1623,7 @@ def lemma_rows(con, sql, lemmas):
 
 def add_periods(con, notes):
     """How Homer and the Bible use a lemma, where it differs from its definition (lemma_notes, scripts/
-    lemma_definitions.py), as notes' Periods: "Homer: to take, grasp; to kill, slay"."""
+    lemma_definitions.py), as notes' Periods: "Homeric: to take, grasp; to kill, slay"."""
     found = lemma_rows(con, "SELECT l.lemma, n.notes FROM lemma_notes n JOIN lemmas l ON l.id = n.lemma "
                             "WHERE n.notes IS NOT NULL AND l.lemma IN ({})", [n["lemma"] for n in notes])
     for note in notes:

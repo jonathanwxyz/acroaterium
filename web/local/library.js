@@ -169,12 +169,12 @@
 
   // A word card's definition for the text it's read in, as the server's compose_definition
   // (scripts/serve.py): its main line from the source of that text's Greek, then the others,
-  // always Bible, Classical, Homer, each where the lemma is read there and it adds a word.
+  // always Classical, Biblical, Homeric, each where the lemma is read there and it adds a word.
   const NOTE_MIN = 3;
   const CONTENT_STOP = new Set("the with from into its his her their being thing things".split(" "));
   const contentWords = (s) => new Set(((s ?? "").toLowerCase().match(/[a-z]{3,}/g) ?? [])
     .filter((w) => !CONTENT_STOP.has(w)).map((w) => w.slice(0, 5)));
-  const PERIOD_LABELS = { bible: "Bible", classical: "Classical", homer: "Homer" };
+  const PERIOD_LABELS = { classical: "Classical", bible: "Biblical", homer: "Homeric" };
   function composeDefinition(token, period, classical, notes) {
     const homer = notes?.homer ?? null, bible = notes?.bible ?? null;
     const own = token.definition ?? null;
@@ -191,7 +191,7 @@
     const texts = { bible: (notes?.bible_n ?? 0) >= NOTE_MIN ? bible : null, classical,
                     homer: (notes?.homer_n ?? 0) >= NOTE_MIN ? homer : null };
     const seen = contentWords(main), periods = [];
-    for (const k of ["bible", "classical", "homer"]) {
+    for (const k of ["classical", "bible", "homer"]) {
       const text = texts[k];
       if (k === key || !truthy(text) || text === main) continue;
       const words = contentWords(text);

@@ -1394,7 +1394,7 @@ function renderCard(data) {
     if (t.strongs) lemma.append(el("code", "strongs", `G${t.strongs}`));
     box.append(lemma);
     if (t.definition) box.append(el("div", "definition", t.definition));
-    // How the Bible, classical Greek and Homer use the word, where it adds to the definition
+    // How classical Greek, the Bible and Homer use the word, where it adds to the definition
     // (the server's compose_definition): always in that order, without the text's own.
     if (t.periods?.length) {
       const p = el("div", "periods");

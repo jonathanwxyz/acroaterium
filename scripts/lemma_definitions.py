@@ -17,7 +17,8 @@ Lexicon of the Homeric Dialect (else Autenrieth's Homeric Dictionary), and a Bib
 Dodson's New Testament lexicon (else STEPBible's brief lexicon, TBESG), each where the lemma's words are read in that part of the
 library (Homer: the texts cited by line; the Bible: the Septuagint, the New Testament, the
 Fathers and the services, all but Plato; three words at least) and the
-note adds a word the card hasn't yet; the Bible's first, then Homer's. Names have none.
+note adds a word the card hasn't yet; the Biblical first, then the Homeric (the definition
+itself being the Classical: the word card's order, Classical, Biblical, Homeric). Names have none.
 
 The sources are fetched once into data/raw/definitions/:
   STEPBible TBESG (Tyndale House, CC BY 4.0), github.com/STEPBible/STEPBible-Data
@@ -51,6 +52,7 @@ GREEK = "Ͱ-Ͽἀ-῿"
 NOTE_MIN = 3  # (words in that part of the library, at least, for its note)
 # A sense that describes the word's grammar, not its meaning ("interrog.", "negative particle")
 GRAMMAR = re.compile(r"\b(particle|interrog|prep\.|genit|intrans|trans\.|adv\.|conj\.|pron\.|see|cf)\b|[（）]", re.I)
+FUNCTION_WORD = re.compile(r"\b(particle|conjunction|preposition|pronoun|article)\b", re.I)
 WORD = re.compile(r"[a-z]{3,}")
 STOP = set("the with from into its his her their being thing things".split())
 
@@ -285,7 +287,7 @@ def apply(con, show=(), fresh=False, verbose=False):
         DROP TABLE IF EXISTS lemma_notes;
         CREATE TABLE lemma_notes (       -- how Homer and the Bible use a lemma (scripts/lemma_definitions.py)
             lemma   INTEGER PRIMARY KEY REFERENCES lemmas,
-            notes   TEXT,                -- the flashcards': JSON [[label, text], …] ("Bible", "Homer"), where they
+            notes   TEXT,                -- the flashcards': JSON [[label, text], …] ("Biblical", "Homeric"), where they
                                          --   add to the definition
             front   TEXT,                -- the flashcards' front, where ours: "-" the lemma alone (μήν: two words)
             homer   TEXT,                -- Homer's sense (Cunliffe, else Autenrieth), for the word card
@@ -307,7 +309,12 @@ def apply(con, show=(), fresh=False, verbose=False):
         if not homer_senses:
             a = lookup(aut, lemma)
             homer_senses = autenrieth_senses(a) if a else []
-        homer_note = fill([s for s in homer_senses if not GRAMMAR.search(s)])
+        # (an entry that calls the word a particle, conjunction, preposition, … before its senses
+        # describes a function word's uses, not a meaning: none, rather than a later sense's "not
+        # yet, never yet" for οὐ, "Negative particle")
+        function_entry = any(FUNCTION_WORD.search(re.split(r"\s1\.\s", e, maxsplit=1)[0]) for e in (homer or []))
+        homer_note = None if function_entry or homer_senses and GRAMMAR.search(homer_senses[0]) else \
+            fill([s for s in homer_senses if not GRAMMAR.search(s)])
         bible_note = lookup(nt, lemma) or lookup(step, lemma)  # (Dodson: fuller, for the New Testament's words)
         used = content(" ".join(x for x in (usage.get(lemma), bible_note, homer_note) if x))
         main, front = definition, None
@@ -332,7 +339,7 @@ def apply(con, show=(), fresh=False, verbose=False):
             seen = content(main)
             # (no Homer note for a preposition, particle, conjunction, pronoun or the article: Cunliffe
             # describes their uses, "into something, and", rather than giving a meaning)
-            for label, n, text in (("Bible", b or 0, bible_note), ("Homer", 0 if function else h or 0, homer_note)):  # (always so)
+            for label, n, text in (("Biblical", b or 0, bible_note), ("Homeric", 0 if function else h or 0, homer_note)):  # (always so)
                 if text and n >= NOTE_MIN and text != main and content(text) - seen:
                     notes.append([label, text])
                     seen |= content(text)
