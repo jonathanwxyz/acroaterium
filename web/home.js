@@ -820,19 +820,37 @@ function buildAnkiDialog() {
   const skip = el("input");
   Object.assign(skip, { type: "number", name: "skip", min: 0, max: 20000, step: 100, placeholder: "0", inputMode: "numeric" });
   try { skip.value = localStorage.getItem(ANKI_SKIP) || ""; } catch {}
-  // What it does, under the row: while the (i) is hovered or focused, or after a tap.
-  const skipInfo = el("button", "anki-info", "i");
+  // What it does, in a little box above the (i): while it's hovered or focused, or after a tap.
+  const skipInfo = el("button", "anki-info");
   skipInfo.type = "button";
+  skipInfo.innerHTML = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.6" '
+    + 'fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="6.1" r="1.25" fill="currentColor"/>'
+    + '<rect x="9.05" y="8.6" width="1.9" height="6.3" rx="0.95" fill="currentColor"/></svg>';
   skipInfo.setAttribute("aria-label", tr("What Leave out does"));
   skipInfo.setAttribute("aria-expanded", "false");
-  const skipTip = el("p", "plan-note anki-tip");
+  const skipTip = el("div", "anki-pop");
   skipTip.id = "anki-skip-tip";
-  skipInfo.setAttribute("aria-controls", skipTip.id);
+  skipTip.setAttribute("role", "tooltip");
+  skipInfo.setAttribute("aria-describedby", skipTip.id);
   const [before, after] = tr("Exclude the {x} words which occur most frequently in the entire corpus, to avoid repetition of easy words.").split("{x}");
   skipTip.append(before, el("i", "math", "x"), after ?? "");
   skipTip.hidden = true;
   let pinned = false;
-  const tip = (yes) => { skipTip.hidden = !yes; skipInfo.setAttribute("aria-expanded", String(yes)); };
+  const tip = (yes) => {
+    skipTip.hidden = !yes;
+    skipInfo.setAttribute("aria-expanded", String(yes));
+    if (!yes) return;
+    // Above the (i), its pointer at it; below, where there's no room above; inside the dialog.
+    const box = d.getBoundingClientRect();
+    skipTip.style.maxWidth = `${Math.min(272, box.width - 16)}px`;
+    const r = skipInfo.getBoundingClientRect(), t = skipTip.getBoundingClientRect();
+    const below = r.top - t.height - 10 < 8;
+    const left = Math.max(box.left + 8, Math.min(r.left + r.width / 2 - t.width / 2, box.right - t.width - 8));
+    skipTip.classList.toggle("below", below);
+    skipTip.style.left = `${left}px`;
+    skipTip.style.top = `${below ? r.bottom + 10 : r.top - t.height - 10}px`;
+    skipTip.style.setProperty("--arrow", `${r.left + r.width / 2 - left}px`);
+  };
   skipInfo.addEventListener("mouseenter", () => tip(true));
   skipInfo.addEventListener("mouseleave", () => tip(pinned));
   skipInfo.addEventListener("focus", () => tip(true));
@@ -842,7 +860,8 @@ function buildAnkiDialog() {
   const preview = el("div", "plan-preview");
   const make = el("button", "plan-create", tr("Download deck"));
   make.type = "submit";
-  form.append(...picked.rows(tr("Words of")), versesRow, versesHint, skipRow, skipTip, options, preview);
+  form.append(...picked.rows(tr("Words of")), versesRow, versesHint, skipRow, options, preview);
+  form.addEventListener("scroll", () => { pinned = false; tip(false); }, { passive: true });  // (it'd be left behind)
   const foot = el("div", "dl-foot");
   foot.append(make);
   form.append(foot);
@@ -944,9 +963,9 @@ function buildAnkiDialog() {
       make.disabled = false;
     }
   });
-  d.append(head, help, form);
+  d.append(head, help, form, skipTip);
   showHelp(false);
-  d.addEventListener("close", () => showHelp(false));  // (opened again: at the choices)
+  d.addEventListener("close", () => { showHelp(false); pinned = false; tip(false); });  // (opened again: at the choices)
   document.body.append(d);
   return d;
 }
