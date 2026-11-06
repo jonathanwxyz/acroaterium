@@ -2015,8 +2015,10 @@ body.library { padding-top: env(safe-area-inset-top); }
 .dl-help { width: 1.6rem; height: 1.6rem; padding: 0; font: 600 13px system-ui, sans-serif; color: var(--muted); background: transparent; border: 1px solid var(--rule); border-radius: 50%; cursor: pointer; }
 .dl-help[aria-expanded="true"] { color: var(--text); border-color: var(--current-bar); background: color-mix(in srgb, var(--current-bar) 14%, transparent); }
 @media (hover: hover) { .dl-help:hover { color: var(--text); border-color: var(--current-bar); } }
-.anki-help { flex: none; max-height: 45vh; overflow-y: auto; padding: 0.6rem 0.9rem 0.7rem; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--current-bar) 6%, var(--bg)); display: grid; gap: 0.55rem; font-size: 13px; line-height: 1.45; }
-.anki-help[hidden] { display: none; }  /* (its display: grid would show it otherwise) */
+.anki-help { flex: 1; min-height: 0; overflow-y: auto; padding: 0.6rem 0.9rem 0.7rem; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--current-bar) 6%, var(--bg)); display: grid; gap: 0.55rem; font-size: 13px; line-height: 1.45; }
+.anki-help[hidden], #anki-dialog .plan-form[hidden] { display: none; }  /* (their display: grid would show them otherwise) */
+.anki-help-back { justify-self: start; font: 600 13px system-ui, sans-serif; padding: 0.35rem 0.8rem; color: var(--text); background: transparent; border: 1px solid var(--rule); border-radius: 999px; cursor: pointer; }
+@media (hover: hover) { .anki-help-back:hover { border-color: var(--current-bar); } }
 .anki-help h3 { margin: 0 0 0.15rem; font: 600 13px system-ui, sans-serif; }
 .anki-help p { margin: 0 0 0.25rem; color: var(--muted); }
 .anki-help a { color: var(--current-bar); }

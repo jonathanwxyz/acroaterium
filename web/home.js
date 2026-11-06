@@ -785,12 +785,15 @@ function buildAnkiDialog() {
   helpButton.setAttribute("aria-label", tr("How to use these decks in Anki"));
   helpButton.setAttribute("aria-expanded", "false");
   head.append(el("h2", null, tr("Flashcards for Anki")), helpButton, close);
-  const help = ankiHelp();
-  help.hidden = true;
-  helpButton.addEventListener("click", () => {
-    help.hidden = !help.hidden;
-    helpButton.setAttribute("aria-expanded", String(!help.hidden));
-  });
+  // (The guide takes the panel's place while it's open: ? again, or Back, brings the choices back.)
+  const help = ankiHelp(() => showHelp(false));
+  const showHelp = (yes) => {
+    help.hidden = !yes;
+    form.hidden = yes;
+    helpButton.setAttribute("aria-expanded", String(yes));
+    (yes ? help : form).scrollTop = 0;
+  };
+  helpButton.addEventListener("click", () => showHelp(help.hidden));
   const form = el("form", "plan-form");
   const picked = textPicker();
   // Some of a text's verses, named as it numbers them (lines, verses, Stephanus sections,
@@ -924,13 +927,15 @@ function buildAnkiDialog() {
     }
   });
   d.append(head, help, form);
+  showHelp(false);
+  d.addEventListener("close", () => showHelp(false));  // (opened again: at the choices)
   document.body.append(d);
   return d;
 }
 document.getElementById("anki-button")?.addEventListener("click", openAnkiDialog);
 
 // The flashcards' guide: getting Anki, bringing a deck in, setting it up (FSRS), and adding more.
-function ankiHelp() {
+function ankiHelp(back) {
   const box = el("section", "anki-help");
   box.setAttribute("aria-label", tr("How to use these decks in Anki"));
   const link = (text, href) => {
@@ -964,7 +969,11 @@ function ankiHelp() {
         link("How to use FSRS in Anki", "https://slidetoanki.com/blog/how-to-use-fsrs-anki-guide")]);
   part("4. Adding more texts",
        "Make a deck from another text and import it the same way: the lemmas you already have are skipped, so only new words are added, and your progress and your own edits are kept.",
-       "To skip the commonest words you already know, use the Leave out box below.");
+       "To skip the commonest words you already know, use the Leave out box.");
+  const done = el("button", "anki-help-back", tr("‹ Back"));
+  done.type = "button";
+  done.addEventListener("click", back);
+  box.append(done);
   return box;
 }
 
