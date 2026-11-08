@@ -1047,7 +1047,8 @@ def references_json(lemma, query):
     target = q.get("in", q.get("text", [None]))[0]
     con = sqlite3.connect(LIBRARY)
     try:
-        row = con.execute("SELECT id, definition FROM lemmas WHERE lemma = ?", (unicodedata.normalize("NFC", lemma),)).fetchone()
+        row = con.execute(f"SELECT l.id, {shown_definition(con, 'l')} FROM lemmas l WHERE l.lemma = ?",
+                          (unicodedata.normalize("NFC", lemma),)).fetchone()
         if not row:
             return None
         lid, definition = row
@@ -1097,14 +1098,23 @@ def search_spelling(word):
     return "".join(c for c in unicodedata.normalize("NFD", word.lower()) if not unicodedata.combining(c)).replace("ς", "σ")
 
 
+def shown_definition(con, alias):
+    """SQL for a lemma's definition as the search and references show it: as the flashcards have it
+    (lemma_notes.card, a period's that says all the definition says and more), else lemmas.definition."""
+    cols = {row[1] for row in con.execute("PRAGMA table_info(lemma_notes)")}
+    return f"coalesce((SELECT n.card FROM lemma_notes n WHERE n.lemma = {alias}.id), {alias}.definition)" if "card" in cols \
+        else f"{alias}.definition"
+
+
 def index_lemma(con, lemma):
     """(lemma, n, definition) of the lemma index's lemma for one Morpheus names: spelled so,
     or so in a parsing table (γίνομαι: γίγνομαι), or the one lemma of its letters; or None."""
     lemma = unicodedata.normalize("NFC", lemma)
-    rows = (con.execute("SELECT lemma, n, definition FROM lemmas WHERE lemma = ?", (lemma,)).fetchall()
-            or con.execute("SELECT l.lemma, l.n, l.definition FROM lemma_forms f JOIN lemmas l ON l.id = f.lemma "
+    shown = shown_definition(con, "l")
+    rows = (con.execute(f"SELECT l.lemma, l.n, {shown} FROM lemmas l WHERE l.lemma = ?", (lemma,)).fetchall()
+            or con.execute(f"SELECT l.lemma, l.n, {shown} FROM lemma_forms f JOIN lemmas l ON l.id = f.lemma "
                            "WHERE f.form = ?", (lemma,)).fetchall()
-            or con.execute("SELECT lemma, n, definition FROM lemmas WHERE bare = ?", (search_spelling(lemma),)).fetchall())
+            or con.execute(f"SELECT l.lemma, l.n, {shown} FROM lemmas l WHERE l.bare = ?", (search_spelling(lemma),)).fetchall())
     return rows[0] if len(rows) == 1 else None
 
 
@@ -1150,14 +1160,14 @@ def lemmas_json(query):
                 "best AS (SELECT lemma, max(named) AS named, max(exact) AS exact, "
                 "  max(max(CASE WHEN named THEN n ELSE 0 END), total(CASE WHEN named THEN 0 ELSE n END)) AS score "
                 "  FROM hits GROUP BY lemma ORDER BY exact DESC, score DESC LIMIT ?) "
-                "SELECT l.lemma, l.n, l.definition, CASE WHEN b.named THEN NULL ELSE "
+                f"SELECT l.lemma, l.n, {shown_definition(con, 'l')}, CASE WHEN b.named THEN NULL ELSE "
                 "  (SELECT form FROM lemma_inflections i WHERE i.lemma = b.lemma AND i.bare >= ? AND i.bare < ? "
                 "   ORDER BY i.bare = ? DESC, i.n DESC LIMIT 1) END "
                 "FROM best b JOIN lemmas l ON l.id = b.lemma ORDER BY b.exact DESC, b.score DESC, l.lemma",
                 (typed, *span, typed, *span, limit + len(parsed), *span, typed)).fetchall()
         except sqlite3.OperationalError:  # a library built before the words as printed: the lemmas only
-            rows = con.execute("SELECT lemma, n, definition, NULL FROM lemmas "
-                               "WHERE bare >= ? AND bare < ? ORDER BY bare = ? DESC, n DESC, lemma LIMIT ?",
+            rows = con.execute(f"SELECT l.lemma, l.n, {shown_definition(con, 'l')}, NULL FROM lemmas l "
+                               "WHERE l.bare >= ? AND l.bare < ? ORDER BY l.bare = ? DESC, l.n DESC, l.lemma LIMIT ?",
                                (*span, typed, limit + len(parsed))).fetchall()
     except sqlite3.OperationalError:  # a library built before the lemma index (or its search)
         return None
