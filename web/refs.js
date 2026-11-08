@@ -75,7 +75,16 @@ function citation(t, hit) {
 }
 
 function drawCount(data) {
-  definition.textContent = data.definition ?? "";
+  // The definition (as on the flashcards: a Homeric word's labelled so), then how the Bible and
+  // Homer use it, where that adds to it.
+  definition.replaceChildren();
+  if (data.register) definition.append(el("span", "refs-label register", capitals(tr(data.register))));
+  definition.append(data.definition ?? "");
+  for (const [label, text] of data.periods ?? []) {
+    const p = el("span", "refs-period");
+    p.append(el("span", "refs-label", capitals(tr(label))), text);
+    definition.append(p);
+  }
   definition.hidden = !data.definition;
   texts = data.texts;
   counts = new Map(texts.map((t) => [t.slug, t.n]));

@@ -1197,7 +1197,18 @@ window.addEventListener("pageshow", (e) => {
       top.append(name, el("span", "lemma-result-n", x.n.toLocaleString(UI_LOCALE)));
       li.append(top);
       if (x.parses?.length) li.append(el("span", "lemma-result-parses", x.parses.join(" · ")));
-      if (x.definition) li.append(el("span", "lemma-result-def", x.definition));
+      if (x.definition) {
+        const def = el("span", "lemma-result-def");
+        if (x.register) def.append(el("span", "lemma-result-label register", capitals(tr(x.register))));  // (a Homeric word)
+        def.append(x.definition);
+        li.append(def);
+      }
+      // How the Bible and Homer use it, where that adds to the definition (as on the flashcards).
+      for (const [label, text] of x.periods ?? []) {
+        const p = el("span", "lemma-result-period");
+        p.append(el("span", "lemma-result-label", capitals(tr(label))), text);
+        li.append(p);
+      }
       li.lang = "grc";
       if (x.absent) {  // (Morpheus's, with no words in the library: nothing to open)
         li.classList.add("lemma-result-absent");

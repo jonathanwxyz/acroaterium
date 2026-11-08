@@ -1082,11 +1082,12 @@ def references_json(lemma, query):
             label = con.execute("SELECT label FROM divisions WHERE text = ? AND n = ?", (slug, div)).fetchone()
             hits.append({"slug": slug, "div": div, "label": label[0] if label else None, "seq": seq, "ref": ref,
                          "words": sorted(map(int, str(indexes).split(","))), "content": content})
+        extra = lemma_periods(con, [unicodedata.normalize("NFC", lemma)]).get(unicodedata.normalize("NFC", lemma), {})
     except sqlite3.OperationalError:  # a library built before the lemma index
         return None
     finally:
         con.close()
-    return {"lemma": unicodedata.normalize("NFC", lemma), "definition": definition, "n": sum(t[5] for t in texts),
+    return {"lemma": unicodedata.normalize("NFC", lemma), "definition": definition, **extra, "n": sum(t[5] for t in texts),
             "texts": [{"slug": t[0], "title": t[1], "short": t[2], "cite": t[3], "books": t[4], "n": t[5]}
                       for t in texts],
             "within": within, "hits": hits, "offset": offset, "more": len(verses) > limit}
@@ -1096,6 +1097,23 @@ def search_spelling(word):
     """A word as the search has it: in small letters, without accents, breathings or other
     marks, σ for ς (library.py's search_key)."""
     return "".join(c for c in unicodedata.normalize("NFD", word.lower()) if not unicodedata.combining(c)).replace("ς", "σ")
+
+
+def lemma_periods(con, lemmas):
+    """{lemma: {"periods": [[label, text], …], "register": "Homeric"}}: how the Bible and Homer use
+    each lemma, as its flashcard has it (lemma_notes), and whether it's a Homeric word; for the
+    search and references, under the definition (as shown_definition gives it)."""
+    out = {}
+    try:
+        for i in range(0, len(lemmas), 500):
+            chunk = lemmas[i:i + 500]
+            for lemma, notes, epic in con.execute(
+                    f"SELECT l.lemma, n.notes, n.epic FROM lemma_notes n JOIN lemmas l ON l.id = n.lemma "
+                    f"WHERE l.lemma IN ({','.join('?' * len(chunk))}) AND (n.notes IS NOT NULL OR n.epic = 1)", chunk):
+                out[lemma] = {**({"periods": json.loads(notes)} if notes else {}), **({"register": "Homeric"} if epic else {})}
+    except sqlite3.OperationalError:  # (a library built before lemma_definitions.py)
+        pass
+    return out
 
 
 def shown_definition(con, alias):
@@ -1169,13 +1187,15 @@ def lemmas_json(query):
             rows = con.execute(f"SELECT l.lemma, l.n, {shown_definition(con, 'l')}, NULL FROM lemmas l "
                                "WHERE l.bare >= ? AND l.bare < ? ORDER BY l.bare = ? DESC, l.n DESC, l.lemma LIMIT ?",
                                (*span, typed, limit + len(parsed))).fetchall()
+        rest = [{"lemma": lemma, "n": n, "definition": definition, "form": form}
+                for lemma, n, definition, form in rows if lemma not in parsed]
+        found = sorted(parsed.values(), key=lambda x: -x["n"]) + rest[:max(0, limit - len(parsed))]
+        extra = lemma_periods(con, [x["lemma"] for x in found])  # (as the flashcards have them)
     except sqlite3.OperationalError:  # a library built before the lemma index (or its search)
         return None
     finally:
         con.close()
-    rest = [{"lemma": lemma, "n": n, "definition": definition, "form": form}
-            for lemma, n, definition, form in rows if lemma not in parsed]
-    return sorted(parsed.values(), key=lambda x: -x["n"]) + rest[:max(0, limit - len(parsed))]
+    return [{**x, **extra.get(x["lemma"], {})} for x in found]
 
 
 def parsing_json(slug, n, seq, index):
