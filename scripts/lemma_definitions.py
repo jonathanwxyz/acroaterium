@@ -52,7 +52,8 @@ SOURCES = {
 GREEK = "Ͱ-Ͽἀ-῿"
 NOTE_MIN = 3  # (words in that part of the library, at least, for its note)
 # A sense that describes the word's grammar, not its meaning ("interrog.", "negative particle")
-GRAMMAR = re.compile(r"\b(particle|interrog|prep\.|genit|intrans|trans\.|adv\.|conj\.|pron\.|see|cf)\b|[（）]", re.I)
+GRAMMAR = re.compile(r"\b(particle|interrog|prep\.|genit|intrans|trans\.|adv\.|conj\.|pron\.|see|cf|ablative|genitive|dative|"
+                     r"accusative|nominative|vocative|this form|form of)\b|[（）]", re.I)  # (θεός: "this form as ablative")
 FUNCTION_WORD = re.compile(r"\b(particle|conjunction|preposition|pronoun|article)\b", re.I)
 WORD = re.compile(r"[a-z]{3,}")
 STOP = set("the with from into its his her their being thing things".split())
@@ -406,8 +407,10 @@ def apply(con, show=(), fresh=False, verbose=False):
             homer_n INTEGER,             -- its words in Homer; in the Bible, the Fathers and the services
             bible_n INTEGER,
             ours    INTEGER,             -- 1: lemmas.definition is ours (data/lemma_definitions.tsv)
-            epic    INTEGER);            -- 1: a Homeric word (LSJ cites it from Homer and the epic poets only):
+            epic    INTEGER,             -- 1: a Homeric word (LSJ cites it from Homer and the epic poets only):
                                          --   its definition Homer's, labelled so
+            card    TEXT);               -- the flashcards' definition, where a period's line says all lemmas.definition
+                                         --   says and more (it's then not among the notes)
         DROP TABLE IF EXISTS text_periods;
         CREATE TABLE text_periods (      -- a text's period, for the word card's order: homer, classical, bible, church
             text   TEXT PRIMARY KEY,
@@ -427,8 +430,7 @@ def apply(con, show=(), fresh=False, verbose=False):
         # describes a function word's uses, not a meaning: none, rather than a later sense's "not
         # yet, never yet" for οὐ, "Negative particle")
         function_entry = any(FUNCTION_WORD.search(re.split(r"\s1\.\s", e, maxsplit=1)[0]) for e in (homer or []))
-        homer_note = None if function_entry or homer_senses and GRAMMAR.search(homer_senses[0]) else \
-            fill([s for s in homer_senses if not GRAMMAR.search(s)])
+        homer_note = None if function_entry else fill([s for s in homer_senses if not GRAMMAR.search(s)])
         bible_note = lookup(nt, lemma) or lookup(step, lemma)  # (Dodson: fuller, for the New Testament's words)
         used = content(" ".join(x for x in (usage.get(lemma), bible_note, homer_note) if x))
         main, front = definition, None
@@ -465,13 +467,20 @@ def apply(con, show=(), fresh=False, verbose=False):
                 if text and n >= NOTE_MIN and text != main and content(text) - seen:
                     notes.append([label, text])
                     seen |= content(text)
+        # A period's line that says all the definition says and more takes its place on the card
+        # (καί: "and, even, also, namely", not "and, also" with it below): the card's own definition.
+        card = None
+        for k, (label, text) in enumerate(notes):
+            if content(main) and content(main) <= content(text):
+                card = notes.pop(k)[1]
+                break
         homer_card = None if function or lemma[:1].isupper() else main if is_epic else homer_note
-        if notes or front or homer_card or bible_note or lemma in ours:
+        if notes or front or homer_card or bible_note or lemma in ours or card:
             rows.append((lid, json.dumps(notes, ensure_ascii=False) if notes else None, front, homer_card,
-                         None if lemma[:1].isupper() else bible_note, h or 0, b or 0, int(lemma in ours), int(is_epic)))
+                         None if lemma[:1].isupper() else bible_note, h or 0, b or 0, int(lemma in ours), int(is_epic), card))
         if lemma in show:
-            print(f"{lemma}: {main}" + "".join(f"\n    {k}: {v}" for k, v in notes) + (f"\n    (front: {front})" if front else ""))
-    con.executemany("INSERT INTO lemma_notes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+            print(f"{lemma}: {main}" + (f"  (card: {card})" if card else "") + "".join(f"\n    {k}: {v}" for k, v in notes) + (f"\n    (front: {front})" if front else ""))
+    con.executemany("INSERT INTO lemma_notes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
     print(f"definitions: {changed} changed ({len(ours)} ours, {repaired} homonyms repaired, "
           f"{sum(r[8] for r in rows)} Homeric words Homer's); notes for {sum(1 for r in rows if r[1])} lemmas")
 

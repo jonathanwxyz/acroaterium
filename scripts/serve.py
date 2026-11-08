@@ -1018,6 +1018,12 @@ def compose_definition(token, period, classical, notes):
         if k != key and text and text != main and lemma_definitions.content(text) - seen:
             periods.append([PERIOD_LABELS[k], text])
             seen |= lemma_definitions.content(text)
+    # (a line that says all the main one says and more takes its place: κύριος in Plato, "lord, Lord,
+    # master, sir" for "a lord, master")
+    for k, (_, text) in enumerate(periods):
+        if lemma_definitions.content(main) and lemma_definitions.content(main) <= lemma_definitions.content(text):
+            main = periods.pop(k)[1]
+            break
     token["definition"] = main
     if periods:
         token["periods"] = periods
@@ -1594,8 +1600,8 @@ def anki_notes(con, selection, pictures, sentences, forms=True, skip=frozenset()
     if forms:
         add_forms(con, notes)
         add_homeric_label(con, notes)
+    add_synonyms(con, notes)  # (by the definition as the lemmas have it, before a period's takes its place)
     add_periods(con, notes)
-    add_synonyms(con, notes)
     return notes, media, total, len(left)
 
 
@@ -1645,7 +1651,12 @@ def add_periods(con, notes):
     lemma_definitions.py), as notes' Periods: "Homeric: to take, grasp; to kill, slay"."""
     found = lemma_rows(con, "SELECT l.lemma, n.notes FROM lemma_notes n JOIN lemmas l ON l.id = n.lemma "
                             "WHERE n.notes IS NOT NULL AND l.lemma IN ({})", [n["lemma"] for n in notes])
+    # (a period's line that says all the definition says and more: the card's definition instead)
+    cards = lemma_rows(con, "SELECT l.lemma, n.card FROM lemma_notes n JOIN lemmas l ON l.id = n.lemma "
+                            "WHERE n.card IS NOT NULL AND l.lemma IN ({})", [n["lemma"] for n in notes])
     for note in notes:
+        if note["lemma"] in cards:
+            note["fields"]["Definition"] = html.escape(cards[note["lemma"]])
         if note["lemma"] in found:
             note["fields"]["Periods"] = "<br>".join(f"<b>{html.escape(label)}:</b> {html.escape(text)}"
                                                     for label, text in json.loads(found[note["lemma"]]))

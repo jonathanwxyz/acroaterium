@@ -200,6 +200,10 @@
         words.forEach((w) => seen.add(w));
       }
     }
+    // (a line that says all the main one says and more takes its place)
+    const mainWords = contentWords(main);
+    const k = mainWords.size ? periods.findIndex(([, text]) => { const w = contentWords(text); return [...mainWords].every((x) => w.has(x)); }) : -1;
+    if (k >= 0) main = periods.splice(k, 1)[0][1];
     token.definition = main;
     if (periods.length) token.periods = periods;
     if (notes?.epic) token.register = "Homeric";  // (a Homeric word: Homer's sense its only one, said so)
