@@ -1,15 +1,16 @@
-"""A noun's or an adjective's forms as Homer has them, for the flashcards (serve.py's /api/anki):
-the genitive (πόλεμος, -οιο / -ου; νηῦς, νηός) and an adjective's feminine (ἀθάνατος, -η, -ον),
-where they differ from the Attic ones the card's front gives (scripts/headwords.py).
+"""A noun's or an adjective's forms as Homer has them, for the flashcards (serve.py's /api/anki),
+where they differ from the Attic ones the card's front gives (scripts/headwords.py) beyond his
+regular endings, which dictionaries leave to the Attic form (πολέμοιο, πέτρης, βασιλῆος, κρατερή):
+his own nominative (νηῦς, ξεῖνος), another stem (Ζεύς, Διός / Ζηνός; δόρυ, δουρός), another
+feminine (μέσση; ἀθάνατος, -η, -ον).
 
 From the Iliad's and the Odyssey's treebanks: the forms Homer's words have, the commonest (and
-the next, where Homer has it often too: πολέμοιο 99, πολέμου 25). A Homeric word (lemma_notes.epic,
-one LSJ cites from Homer and the epic poets only), which Homer may not have in the genitive at all,
-has Morpheus's epic forms instead (ἐγχείη, -ης; βρότος, -οιο / -ου); a Homeric adjective, the
-endings Cunliffe's headword gives it, where it gives them (ἐννεάπηχυς, -υ: no feminine of its own;
-κτίδεος, -η), Homer's usage, before Morpheus's rule.
+the next, where Homer has it often too). A Homeric word (lemma_notes.epic, one LSJ cites from Homer
+and the epic poets only) has them as its front, another at the head of its Homeric line. A Homeric
+adjective has the endings Cunliffe's headword gives it where they aren't the front's in number
+(ἐννεάπηχυς, -υ: no feminine of its own, where Morpheus made one).
 
-    python3 scripts/homeric_forms.py πόλεμος ναῦς ἀθάνατος ἐγχείη   (to try some)
+    python3 scripts/homeric_forms.py πόλεμος ναῦς ἀθάνατος ἐννεάπηχυς   (to try some)
 """
 import collections
 import re
@@ -60,7 +61,8 @@ def attested(con, stamp):
         form = plain(form)
         if not form or re.search("(θι|θεν|φιν?)$", bare(form)):  # (ἠῶθι, -φι: not the case a dictionary gives)
             continue
-        if postag[7] == "g" and (postag[0] == "n" or postag[6] in ("m", "-")):
+        if postag[7] == "g" and (postag[0] == "n" or postag[6] in ("m", "-")) \
+                and "\u0345" not in unicodedata.normalize("NFD", form):  # (no genitive has ι subscript: πνοιῇς, a dative)
             out[lemma]["gen"][form] += 1
         if postag[7] == "n" and (postag[0] == "n" or postag[6] in ("m", "-")):
             out[lemma]["nom"][form] += 1
@@ -160,25 +162,6 @@ def ends(nom, forms):
     return " / ".join(out) if all(out) and len(set(out)) == len(out) else " / ".join(forms)
 
 
-def morpheus_gen(forms):
-    """A Homeric word's genitive from Morpheus's forms: the epic one (ἐγχείης, βρότοιο), and the
-    plain one too where the epic one is only an alternative (-οιο / -ου, not -ης / -ας), and a
-    masculine in -ης's -εω and -αο."""
-    gens = [(f, t) for f, t in forms if "gen" in t and "sg" in t and not t & {"comp", "superl", "contr"}]
-    # (Homer's: δολομήτεω, δολομήταο; not the contracted δολομήτω, nor a Doric's only)
-    epic = sorted([(f, t) for f, t in gens if t & {"epic", "ionic", "homeric"}], key=lambda x: bool(x[1] & {"doric", "aeolic"}))
-    plain_ = next((f for f, t in gens if not t & headwords.DIALECTS), None)
-    if not epic:
-        return [plain_] if plain_ else []
-    first = epic[0]
-    out = [first[0]]
-    if bare(first[0]).endswith("εω"):  # (a masculine in -ης: -εω and -αο both, Πηληϊάδεω, Ἀτρεΐδαο)
-        out += [f for f, _ in epic if bare(f).endswith("αο")][:1]
-    elif plain_ and bare(first[0]).endswith("οιο"):  # (βρότοιο / βρότου: Homer has both)
-        out.append(plain_)
-    return out
-
-
 def morpheus_fem(forms):
     """A Homeric adjective's feminine from Morpheus's forms: the epic or Ionic one (ἀκαχμένη), else the plain."""
     fems = [(f, t) for f, t in forms if {"fem", "nom", "sg"} <= t and not t & {"comp", "superl"}]
@@ -189,6 +172,61 @@ def morpheus_fem(forms):
 def same(lemma, form, said):
     """Whether form is what an Attic front says (said: -ατος or δώματος, for δῶμα's δώματος)."""
     return said in (form, ending(lemma, form), homer_ending(lemma, form))
+
+
+# Homer's regular endings, as the Attic ones they stand for (bare letters): what a reader of Homer
+# knows from the Attic form, and the card needn't say (πολέμοιο for πολέμου; πέτρης for πέτρας).
+REGULAR = [("οιο", "ου"), ("αο", "ου"), ("εω", "ου"), ("ας", "ης"), ("ους", "#"), ("εος", "#"), ("ευς", "#"),
+           ("εως", "#"), ("ηος", "#"), ("ιος", "#"), ("αος", "#"), ("ως", "#")]  # (γήραος, γήρως)
+
+
+def regular(form):
+    """A genitive (bare) with Homer's regular endings as the Attic ones: πολεμοιο → πολεμου."""
+    for homer, attic in REGULAR:
+        if form.endswith(homer):
+            return form[:-len(homer)] + attic
+    if len(form) > 2 and form.endswith("ω") and form[-2] in headwords.VOWELS:  # (Αἰνείω, contracted)
+        return form[:-1] + "ου"
+    return form
+
+
+def whole(lemma, said):
+    """A form an Attic front gives as an ending (-ου, -ατος, -ά), whole, in bare letters: from the
+    lemma's last vowel, or the letter like the ending's first just before it (πόλεμ|ου, δῶμ|ατος,
+    βασιλ|έως, μακρ|ά)."""
+    if not said.startswith("-"):
+        return bare(said)
+    e, b = bare(said[1:]), bare(lemma)
+    v = max((i for i, c in enumerate(b) if c in headwords.VOWELS), default=len(b))
+    i = next((i for i in range(len(b) - 1, max(v - 1, 0) - 1, -1) if b[i] == e[:1]), v)
+    return b[:i] + e
+
+
+def same_nominative(lemma, nom):
+    """Homer's nominative the lemma's but for his η for α (πέτρη, βίη)."""
+    return bare(nom) == bare(lemma) or bare(nom) == re.sub("α(ς?)$", r"η\1", bare(lemma))
+
+
+def irregular_gens(lemma, nom, gens, attic):
+    """Whether Homer's genitives (or his nominative) aren't the Attic front's with his regular endings:
+    Ζηνός, ἀνέρος, δουρός, νηῦς (not πολέμοιο, πόλιος, βασιλῆος, πέτρη)."""
+    if not same_nominative(lemma, nom):
+        return True
+    if not attic or not attic[2]:
+        return True
+    a = regular(re.sub("ας$", "ης", whole(lemma, attic[2][0])))
+    said = regular(re.sub("ας$", "ης", bare(attic[2][0])))
+    # (each as the whole form, or as the front's ending: νέκυς, -ος, which is νέκυος)
+    return any(regular(bare(g)) != a and regular(bare(ending(lemma, g) or g)) != said for g in gens)
+
+
+def irregular_fem(lemma, fem, attic):
+    """Whether Homer's feminine isn't the Attic front's with his η for α: μέσση, λίγεια, ὠκέα (not
+    κρατερή); or the front has none (ἀθάνατος, -ον: Homer's ἀθανάτη)."""
+    if not attic or len(attic[2]) < 2:
+        return True
+    norm = lambda f: re.sub("η$", "α", f)
+    return norm(whole(lemma, fem)) != norm(whole(lemma, attic[2][0])) and norm(bare(fem)) != norm(bare(attic[2][0]))
 
 
 def attic_parts(front):
@@ -202,9 +240,11 @@ def attic_parts(front):
 
 
 def homeric(con, stamp, lemmas, epic=()):
-    """{lemma: (front, line)} for [(lemma, kind, attic front or None)] (kind noun or adj): a Homeric
-    word's (in epic) front in Homer's forms (ὁ βρότος, -οιο / -ου), another's forms as Homer has
-    them, for its Homeric line (πόλεμος, -οιο / -ου), where they differ from the Attic front's."""
+    """{lemma: (front, line)} for [(lemma, kind, attic front or None)] (kind noun or adj): Homer's
+    forms where they differ from the Attic front's beyond his regular endings (which the Attic form
+    implies, as dictionaries leave them: πολέμοιο, πέτρης, κρατερή): his own nominative (νηῦς,
+    ξεῖνος), stem (Ζηνός, δουρός), feminine (μέσση; ἀθάνατος, -η, -ον). A Homeric word's (in epic)
+    as its front, another's for its Homeric line (Ζεύς, Διός / Ζηνός)."""
     seen = attested(con, stamp)
     epic = set(epic)
     need = [l for l, kind, _ in lemmas if l in epic and kind in ("noun", "adj")]
@@ -223,15 +263,13 @@ def homeric(con, stamp, lemmas, epic=()):
                 if n >= 3 and bare(top) != bare(lemma) and noms[lemma] * 2 < n:
                     nom = capital(top, lemma)
             gens = [capital(f, lemma) for f in kept(has["gen"])] if has.get("gen") else []
-            if not gens and lemma in epic and not (attic and attic[0] in ("οἱ", "αἱ", "τὰ")):  # (not a plural's)
-                gens = morpheus_gen(made.get(lemma, []))
-            if not gens:
-                continue
+            if not gens or not irregular_gens(lemma, nom, gens, attic):
+                continue  # (Homer's regular endings, which the Attic front's imply: πολέμοιο for πολέμου)
             said = ends(nom, gens)
             if lemma in epic:
-                article = attic[0] if attic and attic[0] else ""
-                out[lemma] = (f"{article} {nom}, {said}".strip(), None)
-            elif nom != lemma or not attic or not attic[2] or not all(same(lemma, g, attic[2][0]) for g in gens):
+                if attic:
+                    out[lemma] = (f"{attic[0]} {nom}, {said}".strip(), None)
+            else:
                 out[lemma] = (None, f"{nom}, {said}")
         else:
             fem = None
@@ -249,22 +287,20 @@ def homeric(con, stamp, lemmas, epic=()):
                     a = attic[2][0]
                     fem = a[:-1] + {"α": "η", "ά": "ή", "ᾶ": "ῆ"}.get(a[-1], a[-1])
             shape = cunliffe_shape(lemma) if lemma in epic and not fem else None
-            if shape and shape[0] == "two":  # (Cunliffe: no feminine of its own)
-                said = f"{lemma}, {shape[1]}"
-                if said != front:
-                    out[lemma] = (said, None)
+            if shape and shape[0] == "two":  # (Cunliffe: no feminine of its own, where the front gives one)
+                if not attic or len(attic[2]) != 1:
+                    out[lemma] = (f"{lemma}, {shape[1]}", None)
                 continue
             if shape:
                 fem = shape[1]
                 if attic and len(attic[2]) == 2 and bare(fem).endswith(bare(attic[2][0])) or \
                         attic and len(attic[2]) == 2 and bare(attic[2][0]).endswith(bare(fem)):
                     shape, fem = None, attic[2][0]  # (the same: χαλκοβαρής, -βάρεια, as the front's -άρεια)
-            if not fem and lemma in epic:
-                fem = morpheus_fem(made.get(lemma, []))
-            if not fem:
+            if not fem:  # (Morpheus's, Homer's regular endings: the Attic front stands, as dictionaries give it)
                 continue
             fem_end = fem if fem.startswith("-") else (ending(lemma, fem) or fem)
-            if fem == lemma or bare(fem)[-2:] == bare(lemma)[-2:] and not fem.startswith("-"):  # (two endings: the masculine's)
+            if fem == lemma or not fem.startswith("-") and (bare(fem)[-2:] == bare(lemma)[-2:] or re.search("(ος|ως)$", bare(fem))):
+                # (two endings: the masculine's, or its contraction, ἀγήρως)
                 continue
             neut = shape[2] if shape and shape[2] else attic[2][-1] if attic and len(attic[2]) >= 1 else None
             if not neut:
@@ -272,10 +308,11 @@ def homeric(con, stamp, lemmas, epic=()):
                 neut = made_n and (ending(lemma, made_n[0]) or made_n[0])
             parts = [lemma, fem_end] + ([neut] if neut else [])
             said = ", ".join(parts)
-            if lemma in epic:
-                out[lemma] = (said, None)
-            elif not attic or len(attic[2]) < 2 or not (same(lemma, fem, attic[2][0]) or bare(attic[2][0]) == bare(fem_end)):
-                out[lemma] = (None, said)
+            if not attic and lemma in epic and not shape:
+                continue
+            if not irregular_fem(lemma, fem_end, attic):
+                continue
+            out[lemma] = (said, None) if lemma in epic else (None, said)
     return out
 
 

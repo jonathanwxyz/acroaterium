@@ -48,6 +48,7 @@ IRREGULAR_NOUNS = {
     "ὄρνις": ("ὁ/ἡ", "ὄρνιθος"), "νηῦς": ("ἡ", "νηός"), "γῆ": ("ἡ", "γῆς"), "ἀμνός": ("ὁ", "ἀμνοῦ"), "Ἰησοῦς": ("ὁ", "Ἰησοῦ"), "κλέος": ("τὸ", "κλέους"), "Ζεύς": ("ὁ", "Διός"),
     # (and those whose stems Morpheus has unaccented, its generator accenting them wrong: χάλκου)
     "χαλκός": ("ὁ", "χαλκοῦ"), "φειδώ": ("ἡ", "φειδοῦς"), "ἀηδών": ("ἡ", "ἀηδόνος"), "Ἀγαυή": ("ἡ", "Ἀγαυῆς"),
+    "δαίς": ("ἡ", "δαιτός"), "αἰθήρ": ("ὁ", "αἰθέρος"), "ἰαχή": ("ἡ", "ἰαχῆς"),
 }
 # The commonest irregular adjectives, whole: masculine, feminine, neuter.
 IRREGULAR_ADJECTIVES = {

@@ -925,7 +925,7 @@ function buildAnkiDialog() {
       }
       if (p.lemmas > p.sample.length) ol.append(el("li", "plan-gap", "…"));
       // (Homer's nouns and adjectives: their genitives and endings are Attic's, Morpheus's, for now)
-      if (p.poetry) preview.append(el("p", "plan-note anki-warning", tr("Endings on the front are Attic (a Homeric word's are Homer's). Where Homer's differ, they lead the Homeric line on the back: ἡ μῆνις, -εως; Homeric: μῆνις, -ιος.")));
+      if (p.poetry) preview.append(el("p", "plan-note anki-warning", tr("⚠ Genitives and endings are given in Attic, not as Homer has them: ἡ μῆνις, -εως, where Homer has μήνιος.")));
       preview.append(ol, el("p", "plan-note", tr("Lemmas already in your Acroaterium deck are left as they are: Anki adds only the new ones.")));
       make.disabled = !p.lemmas;
     } catch (e) {
