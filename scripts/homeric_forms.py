@@ -5,7 +5,9 @@ where they differ from the Attic ones the card's front gives (scripts/headwords.
 From the Iliad's and the Odyssey's treebanks: the forms Homer's words have, the commonest (and
 the next, where Homer has it often too: πολέμοιο 99, πολέμου 25). A Homeric word (lemma_notes.epic,
 one LSJ cites from Homer and the epic poets only), which Homer may not have in the genitive at all,
-has Morpheus's epic forms instead (ἐγχείη, -ης; βρότος, -οιο / -ου).
+has Morpheus's epic forms instead (ἐγχείη, -ης; βρότος, -οιο / -ου); a Homeric adjective, the
+endings Cunliffe's headword gives it, where it gives them (ἐννεάπηχυς, -υ: no feminine of its own;
+κτίδεος, -η), Homer's usage, before Morpheus's rule.
 
     python3 scripts/homeric_forms.py πόλεμος ναῦς ἀθάνατος ἐγχείη   (to try some)
 """
@@ -14,10 +16,15 @@ import re
 import unicodedata
 
 import headwords
+import lemma_definitions
 from headwords import bare, ending
 
 HOMER = ("iliad", "odyssey")
 _attested = {}  # library's mtime -> {lemma: {slot: Counter of forms}}
+_cunliffe = []  # [{headword: its entries}], once read
+ARTICLE = {"ὁ", "ἡ", "τό", "ὁ,", "ἡ,"}
+FEMININE = re.compile(r"(η|α|σσα|ουσα|εια|αινα)$")  # (a feminine's ending, in bare letters)
+NEUTER = re.compile(r"(ον|ο|υ|ες|εν|αν)$")
 
 
 def plain(form):
@@ -64,6 +71,47 @@ def attested(con, stamp):
     _attested.clear()
     _attested[stamp] = out
     return out
+
+
+def cunliffe_head(lemma):
+    """Cunliffe's headword line for lemma (ῥωγαλέος, η, -ον), to its etymology or first stop; None
+    where it hasn't the word, or isn't at hand (data/raw/definitions/cunliffe.txt, which
+    scripts/lemma_definitions.py fetches: never fetched here)."""
+    if not _cunliffe:
+        path = lemma_definitions.RAW / "cunliffe.txt"
+        _cunliffe.append(lemma_definitions.cunliffe() if path.exists() else {})
+    entries = lemma_definitions.lookup(_cunliffe[0], lemma)
+    if not entries:
+        return None
+    head = re.split(r"\s\[|\.\s", entries[0], maxsplit=1)[0]
+    if (fem := re.search(r"Fem\.\s*(-?[^\s,.]+)", entries[0][:200])) and "Fem." not in head:
+        head += f". Fem. {fem[1]}"
+    return lemma_definitions.plain(head)
+
+
+def cunliffe_shape(lemma):
+    """An adjective's endings as Cunliffe's headword gives them: ("two", neuter) where it gives no
+    feminine of its own (ἐννεάπηχυς, υ), ("three", feminine, neuter or None) where it does
+    (ῥωγαλέος, η, -ον; κτίδεος, η; παιπαλόεις, εντος. Fem. -εσσα); None where it gives none."""
+    head = cunliffe_head(lemma)
+    if not head:
+        return None
+    dash = lambda t: t if t.startswith("-") or len(bare(t)) > 4 else "-" + t
+    if fem := re.search(r"Fem\.\s*(-?[^\s,.]+)", head):
+        return ("three", dash(fem[1]), None)
+    if " and " in head:  # (πολύφορβος, ον, and -η, -ον: both; the one with a feminine)
+        head = head.split(",")[0] + ", " + head.split(" and ", 1)[1]
+    tokens = [t.strip(" ,.") for t in head.split(",")[1:]]
+    tokens = [t for t in tokens if t and t not in ARTICLE and not re.search("(ος|ου|ης)$", bare(t))]
+    if not tokens:
+        return None
+    if len(tokens) >= 2:
+        return ("three", dash(tokens[0]), dash(tokens[1]))
+    if FEMININE.search(bare(tokens[0])):
+        return ("three", dash(tokens[0]), None)
+    if NEUTER.search(bare(tokens[0])):
+        return ("two", dash(tokens[0]))
+    return None
 
 
 def kept(counts):
@@ -200,6 +248,17 @@ def homeric(con, stamp, lemmas, epic=()):
                         and not any(re.search("αν?$", bare(f)) for f in has["femsg"]):
                     a = attic[2][0]
                     fem = a[:-1] + {"α": "η", "ά": "ή", "ᾶ": "ῆ"}.get(a[-1], a[-1])
+            shape = cunliffe_shape(lemma) if lemma in epic and not fem else None
+            if shape and shape[0] == "two":  # (Cunliffe: no feminine of its own)
+                said = f"{lemma}, {shape[1]}"
+                if said != front:
+                    out[lemma] = (said, None)
+                continue
+            if shape:
+                fem = shape[1]
+                if attic and len(attic[2]) == 2 and bare(fem).endswith(bare(attic[2][0])) or \
+                        attic and len(attic[2]) == 2 and bare(attic[2][0]).endswith(bare(fem)):
+                    shape, fem = None, attic[2][0]  # (the same: χαλκοβαρής, -βάρεια, as the front's -άρεια)
             if not fem and lemma in epic:
                 fem = morpheus_fem(made.get(lemma, []))
             if not fem:
@@ -207,7 +266,7 @@ def homeric(con, stamp, lemmas, epic=()):
             fem_end = fem if fem.startswith("-") else (ending(lemma, fem) or fem)
             if fem == lemma or bare(fem)[-2:] == bare(lemma)[-2:] and not fem.startswith("-"):  # (two endings: the masculine's)
                 continue
-            neut = attic[2][-1] if attic and attic[2] else None
+            neut = shape[2] if shape and shape[2] else attic[2][-1] if attic and len(attic[2]) >= 1 else None
             if not neut:
                 made_n = [f for f, t in made.get(lemma, []) if {"neut", "nom", "sg"} <= t and not t & {"comp", "superl"}]
                 neut = made_n and (ending(lemma, made_n[0]) or made_n[0])
