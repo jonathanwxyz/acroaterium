@@ -46,6 +46,8 @@ IRREGULAR_NOUNS = {
     "πρέσβυς": ("ὁ", "πρέσβεως"), "κρέας": ("τὸ", "κρέως"), "γέρας": ("τὸ", "γέρως"), "τέρας": ("τὸ", "τέρατος"),
     "κέρας": ("τὸ", "κέρως"), "αἰδώς": ("ἡ", "αἰδοῦς"), "ἥρως": ("ὁ", "ἥρωος"), "ἀστήρ": ("ὁ", "ἀστέρος"),
     "ὄρνις": ("ὁ/ἡ", "ὄρνιθος"), "νηῦς": ("ἡ", "νηός"), "γῆ": ("ἡ", "γῆς"), "ἀμνός": ("ὁ", "ἀμνοῦ"), "Ἰησοῦς": ("ὁ", "Ἰησοῦ"), "κλέος": ("τὸ", "κλέους"), "Ζεύς": ("ὁ", "Διός"),
+    # (and those whose stems Morpheus has unaccented, its generator accenting them wrong: χάλκου)
+    "χαλκός": ("ὁ", "χαλκοῦ"), "φειδώ": ("ἡ", "φειδοῦς"), "ἀηδών": ("ἡ", "ἀηδόνος"), "Ἀγαυή": ("ἡ", "Ἀγαυῆς"),
 }
 # The commonest irregular adjectives, whole: masculine, feminine, neuter.
 IRREGULAR_ADJECTIVES = {
@@ -98,11 +100,12 @@ def form_of(beta):
     return unicodedata.normalize("NFC", beta_to_unicode(re.sub(r"[-_^!]", "", beta)))
 
 
-def generate(lemmas):
+def generate(lemmas, dialects=False):
     """{lemma: [(form, tags)]}: each lemma's forms, Unicode, NFC: an irregular word's as its
     entry lists them (:wd:), the others as Morpheus's generator makes them from its stems
-    (the Attic ones, where a dialect's are given too: θεός's, not Laconian σιός's). Those
-    Morpheus hasn't are left out."""
+    (the Attic ones, where a dialect's are given too: θεός's, not Laconian σιός's; with
+    dialects, every one, each tagged with its dialect: λόγοιο, epic). Those Morpheus hasn't
+    are left out."""
     stems = entries()
     asked, out = {}, {}
     for lemma in lemmas:
@@ -116,7 +119,7 @@ def generate(lemmas):
         lines = [l for l in stems[beta] if l.startswith((":no:", ":aj:"))]
         plain = [l for l in lines if not dialectal(set(l.split()))]
         if plain or lines:
-            asked[beta] = (lemma, plain or lines)
+            asked[beta] = (lemma, lines if dialects else plain or lines)
     todo = list(asked)
     while todo:  # (the generator dies on the odd entry: on from the one after it)
         text = "".join(f":le:{beta}\n" + "\n".join(asked[beta][1]) + "\n\n" for beta in todo)

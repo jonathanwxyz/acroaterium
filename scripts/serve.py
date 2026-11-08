@@ -89,6 +89,7 @@ from pathlib import Path
 from import_treebank import POSTAG
 import anki
 import headwords
+import homeric_forms
 import lemma_definitions
 import morpheus
 
@@ -1629,6 +1630,7 @@ def anki_notes(con, selection, pictures, sentences, forms=True, skip=frozenset()
                     note["fields"]["Picture"] = f'<img src="{html.escape(name)}">'
     if forms:
         add_forms(con, notes)
+        add_homeric_forms(con, notes)
         add_homeric_label(con, notes)
     add_synonyms(con, notes)  # (by the definition as the lemmas have it, before a period's takes its place)
     add_periods(con, notes)
@@ -1667,6 +1669,27 @@ HOMERIC_LABEL = ('<div style="font: 600 0.32em/1.9 system-ui, sans-serif; letter
                  'text-transform: uppercase; color: #9a7b4f;">Homeric</div>')
 
 
+def add_homeric_forms(con, notes):
+    """A noun's or an adjective's forms as Homer has them (scripts/homeric_forms.py): a Homeric
+    word's as its Form (ὁ βρότος, -οιο / -ου), another's at the head of its Homeric line, where
+    they differ from the Attic ones its Form gives (πόλεμος, -οιο / -ου)."""
+    kinds = lemma_kinds(con)
+    epic = lemma_rows(con, "SELECT l.lemma, n.epic FROM lemma_notes n JOIN lemmas l ON l.id = n.lemma "
+                           "WHERE n.epic = 1 AND l.lemma IN ({})", [n["lemma"] for n in notes])
+    try:
+        found = homeric_forms.homeric(con, LIBRARY.stat().st_mtime, [
+            (n["lemma"], kinds.get(n["lemma"], ("other", {}))[0], html.unescape(n["fields"].get("Form", "")) or None)
+            for n in notes], epic)
+    except sqlite3.OperationalError:  # (a library without the treebanks or the lemma index)
+        return
+    for note in notes:
+        front, line = found.get(note["lemma"], (None, None))
+        if front:
+            note["fields"]["Form"] = html.escape(front)
+        if line:
+            note["homeric_forms"] = line
+
+
 def add_homeric_label(con, notes):
     """"Homeric" under a Homeric word's Greek (one LSJ cites from Homer and the epic poets only)."""
     epic = lemma_rows(con, "SELECT l.lemma, n.epic FROM lemma_notes n JOIN lemmas l ON l.id = n.lemma "
@@ -1687,9 +1710,16 @@ def add_periods(con, notes):
     for note in notes:
         if note["lemma"] in cards:
             note["fields"]["Definition"] = html.escape(cards[note["lemma"]])
-        if note["lemma"] in found:
+        lines = json.loads(found[note["lemma"]]) if note["lemma"] in found else []
+        if forms := note.get("homeric_forms"):  # (Homer's forms at the head of his line, or a line of their own)
+            homeric = next((x for x in lines if x[0] == "Homeric"), None)
+            if homeric:
+                homeric[1] = f"{forms} — {homeric[1]}"
+            else:
+                lines.append(["Homeric", forms])
+        if lines:
             note["fields"]["Periods"] = "<br>".join(f"<b>{html.escape(label)}:</b> {html.escape(text)}"
-                                                    for label, text in json.loads(found[note["lemma"]]))
+                                                    for label, text in lines)
 
 
 _synonyms = {}  # LIBRARY's mtime -> {definition as compared: [lemma, ...], commonest first}
@@ -1854,6 +1884,7 @@ def make_preview(query):
         notes, media, total, skipped = anki_notes(con, selection, pictures, False, forms=False,
                                                   skip=commonest(con, ask["skip"]))
         add_forms(con, notes[:6])  # (the sample's only: a whole category's take a while the first time)
+        add_homeric_forms(con, notes[:6])
     finally:
         con.close()
     return {"title": selection[0], "parts": parts, "lemmas": len(notes), "words": total, "skipped": skipped,
