@@ -1073,7 +1073,7 @@ body.hide-paraphrase .verse { margin-bottom: 0.35rem; }
 @media (hover: hover) { #card-close:hover { color: var(--text); } }
 #card h2 { margin: 0 1.5rem 0.2rem 0; font-weight: 400; font-size: 1.6em; }
 #card .gloss-line { color: var(--muted); margin: 0 0 0.8rem; }
-#card .card-pic { margin: 0.2rem 0 0.8rem; }
+#card .card-pic { margin: 0.6rem 0 0.4rem; }
 #card .card-pic img { display: block; max-width: 100%; max-height: calc(12rem * var(--picture-scale, 1)); border-radius: 6px; background: #f6f3ec; }
 #card .card-pic figcaption { color: var(--muted); font-size: 0.65em; margin-top: 0.2rem; }
 #card .token + .token { border-top: 1px solid var(--rule); margin-top: 0.8rem; padding-top: 0.8rem; }

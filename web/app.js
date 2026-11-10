@@ -1262,14 +1262,14 @@ list.addEventListener("pointerout", (e) => {
 list.addEventListener("pointerdown", hidePicture);
 window.addEventListener("scroll", hidePicture, { passive: true });
 
-// In the word's card (on a touch screen, or as the Aa menu says): its best picture; a tap shows
-// the next, if there are more.
+// In the word's card (on a touch screen, or as the Aa menu says): its best picture, at the end
+// (before the last reading's automatic-parsing warning and its alternatives); a tap shows the
+// next, if there are more.
 async function cardPicture(w) {
   cardBody.querySelector(".card-pic")?.remove();
   if (!picturesInCard()) return;
   const pics = await picturesOf(w).catch(() => null);
-  const h2 = cardBody.querySelector("h2");
-  if (!pics || selected !== w || !h2 || cardBody.querySelector(".card-skel, .card-pic")) return;
+  if (!pics || selected !== w || !cardBody.querySelector("h2") || cardBody.querySelector(".card-skel, .card-pic")) return;
   const fig = el("figure", "card-pic"), img = el("img"), cap = el("figcaption");
   let at = 0;
   const show = () => {
@@ -1285,7 +1285,9 @@ async function cardPicture(w) {
   img.addEventListener("load", () => placeCard());
   show();
   fig.append(img, cap);
-  h2.after(fig);
+  const warning = cardBody.querySelector(".token:last-child > .note.auto");
+  if (warning) warning.before(fig);
+  else cardBody.append(fig);
 }
 
 // Where they're shown: the Aa menu's Pictures, remembered per browser; their size is its
@@ -1425,7 +1427,7 @@ function renderCard(data) {
       box.append(r);
     }
     if (MATCH_NOTES[t.match]) box.append(el("div", "note", tr(MATCH_NOTES[t.match])));
-    if (t.note) box.append(el("div", "note", trNote(t.note)));  // (automatic parsing: says so)
+    if (t.note) box.append(el("div", "note auto", trNote(t.note)));  // (automatic parsing: says so)
     // Automatic parsing in doubt: the other readings it thinks possible, each in full.
     if (t.also?.length) {
       const also = el("div", "also");
