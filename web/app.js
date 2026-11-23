@@ -94,6 +94,7 @@ let verses = [];   // {line, text, start, speechEnd, end, el}, timed ones in rec
 let refs = [];     // {ref, div, el, entry}: every line or section start, for the position box (div: its chapter)
 let prologue = null;  // {el, entry}: prose's start before its first section, typed as 0
 let current = -1;  // index into verses
+let playCounted = false;  // this book's recording counted as played (usage, shared.js): once, however often paused
 let lastUserScroll = 0;
 let passages = [];    // {from, to, el}: Murray's English passages
 let activePassage = null;
@@ -116,6 +117,8 @@ function render(data) {
   list.classList.remove("loading");
   if (V_TO && !(SELECTION && data.cite === "verse")) applyRange(data);  // (a book's lines: 3.20-3.40)
   rememberVisit(TEXT, BOOK, data.collection);
+  window.usage?.track("open", { text: TEXT, book: BOOK });
+  playCounted = false;
   // (What the next visit shows before the book comes: read.html and the loading below.)
   try {
     const old = JSON.parse(localStorage.getItem(`meta:${TEXT}`)) ?? {};
@@ -936,6 +939,7 @@ function tick() {
 }
 audio.addEventListener("play", () => {
   if (heldBy) { released = heldBy; clearHold(); }  // resumed by hand while still hovering
+  if (!playCounted) { playCounted = true; window.usage?.track("play", { text: TEXT, book: BOOK }); }
   update();
   requestAnimationFrame(tick);
 });

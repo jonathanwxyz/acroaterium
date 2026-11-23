@@ -67,6 +67,9 @@ Routes:
                        only that)
   /api/compact/sizes   JSON: {file: bytes} of the recordings there are, as the compact
                        library can't know them (the books' audio and downloads depend on them)
+  POST /api/usage      the app's usage (web/shared.js): {visitor, events: [{id, t, e, page,
+                       app, lang, online, text, book}]}, kept in data/usage.sqlite (no IP);
+                       Grafana shows it (scripts/usage_titles.py)
 """
 import argparse
 import datetime
@@ -100,6 +103,7 @@ LIBRARY = ROOT / "data" / "library.sqlite"
 LIBRARY_AUDIO = ROOT / "data" / "library_audio.sqlite"
 LIBRARY_COMPACT = ROOT / "data" / "library_compact.sqlite"
 LEMMA_IMAGES = ROOT / "data" / "lemma_images"
+USAGE = ROOT / "data" / "usage.sqlite"
 SHOW_HIDDEN = False  # --show-hidden: list the hidden texts too, marked (locally, never on the live site)
 
 mimetypes.add_type("audio/ogg", ".opus")
@@ -1920,6 +1924,60 @@ def make_package(query):
     return f"Acroaterium - {selection[0]}.apkg", anki.package(notes, media, ask["start"])
 
 
+# Usage (POST /api/usage, from web/shared.js): what's viewed, opened, played and downloaded,
+# by a browser's random id, when it happened (t, the device's clock) and when it arrived.
+# Each event's own id makes one sent twice (a reply lost on the way) count once.
+USAGE_LOCK = threading.Lock()
+USAGE_EVENTS = {"view", "open", "play", "download"}
+USAGE_ID = re.compile(r"[0-9a-f]{8,32}")
+USAGE_WORD = re.compile(r"[\w-]{1,64}")
+
+
+def usage_db():
+    con = sqlite3.connect(USAGE, timeout=10)
+    con.execute("""CREATE TABLE IF NOT EXISTS events (
+        id TEXT PRIMARY KEY, visitor TEXT NOT NULL, event TEXT NOT NULL,
+        at INTEGER NOT NULL,        -- when it happened (ms, the device's clock, kept within reason)
+        received INTEGER NOT NULL,  -- when the server had it (ms)
+        page TEXT, text TEXT, book INTEGER, app INTEGER, lang TEXT, online INTEGER)""")
+    con.execute("CREATE INDEX IF NOT EXISTS events_at ON events (at)")
+    return con
+
+
+def record_usage(body):
+    """The events of a POST /api/usage that make sense, kept; how many were new (None: not JSON as asked)."""
+    try:
+        data = json.loads(body)
+        visitor, events = data["visitor"], data["events"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(visitor, str) or not USAGE_ID.fullmatch(visitor) or not isinstance(events, list):
+        return None
+    now = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
+    word = lambda v: v if isinstance(v, str) and USAGE_WORD.fullmatch(v) else None
+    rows = []
+    for e in events[:200]:
+        if not isinstance(e, dict) or e.get("e") not in USAGE_EVENTS or not isinstance(e.get("id"), str) \
+                or not USAGE_ID.fullmatch(e["id"]):
+            continue
+        at = e.get("t")
+        # (A device's clock can be wrong: a time in the future, or long before, is taken as now.)
+        at = int(at) if isinstance(at, (int, float)) and now - 90 * 86400_000 < at <= now + 60_000 else now
+        book = e.get("book")
+        rows.append((e["id"], visitor, e["e"], min(at, now), now, word(e.get("page")), word(e.get("text")),
+                     book if isinstance(book, int) and 0 <= book < 100000 else None,
+                     1 if e.get("app") else 0, word(e.get("lang")), 0 if e.get("online") is False else 1))
+    with USAGE_LOCK:
+        con = usage_db()
+        try:
+            with con:
+                before = con.total_changes
+                con.executemany("INSERT OR IGNORE INTO events VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+                return con.total_changes - before
+        finally:
+            con.close()
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB), **kwargs)
@@ -1996,6 +2054,21 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_audio(path)
         else:
             super().do_GET()
+
+    def do_POST(self):
+        if self.path != "/api/usage":
+            return self.send_error(HTTPStatus.NOT_FOUND)
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            return self.send_error(HTTPStatus.LENGTH_REQUIRED)
+        if not 0 < length <= 65536:
+            return self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        kept = record_usage(self.rfile.read(length))
+        if kept is None:
+            return self.send_error(HTTPStatus.BAD_REQUEST)
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.end_headers()
 
     def send_json(self, data, compress=False):
         if data is None:

@@ -366,7 +366,14 @@ const downloadButtons = [];  // {b, items, name, compact}
     if (ok) try { localStorage.setItem("downloadWarned", "1"); } catch {}
     return ok;
   };
-  window.startDownload = (keys) => { if (homeScreenFirst()) offline.download(keys); };
+  window.startDownload = (keys) => {
+    if (!homeScreenFirst()) return;
+    for (const key of keys) {
+      const [text, book] = key.split("/");
+      window.usage?.track("download", { text, book: +book });
+    }
+    offline.download(keys);
+  };
 
   // What can be done with some downloads, as the menu offers it: [label, action, danger].
   window.downloadActions = (items, name) => {

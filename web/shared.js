@@ -241,3 +241,64 @@ function toast(text, { long = false } = {}) {
     toastTimer = setTimeout(() => { box.hidden = true; }, 250);
   }, long ? 5000 : 1800);
 }
+
+// Usage, counted by the server (POST /api/usage, scripts/serve.py; read in
+// Grafana, https://acroaterium.com/stats/): pages viewed, books opened, recordings played and downloads
+// started, each with the time it happened and a random id this browser makes for itself,
+// so visitors can be counted (no name or address; the server keeps no IP). Events wait in
+// localStorage while offline, or while the books come from the device, and go when the
+// server can be reached; each has an id of its own, so one sent twice is counted once.
+// (Called as window.usage?.track: a page whose shared.js is an older copy goes on without it.)
+window.usage = (() => {
+  const QUEUE = "usage:queue", ID = "usage:id", MAX = 500, BATCH = 100;
+  const rand = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
+  let memory = [];  // (where storage is refused: this page's only)
+  const load = () => { try { return JSON.parse(localStorage.getItem(QUEUE)) ?? []; } catch { return memory; } };
+  const save = (q) => { memory = q; try { localStorage.setItem(QUEUE, JSON.stringify(q)); } catch {} };
+  let visitor = null;
+  try {
+    visitor = localStorage.getItem(ID);
+    if (!visitor) localStorage.setItem(ID, visitor = rand());
+  } catch {}
+  visitor ??= rand();
+  const page = location.pathname.replace(/^\/|\.html$/g, "") || "index";
+
+  let sending = false, timer = 0;
+  async function flush() {
+    clearTimeout(timer);
+    if (sending || navigator.onLine === false) return;
+    const batch = load().slice(0, BATCH);
+    if (!batch.length) return;
+    sending = true;
+    try {
+      const r = await fetch("/api/usage", {
+        method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visitor, events: batch }),
+      });
+      if (!r.ok) return;
+      const sent = new Set(batch.map((e) => e.id));
+      const rest = load().filter((e) => !sent.has(e.id));  // (another page may have added some)
+      save(rest);
+      if (rest.length) timer = setTimeout(flush, 1000);
+    } catch {
+      // (Offline, or the server out of reach: kept for later.)
+    } finally {
+      sending = false;
+    }
+  }
+
+  // event: "view" | "open" | "play" | "download"; data: {text, book} where it's about one.
+  function track(event, data = {}) {
+    const q = load();
+    q.push({ id: rand(), t: Date.now(), e: event, page, app: window.nativeApp ? 1 : 0,
+             lang: typeof UI_LANG === "string" ? UI_LANG : null, online: navigator.onLine !== false, ...data });
+    save(q.slice(-MAX));  // (the oldest dropped, past so many unsent)
+    clearTimeout(timer);
+    timer = setTimeout(flush, 2000);  // (a page's first few together)
+  }
+
+  addEventListener("online", flush);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+  track("view");
+  return { track, flush };
+})();
