@@ -54,6 +54,10 @@ Sources (downloads are cached in data/raw/library/):
               (translation_passages), an edition's column numbers as marks (ref_marks);
               see parallel(). Its "translations": [{"type": "parallel", "lang": "en",
               "credit": ...}]
+  thayer      a Greek text on Bill Thayer's LacusCurtius ("page": its path after H/, the
+              Greek, or E/, the English beside it), cited by its sections, the English a
+              passage to a section; see thayer(). Its "translations": [{"type": "thayer",
+              "lang": "en", "credit": ...}]
 A text's "fixes" correct slips in its source: [{"ref": "17a", "find": "<as printed>",
 "replace": "<as it should read>"}] (the text at that section; it must match once).
 A text's "heading" is a title read before the text ("Πλάτωνος Ἀπολογία Σωκράτους"), or a list of lines
@@ -71,6 +75,8 @@ plus where to find them, and "notes_credit" (a line under the panel):
               TEI P4, Greek in Beta Code), e.g. "Classics/Homer/opensource/<file>.xml";
               notes keyed by line (<div2 type="commline">, in <div1 type="book">) or by
               Stephanus section (<div1 type="section" n="172A">); a paragraph per note
+  thayer      "page": a LacusCurtius page (H/... or E/...), its editor's notes, each on the
+              section it's referred to from
   scholia     "work": First1KGreek scholia (tlg5026.tlgNNN) set out a book at a time,
               each scholion a paragraph opening with its line number ("5. lemma] …") or
               continuing the line before; the books' hypotheses go with line 1
@@ -1846,6 +1852,104 @@ def parallel(src, verbose, title, passages_out, marks_out):
     return "prose", "section", [(1, title)], segments
 
 
+# ---------------------------------------------------------------- LacusCurtius (Bill Thayer's site)
+
+THAYER = "https://penelope.uchicago.edu/Thayer/"
+THAYER_MARK = re.compile(r"\x01(\d+)\x01|\x02(\d+)\x02|\x03")  # a note's reference, a section, a paragraph
+
+
+def thayer_page(page):
+    """A LacusCurtius page (a path under its root: "H/Roman/Texts/<author>/<work>*.html"), cached."""
+    return get(THAYER + urllib.parse.quote(page), f"thayer_{safe(page)}")
+
+
+def _thayer_plain(markup):
+    text = html.unescape(re.sub(r"<[^>]+>", " ", markup)).replace("\u2060", "")  # (a word joiner)
+    return unicodedata.normalize("NFC", re.sub(r"\s+", " ", text))
+
+
+def thayer_text(page):
+    """A LacusCurtius text: ([(section, text, para)], {note: section}, {note: parts}). The text
+    runs from the page's title (<H2 CLASS="start2">) to the editor's notes, broken where a
+    section (<A CLASS="sec">) or a paragraph begins. A verse quotation (centred, its lines a
+    <P> each) runs on in the prose, as does the paragraph after it ("halfstart"), which
+    carries the sentence on. The Loeb's page numbers and the note references are taken out,
+    each note kept with the section it's referred to from; parts: its styled runs (i, t)."""
+    raw = thayer_page(page)
+    start = raw.index("</H2>", raw.index('<H2 CLASS="start2">')) + len("</H2>")
+    end = raw.index('<HR CLASS="endnotes">')
+    body = re.sub(r'<SPAN CLASS="pagenum">.*?</SPAN>', "", raw[start:end], flags=re.S)
+    body = re.sub(r'<A CLASS="ref" ID="ref(\d+)".*?</A>', "\x01\\1\x01", body, flags=re.S)
+    body = re.sub(r'<A CLASS="sec" NAME="(\d+)">.*?</A>', "\x02\\1\x02", body, flags=re.S)
+    body = re.sub(r'<DIV ALIGN="center"><TABLE.*?</TABLE></DIV>',
+                  lambda m: re.sub(r"<P\b[^>]*>", " ", m[0]), body, flags=re.S)
+    body = re.sub(r'<P CLASS="halfstart[^>]*>', " ", body)
+    body = _thayer_plain(re.sub(r"<P\b[^>]*>", "\x03", body))
+    out, refs, sec, para, buf = [], {}, "1", 1, []
+
+    def flush():
+        nonlocal para, buf
+        text = re.sub(r"\s+([,.;·:])", r"\1", re.sub(r"\s+", " ", "".join(buf)).strip())  # (where a reference stood)
+        buf = []
+        if text:
+            out.append((sec, text, para))
+            para = 0
+    at = 0
+    for m in THAYER_MARK.finditer(body):
+        buf.append(body[at:m.start()])
+        at = m.end()
+        if m[1]:
+            refs[int(m[1])] = sec
+            continue
+        flush()
+        if m[2]:
+            sec = m[2]
+        else:
+            para = 1
+    buf.append(body[at:])
+    flush()
+
+    notes = {}
+    for m in re.finditer(r'<A CLASS="note" ID="note(\d+)".*?</A>(.*?)(?=<P CLASS="ivy">|<HR|<DIV|<TABLE|<A CLASS="note")',
+                         raw[end:], flags=re.S):
+        parts = [["i" if italic else "t", re.sub(r"\s+([,.;:])", r"\1", _thayer_plain(italic or plain))]
+                 for italic, plain in re.findall(r"<I>(.*?)</I>|((?:(?!<I>).)+)", m[2], flags=re.S)]
+        parts = [p for p in parts if p[1].strip()]
+        if parts:
+            parts[0][1] = parts[0][1].lstrip()
+            parts[-1][1] = parts[-1][1].rstrip()
+            notes[int(m[1])] = parts
+    return out, refs, notes
+
+
+def thayer(src, verbose, title, passages_out):
+    """A Greek text on LacusCurtius ("page": its path after H/ or E/: H/ the Greek, E/ the
+    English beside it), cited by section: a segment per paragraph within a section, the
+    English of each section a passage (passages_out: (div, seq_from, seq_to, "en", text))."""
+    greek, _, _ = thayer_text("H/" + src["page"])
+    english, _, _ = thayer_text("E/" + src["page"])
+    segments = [(1, k + 1, sec, text, None, para) for k, (sec, text, para) in enumerate(greek)]
+    by_sec = {}
+    for sec, text, _ in english:
+        by_sec.setdefault(sec, []).append(text)
+    sections = list(dict.fromkeys(s[2] for s in segments))
+    if sections != list(by_sec):
+        sys.exit(f"{src['page']}: the Greek's sections ({sections}) aren't the English's ({list(by_sec)})")
+    for sec in sections:
+        seqs = [s[1] for s in segments if s[2] == sec]
+        passages_out.append((1, seqs[0], seqs[-1], "en", " ".join(by_sec[sec])))
+    if verbose:
+        print(f"  {len(segments)} segments, sections {sections[0]}–{sections[-1]}, {len(passages_out)} English passages")
+    return "prose", "section", [(1, title)], segments
+
+
+def thayer_notes(spec):
+    """(div, ref_from, ref_to, parts) for the editor's notes on a LacusCurtius page ("page":
+    the whole path, H/ or E/), each on the section it's referred to from."""
+    _, refs, notes = thayer_text(spec["page"])
+    return [(1, refs[n], refs[n], parts) for n, parts in sorted(notes.items()) if n in refs]
+
+
 # ---------------------------------------------------------------- the Iliad
 
 def iliad(verbose):
@@ -2137,6 +2241,9 @@ def build_notes(slug, specs, segments, form):
                      for b, a, z, parts in perseus_notes(spec))
         elif spec["type"] == "scholia":
             items = ((b, a, z, None, text) for b, a, z, text in scholia_notes(spec))
+        elif spec["type"] == "thayer":
+            items = ((b, a, z, json.dumps(parts, ensure_ascii=False), "".join(t for _, t in parts))
+                     for b, a, z, parts in thayer_notes(spec))
         else:
             sys.exit(f"{slug}: unknown notes type {spec['type']!r}")
         count = 0
@@ -2374,6 +2481,10 @@ def main():
                 form, cite, divs, segs = parallel(src, args.v, t["title"], found, marks)
                 rows_tp += [(t["slug"], *r) for r in found]
                 rows_rm += [(t["slug"], *r) for r in marks]
+            elif src["type"] == "thayer":
+                found = []
+                form, cite, divs, segs = thayer(src, args.v, t["title"], found)
+                rows_tp += [(t["slug"], *r) for r in found]
             else:
                 sys.exit(f"{t['slug']}: unknown source type {src['type']!r}")
         for fix in t.get("fixes", []):  # a slip in the source: {"ref": "17a", "find": ..., "replace": ...}
@@ -2430,7 +2541,7 @@ def main():
                 found = translation_lines(spec, tsegs)
                 rows_tr += [(t["slug"], *row) for row in found]
                 print(f"  translation: {len(found)} lines")
-            elif spec["type"] == "parallel":  # (the source's own English: its passages, above)
+            elif spec["type"] in ("parallel", "thayer"):  # (the source's own English: its passages, above)
                 pass
             else:
                 rows_tr += [(t["slug"], *row) for row in translation(spec, tsegs)]
