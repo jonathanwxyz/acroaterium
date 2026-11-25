@@ -566,12 +566,42 @@ NOT_RESURRECTIONAL = {64, 71, 78, 120}
 LORDS_FEASTS = {(1, 6), (8, 6), (9, 14), (12, 25)}
 
 
+# The great feasts whose hymns are sung on after them, to their leave-taking (ἀπόδοσις):
+# the Menaion's, (month, day) → (the last day, its name in the genitive); the movable,
+# by their day (pe.d071…) → (the last, the name)
+AFTERFEASTS = {(9, 8): ((9, 12), "τῶν Γενεθλίων τῆς Θεοτόκου"), (9, 14): ((9, 21), "τῆς Ὑψώσεως τοῦ Τιμίου Σταυροῦ"),
+               (11, 21): ((11, 25), "τῶν Εἰσοδίων τῆς Θεοτόκου"), (12, 25): ((12, 31), "τῶν Χριστουγέννων"),
+               (1, 6): ((1, 14), "τῶν Θεοφανείων"), (2, 2): ((2, 9), "τῆς Ὑπαπαντῆς"),
+               (3, 25): ((3, 26), "τοῦ Εὐαγγελισμοῦ"), (6, 24): ((6, 25), "τοῦ Γενεσίου τοῦ Προδρόμου"),
+               (8, 6): ((8, 13), "τῆς Μεταμορφώσεως"), (8, 15): ((8, 23), "τῆς Κοιμήσεως τῆς Θεοτόκου"),
+               (8, 29): ((8, 30), "τῆς Ἀποτομῆς τοῦ Προδρόμου")}
+MOVABLE_AFTERFEASTS = {71: (109, "τοῦ Πάσχα"), 95: (102, "τῆς Μεσοπεντηκοστῆς"), 110: (118, "τῆς Ἀναλήψεως"),
+                       120: (126, "τῆς Πεντηκοστῆς")}
+
+
+def afterfeasts(date, n):
+    """[(the feast's day of the service books, its heading here)]: the feasts whose
+    afterfeast a date is in (n: its day from 70 before Pascha), "Μεθέορτα τῶν Εἰσοδίων
+    τῆς Θεοτόκου", its last "Ἀπόδοσις τῆς Ἑορτῆς τῶν …". (The Meeting's, cut where Lent's
+    Triodion begins: its leave-taking is moved earlier then.)"""
+    out = []
+    for feast, (last, name) in MOVABLE_AFTERFEASTS.items():
+        if feast < n <= last:
+            out.append((f"pe.d{feast:03}", n == last, name))
+    for (m, d), ((lm, ld), name) in AFTERFEASTS.items():
+        feast = datetime.date(date.year, m, d)
+        if feast < date <= datetime.date(date.year, lm, ld) and not ((m, d) == (2, 2) and 22 <= n <= 70):
+            out.append((f"me.m{m:02}.d{d:02}", date == datetime.date(date.year, lm, ld), name))
+    return [(day, f"Ἀπόδοσις τῆς Ἑορτῆς {name}" if last else f"Μεθέορτα {name}") for day, last, name in out]
+
+
 def hymn_days(date):
-    """The days of the service books (scripts/import_hymns.py) whose hymns a date sings, in
-    order: the Triodion's or Pentecostarion's (by the day from the Sunday of the Publican
-    and the Pharisee, 70 days before Pascha: tr.d001-070, pe.d071-127); on a Sunday, the
-    mode's resurrectional hymns (oc.m1-8, the modes counted from Thomas Sunday); then the
-    Menaion's (a Sunday in a stretch of days, me.m12.dFF, then the date's, me.m11.d25).
+    """[(day, heading or None)]: the days of the service books (scripts/import_hymns.py) whose
+    hymns a date sings, in order: the Triodion's or Pentecostarion's (by the day from the
+    Sunday of the Publican and the Pharisee, 70 days before Pascha: tr.d001-070,
+    pe.d071-127); on a Sunday, the mode's resurrectional hymns (oc.m1-8, the modes counted
+    from Thomas Sunday); a great feast's, in its afterfeast (afterfeasts: headed so); then
+    the Menaion's (a Sunday in a stretch of days, me.m12.dFF, then the date's, me.m11.d25).
     Every hymn of each: which the typikon would keep is left to the reader."""
     easter = pascha(date.year)
     n = (date - easter).days + 71
@@ -579,24 +609,27 @@ def hymn_days(date):
     if date.weekday() == 6 and n not in NOT_RESURRECTIONAL and (date.month, date.day) not in LORDS_FEASTS:
         thomas = (easter if date >= easter + datetime.timedelta(days=7) else pascha(date.year - 1)) + datetime.timedelta(days=7)
         days.append(f"oc.m{(date - thomas).days // 7 % 8 + 1}")
+    days = [(day, None) for day in days] + afterfeasts(date, n)
     if date.weekday() == 6:
-        days += [day for (m, a, b), day in MENAION_SUNDAYS.items() if date.month == m and a <= date.day <= b]
-    return days + [f"me.m{date.month:02}.d{date.day:02}"]
+        days += [(day, None) for (m, a, b), day in MENAION_SUNDAYS.items() if date.month == m and a <= date.day <= b]
+    return days + [(f"me.m{date.month:02}.d{date.day:02}", None)]
 
 
 def hymns_of(con, date):
     """[{"title", "hymns": [{"kind", "mode", "poet", "text", "n", "seq", "english", "dedication"}]}]: the date's hymns,
     by day of the service books, as hymn_days orders them (n: the day's number, seq: the
     hymn's, where its words' parsing is: hymn_words); [] for a library without them."""
-    out = []
+    out, seen = [], set()
     try:
-        for day in hymn_days(date):
+        for day, heading in hymn_days(date):
             columns = {r[1] for r in con.execute("PRAGMA table_info(hymns)")}
             rows = con.execute(f"SELECT h.kind, h.mode, h.poet, h.text, d.n, h.seq, h.english, "
                                f"{'h.dedication' if 'dedication' in columns else 'NULL'}, d.title FROM hymns h "
                                "JOIN hymn_days d USING (day) WHERE day = ? ORDER BY h.seq", (day,)).fetchall()
+            rows = [r for r in rows if r[3] not in seen]  # (a hymn given already: the feast's, on its leave-taking)
+            seen.update(r[3] for r in rows)
             if rows:
-                out.append({"title": rows[0][8], "hymns": [
+                out.append({"title": heading or rows[0][8], "hymns": [
                     dict(zip(("kind", "mode", "poet", "text", "n", "seq", "english", "dedication"), r)) for r in rows]})
     except sqlite3.OperationalError:  # a library built before the hymns
         return []
