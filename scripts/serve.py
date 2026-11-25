@@ -45,7 +45,8 @@ Routes:
   /api/lectionary/<YYYY-MM-DD>  JSON: that day's readings in the Orthodox lectionary
                        (the Ecumenical Patriarchate's, as the Greek Orthodox Archdiocese of
                        America's online chapel gives them), each a link to the passage in
-                       the library; where the catalogue asks for it ("lectionary")
+                       the library; where the catalogue asks for it ("lectionary"); and its
+                       apolytikia and kontakia (scripts/import_hymns.py)
   /api/plans/preview?target=…&days=…  JSON: a reading plan's days: a text (or a Testament) in
                        so many days, a reading a day (target: a slug, "<slug>:<from book>-<to
                        book>", "collection:<name>" or "category:<name>"). The plans, and the
@@ -529,6 +530,61 @@ def day_name(root):
             or (title, next((gr for start, gr in FEASTS.items() if (title or "").startswith(start)), None)))
 
 
+def pascha(year):
+    """Orthodox Easter (the Julian computus), as a date of the civil calendar (1900-2099)."""
+    a, b, c = year % 4, year % 7, year % 19
+    d = (19 * c + 15) % 30
+    e = (2 * a + 4 * b - d + 34) % 7
+    month, day = divmod(d + e + 114, 31)
+    return datetime.date(year, month, day + 1) + datetime.timedelta(days=13)
+
+
+# The Menaion's Sundays in a stretch of days: (month, first day, last day) → its day
+MENAION_SUNDAYS = {(7, 13, 19): "me.m07.dHF",  # the Fathers of the 4th Council
+                   (10, 11, 17): "me.m10.dHF",  # the Fathers of the 7th Council
+                   (12, 11, 17): "me.m12.dFF",  # the Forefathers
+                   (12, 18, 24): "me.m12.dBC",  # before the Nativity
+                   (12, 26, 31): "me.m12.dAC"}  # after the Nativity
+# Sundays whose own hymns take the place of the mode's: Palm Sunday, Pascha, Thomas
+# Sunday, Pentecost (by the movable day) and the Lord's great feasts (by the date)
+NOT_RESURRECTIONAL = {64, 71, 78, 120}
+LORDS_FEASTS = {(1, 6), (8, 6), (9, 14), (12, 25)}
+
+
+def hymn_days(date):
+    """The days of the service books (scripts/import_hymns.py) whose hymns a date sings, in
+    order: the Triodion's or Pentecostarion's (by the day from the Sunday of the Publican
+    and the Pharisee, 70 days before Pascha: tr.d001-070, pe.d071-127); on a Sunday, the
+    mode's resurrectional hymns (oc.m1-8, the modes counted from Thomas Sunday); then the
+    Menaion's (a Sunday in a stretch of days, me.m12.dFF, then the date's, me.m11.d25).
+    Every hymn of each: which the typikon would keep is left to the reader."""
+    easter = pascha(date.year)
+    n = (date - easter).days + 71
+    days = [f"tr.d{n:03}" if n <= 70 else f"pe.d{n:03}"] if 1 <= n <= 127 else []
+    if date.weekday() == 6 and n not in NOT_RESURRECTIONAL and (date.month, date.day) not in LORDS_FEASTS:
+        thomas = (easter if date >= easter + datetime.timedelta(days=7) else pascha(date.year - 1)) + datetime.timedelta(days=7)
+        days.append(f"oc.m{(date - thomas).days // 7 % 8 + 1}")
+    if date.weekday() == 6:
+        days += [day for (m, a, b), day in MENAION_SUNDAYS.items() if date.month == m and a <= date.day <= b]
+    return days + [f"me.m{date.month:02}.d{date.day:02}"]
+
+
+def hymns_of(con, date):
+    """[{"title", "hymns": [{"kind", "mode", "poet", "text"}]}]: the date's hymns, by day of
+    the service books, as hymn_days orders them ([] for a library without them)."""
+    out = []
+    try:
+        for day in hymn_days(date):
+            title = con.execute("SELECT title FROM hymn_days WHERE day = ?", (day,)).fetchone()
+            rows = con.execute("SELECT kind, mode, poet, text FROM hymns WHERE day = ? ORDER BY seq", (day,)).fetchall()
+            if rows:
+                out.append({"title": title and title[0],
+                            "hymns": [dict(zip(("kind", "mode", "poet", "text"), r)) for r in rows]})
+    except sqlite3.OperationalError:  # a library built before the hymns
+        return []
+    return out
+
+
 def lectionary_settings(con):
     try:
         row = con.execute("SELECT value FROM settings WHERE key = 'lectionary'").fetchone()
@@ -625,10 +681,11 @@ def selection(con, slug, book, refs):
 
 
 def lectionary_json(day):
-    """{"date", "title", "day", "day_gr", "readings": [{"kind", "label", "href"}]}: the day's place
-    in the year of readings ("Wednesday of the 10th Week of Luke", "Τῇ Τετάρτῃ τῆς Ιʹ Ἑβδομάδος
-    τοῦ Λουκᾶ") and its readings, in the order read
-    (Matins, the Liturgy, then the Old Testament's), linking where the library has them."""
+    """{"date", "title", "day", "day_gr", "readings": [{"kind", "label", "href"}], "hymns"}: the
+    day's place in the year of readings ("Wednesday of the 10th Week of Luke", "Τῇ Τετάρτῃ τῆς
+    Ιʹ Ἑβδομάδος τοῦ Λουκᾶ") and its readings, in the order read (Matins, the Liturgy, then
+    the Old Testament's), linking where the library has them; and its hymns (hymns_of), which
+    are the library's own, there even when the readings can't be fetched."""
     try:
         date = datetime.date.fromisoformat(day)
     except ValueError:
@@ -641,6 +698,7 @@ def lectionary_json(day):
     if not settings:
         con.close()
         return None
+    hymns = hymns_of(con, date)
     path = LECTIONARY_CACHE / f"{date.isoformat()}.xml"
     if not path.exists():
         try:
@@ -650,7 +708,7 @@ def lectionary_json(day):
             ElementTree.fromstring(body)  # only a whole answer is kept
         except (OSError, ElementTree.ParseError):
             con.close()
-            return {"date": date.isoformat(), "readings": [], "error": "The readings couldn't be fetched."}
+            return {"date": date.isoformat(), "readings": [], "hymns": hymns, "error": "The readings couldn't be fetched."}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(body)
     try:
@@ -658,7 +716,7 @@ def lectionary_json(day):
     except ElementTree.ParseError:  # a broken copy: fetched again next time
         path.unlink(missing_ok=True)
         con.close()
-        return {"date": date.isoformat(), "readings": [], "error": "The readings couldn't be read."}
+        return {"date": date.isoformat(), "readings": [], "hymns": hymns, "error": "The readings couldn't be read."}
     readings = []
     for r in root.iter("reading"):
         kind = r.findtext("type") or ""
@@ -678,7 +736,7 @@ def lectionary_json(day):
     con.close()
     readings.sort(key=lambda x: x.pop("order"))
     return {"date": date.isoformat(), "title": settings.get("title"),
-            **dict(zip(("day", "day_gr"), day_name(root))), "readings": readings}
+            **dict(zip(("day", "day_gr"), day_name(root))), "readings": readings, "hymns": hymns}
 
 
 def notes_json(slug, n, a, b):

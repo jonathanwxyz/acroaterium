@@ -27,8 +27,9 @@ Format (scripts/compact_read.py reads it; an app's decoder follows that):
       lemmas and lemma_forms too (the word cards' references), but not lemma_words or
       lemma_inflections (compact_read.DERIVED), made from the parsing again (library.py's
       lemma_index); only their schema.
-      Nor the words' pictures (compact_read.SERVED: image_sources, lemma_images), not
-      even their schema: the server serves them, and the device never keeps them.
+      Nor the words' pictures (compact_read.SERVED: image_sources, lemma_images) or the
+      days' hymns (hymn_days, hymns), not even their schema: the server serves them, and
+      the device never keeps them.
 
   chunks(kind TEXT, text TEXT, div INTEGER, rows BLOB), primary key (kind, text, div)
       (an ordinary rowid table with 1 KB pages: chunks are kilobytes each)

@@ -77,8 +77,9 @@ DERIVED = {"lemma_words", "lemma_inflections"}
 
 # Tables the compact library leaves out altogether: the words' pictures (import_anki_images.py)
 # and the definitions as library.py made them, before lemma_definitions.py: the server serves
-# the pictures, the device never keeps them.
-SERVED = {"image_sources", "lemma_images", "lemma_base_definitions"}
+# the pictures, the device never keeps them; and the days' hymns (import_hymns.py), which
+# come with the day's readings (/api/lectionary), never offline.
+SERVED = {"image_sources", "lemma_images", "lemma_base_definitions", "hymn_days", "hymns"}
 
 
 def unpack(blob):

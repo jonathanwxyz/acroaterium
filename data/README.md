@@ -91,6 +91,13 @@ and puts each note's pictures under the lemma of its Greek word: `image_sources`
 server serves them (`/api/images`, `/lemma-images/`); the compact library and the
 service worker leave them out, so they're never kept offline. All of it stays out of git.
 
+The days' hymns: `scripts/import_hymns.py` (`--check` lists the words that look wrongly
+accented, and changes nothing) → `hymn_days`, `hymns` in `library.sqlite`: the apolytikia
+and kontakia of the Menaion, Triodion, Pentecostarion and the Octoechos's Sundays, from the
+AGES library (a sparse clone, ~45 MB, kept in `raw/ages_gr/`), mended where
+`hymn_corrections.tsv` says. `library.py` leaves them be; the server gives a date's
+(`serve.py` `hymn_days`) with its readings, and the compact library leaves them out.
+
 `scripts/compare_alignments.py REF CANDIDATE [-v]` scores one alignment file against
 another (link precision/recall, per-word agreement).
 
@@ -257,7 +264,10 @@ licence. Share-alike reaches the data, not the code that displays it.
 | recordings (not in git) | Project Eustathios readings on YouTube | the readers' copyright; hosted on the site with Project Eustathios's permission, credited "Recording: Project Eustathios"; kept out of git |
 
 `library.sqlite`'s sources are described, with their licences, where `scripts/library.py`
-fetches them. One is non-commercial: the Septuagint's (`rahlfs`) transcription and parsing,
+fetches them. The hymns (`hymn_days`, `hymns`) are the AGES Initiatives' Greek text of the
+service books ([ages-alwb-library-gr-gr-cog](https://github.com/AGES-Initiatives/ages-alwb-library-gr-gr-cog),
+now the Greek Orthodox Archdiocese of America's): no licence stated; the hymns are old, but
+for a few recent ones (Gerasimos Mikragiannanites's). One is non-commercial: the Septuagint's (`rahlfs`) transcription and parsing,
 CATSS's via Eliran Wong's LXX-Rahlfs-1935 (CC BY-NC-SA 4.0). Rahlfs's 1935 text itself is
 public domain in the UK and EU, though not in the US until 2031. The Old Testament's
 wording, where the recordings read it so, comes from Greek Wikisource's Septuagint

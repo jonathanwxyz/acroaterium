@@ -407,7 +407,11 @@ function lectionaryEntry(l) {
   fetch(`/api/lectionary/${today()}`)
     .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
     .then((data) => {
-      if (!data.readings.length) return note(data.error ?? tr("No readings today."));
+      const hymns = data.hymns?.length ? [hymnsItem(data.hymns)] : [];
+      if (!data.readings.length) {  // (the hymns are the library's own: there all the same)
+        note(data.error ?? tr("No readings today."));
+        return list.append(...hymns);
+      }
       list.replaceChildren();
       // (the day first: its name in the year of readings, then its date)
       const day = el("li", "member reading-day");
@@ -421,9 +425,30 @@ function lectionaryEntry(l) {
         li.append(row);
         list.append(li);
       }
+      list.append(...hymns);
     })
     .catch(() => note(navigator.onLine === false ? tr("The readings need the connection.") : tr("The readings couldn't be loaded.")));
   return work;
+}
+
+// The day's hymns, under its readings, folded: the apolytikia and kontakia of each day of
+// the service books it keeps (the Triodion's, the mode's on a Sunday, the Menaion's), under
+// that day's heading, each with its kind and mode (and its poet, a recent one's).
+function hymnsItem(groups) {
+  const li = el("li", "member");
+  const panel = el("div", "hymns");
+  for (const g of groups) {
+    const day = el("section", "hymn-day");
+    if (g.title) day.append(el("h3", "hymn-day-title", g.title));
+    for (const h of g.hymns) {
+      const head = el("p", "hymn-kind", [h.kind, h.mode].filter(Boolean).join(" · "));
+      if (h.poet) head.append(el("span", "hymn-poet", h.poet));
+      day.append(head, el("p", "hymn-text", h.text));
+    }
+    panel.append(day);
+  }
+  li.append(foldRow("lectionary-hymns", "member-row fold-row", [el("span", null, tr("Apolytikia and kontakia"))], panel), panel);
+  return li;
 }
 
 // A category's name: in Greek and English ("Ὅμηρος · Homer"), just the Greek in a Greek interface.
