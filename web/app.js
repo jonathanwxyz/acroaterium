@@ -1902,6 +1902,18 @@ function fitTopbar() {
 }
 addEventListener("resize", fitTopbar);
 document.addEventListener("sizechange", fitTopbar);
+// And when the bar's other things come or go (the book picker, shown only after its label
+// is fitted; the download button; the title's menu arrow), which the window doesn't notice.
+// (A frame later: refitting changes the sizes watched.)
+if (typeof ResizeObserver === "function") {
+  let queued = false;
+  const labels = new ResizeObserver(() => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; fitTopbar(); });
+  });
+  for (const id of ["eyebrow", "book-label"]) labels.observe(document.getElementById(id));
+}
 document.fonts?.ready.then(fitTopbar);
 document.fonts?.addEventListener?.("loadingdone", fitTopbar);  // (the Greek, which comes as it's first needed)
 function showTitle(long, title, short) {
