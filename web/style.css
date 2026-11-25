@@ -1683,6 +1683,8 @@ body.no-audio .verse { cursor: auto; }
 }
 body.prose-text .toggle:has(#focused) { display: none; }
 .speaker { color: var(--muted); font-size: 0.78em; letter-spacing: 0.05em; margin-right: 0.15em; }
+/* (in a text of named parts, the hymns', a paragraph's label is a line over it: "Ἀπολυτίκιον · Ἦχος πλ. αʹ") */
+.named-parts .speaker { display: block; margin: 0 0 0.15rem; line-height: 1.4; }
 /* A part named rather than numbered (the prayers): its name over it, in line with the
    text, and in the English interface its English name after it. A row as a verse's is,
    which a tap picks (to bookmark the part), lit as the verse playing is. */
