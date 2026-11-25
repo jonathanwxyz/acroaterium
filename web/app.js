@@ -2512,7 +2512,7 @@ async function showLectionaryDay() {
     const q = r.href && new URLSearchParams(r.href.split("?")[1]);
     return q && q.get("text") === TEXT && q.get("v") === PARAMS.get("v");
   });
-  if (here) top.append(" · ", el("span", "plan-readings", here.kind));
+  if (here?.kind) top.append(" · ", el("span", "plan-readings", here.kind));
   (document.querySelector(".range-note") ?? list).before(top);
 }
 // Where reading got to in the plan's day (planPlace): saved as the book's place is, and

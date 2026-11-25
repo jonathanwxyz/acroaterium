@@ -1880,15 +1880,6 @@ body.library { padding-top: env(safe-area-inset-top); }
 .reading-day { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.6rem; padding: 0.35rem 0.9rem 0.2rem; }
 .reading-cycle { font-weight: 600; }
 .reading-date { color: var(--muted); font-size: 0.9em; }
-/* The day's hymns, folded under the readings: each day of the service books under its
-   heading, each hymn's kind and mode above its words. */
-.library .hymns[hidden] { display: none; }
-.hymns { padding: 0 0.9rem 0.6rem; }
-.hymn-day + .hymn-day { margin-top: 0.9rem; padding-top: 0.6rem; border-top: 1px solid color-mix(in srgb, var(--rule) 60%, transparent); }
-.hymn-day-title { margin: 0.3rem 0 0.2rem; font-size: 0.95em; font-weight: 600; line-height: 1.35; }
-.hymn-kind { display: flex; flex-wrap: wrap; gap: 0 0.6rem; margin: 0.55rem 0 0.1rem; color: var(--muted); font-size: 0.8em; }
-.hymn-poet { font-style: italic; }
-.hymn-text { margin: 0; line-height: 1.45; }
 .library .chapters {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(2.3rem, 1fr));

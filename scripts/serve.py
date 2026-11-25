@@ -45,8 +45,9 @@ Routes:
   /api/lectionary/<YYYY-MM-DD>  JSON: that day's readings in the Orthodox lectionary
                        (the Ecumenical Patriarchate's, as the Greek Orthodox Archdiocese of
                        America's online chapel gives them), each a link to the passage in
-                       the library; where the catalogue asks for it ("lectionary"); and its
-                       apolytikia and kontakia (scripts/import_hymns.py)
+                       the library; where the catalogue asks for it ("lectionary"); last, a
+                       link to its apolytikia and kontakia (/api/text/hymns/<YYYYMMDD>: a
+                       text made of the day's hymns, scripts/import_hymns.py)
   /api/plans/preview?target=…&days=…  JSON: a reading plan's days: a text (or a Testament) in
                        so many days, a reading a day (target: a slug, "<slug>:<from book>-<to
                        book>", "collection:<name>" or "category:<name>"). The plans, and the
@@ -585,6 +586,35 @@ def hymns_of(con, date):
     return out
 
 
+# The day's hymns as a text of their own for the reader: read.html?text=hymns&book=20261125
+HYMNS = "hymns"
+HYMNS_TITLE = "Ἀπολυτίκια καὶ Κοντάκια"
+
+
+def hymns_text_json(n):
+    """A date's hymns (n: YYYYMMDD) in the shape of text_json: prose, each day of the service
+    books a part named by its heading, each hymn a paragraph led by its kind, mode and
+    (a recent one's) poet, as a speech by its speaker."""
+    try:
+        date = datetime.datetime.strptime(str(n), "%Y%m%d").date()
+    except ValueError:
+        return None
+    if not LIBRARY.exists():
+        return None
+    con = sqlite3.connect(LIBRARY)
+    groups = hymns_of(con, date)
+    con.close()
+    verses = [{"line": i + 1, "ref": g["title"] or HYMNS_TITLE, "text": h["text"], "para": True,
+               "speaker": " · ".join(x.rstrip(".") for x in (h["kind"], h["mode"], h["poet"]) if x)}
+              for i, (g, h) in enumerate((g, h) for g in groups for h in g["hymns"])]
+    if not verses:
+        return None
+    return {"book": n, "text": HYMNS, "title": HYMNS_TITLE, "author": None, "form": "prose", "cite": "label",
+            "eyebrow": HYMNS_TITLE, "features": [], "notesCredit": None, "books": [], "audio": None,
+            "verses": verses, "translation": [],
+            "credits": [{"text": "Text: AGES Initiatives (Digital Chant Stand)"}]}
+
+
 def lectionary_settings(con):
     try:
         row = con.execute("SELECT value FROM settings WHERE key = 'lectionary'").fetchone()
@@ -681,11 +711,11 @@ def selection(con, slug, book, refs):
 
 
 def lectionary_json(day):
-    """{"date", "title", "day", "day_gr", "readings": [{"kind", "label", "href"}], "hymns"}: the
-    day's place in the year of readings ("Wednesday of the 10th Week of Luke", "Τῇ Τετάρτῃ τῆς
-    Ιʹ Ἑβδομάδος τοῦ Λουκᾶ") and its readings, in the order read (Matins, the Liturgy, then
-    the Old Testament's), linking where the library has them; and its hymns (hymns_of), which
-    are the library's own, there even when the readings can't be fetched."""
+    """{"date", "title", "day", "day_gr", "readings": [{"kind", "label", "href"}]}: the day's place
+    in the year of readings ("Wednesday of the 10th Week of Luke", "Τῇ Τετάρτῃ τῆς Ιʹ Ἑβδομάδος
+    τοῦ Λουκᾶ") and its readings, in the order read (Matins, the Liturgy, then the Old
+    Testament's), linking where the library has them; last, its apolytikia and kontakia, a
+    page of their own (hymns_text_json; no kind)."""
     try:
         date = datetime.date.fromisoformat(day)
     except ValueError:
@@ -698,7 +728,10 @@ def lectionary_json(day):
     if not settings:
         con.close()
         return None
-    hymns = hymns_of(con, date)
+    # (the day's hymns: their own page, after the readings; the library's, so there even
+    # when the readings can't be fetched)
+    hymns = [{"kind": None, "label": HYMNS_TITLE, "href": f"read.html?text={HYMNS}&book={date:%Y%m%d}"}] \
+        if hymns_of(con, date) else []
     path = LECTIONARY_CACHE / f"{date.isoformat()}.xml"
     if not path.exists():
         try:
@@ -708,7 +741,7 @@ def lectionary_json(day):
             ElementTree.fromstring(body)  # only a whole answer is kept
         except (OSError, ElementTree.ParseError):
             con.close()
-            return {"date": date.isoformat(), "readings": [], "hymns": hymns, "error": "The readings couldn't be fetched."}
+            return {"date": date.isoformat(), "readings": hymns, "error": "The readings couldn't be fetched."}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(body)
     try:
@@ -716,7 +749,7 @@ def lectionary_json(day):
     except ElementTree.ParseError:  # a broken copy: fetched again next time
         path.unlink(missing_ok=True)
         con.close()
-        return {"date": date.isoformat(), "readings": [], "hymns": hymns, "error": "The readings couldn't be read."}
+        return {"date": date.isoformat(), "readings": hymns, "error": "The readings couldn't be read."}
     readings = []
     for r in root.iter("reading"):
         kind = r.findtext("type") or ""
@@ -736,7 +769,7 @@ def lectionary_json(day):
     con.close()
     readings.sort(key=lambda x: x.pop("order"))
     return {"date": date.isoformat(), "title": settings.get("title"),
-            **dict(zip(("day", "day_gr"), day_name(root))), "readings": readings, "hymns": hymns}
+            **dict(zip(("day", "day_gr"), day_name(root))), "readings": readings + hymns}
 
 
 def notes_json(slug, n, a, b):
@@ -766,6 +799,8 @@ def notes_json(slug, n, a, b):
 
 
 def text_json(slug, n):
+    if slug == HYMNS:
+        return hymns_text_json(n)
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
