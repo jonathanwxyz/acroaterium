@@ -6,8 +6,9 @@ hymns themselves are old, a few recent: Gerasimos Mikragiannanites's).
 
 Tables in data/library.sqlite (the server picks a day's: serve.py hymn_days):
   hymn_days  (day, n, title)                        a day of a service book, its number, its heading
-  hymns      (day, seq, kind, mode, poet, text, english)  its apolytikia (troparia), then its
-                                                    kontakia, with Fr. Seraphim Dedes's English
+  hymns      (day, seq, kind, mode, poet, text, english, dedication)  its apolytikia (troparia),
+                                                    then its kontakia, with Fr. Seraphim Dedes's
+                                                    English, and whose each is (dedicate)
   hymn_words (text, div, seq, word_index, …)        their words' parsing, as auto_words (text
                                                     "hymns", div: the day's n), from
                                                     scripts/lemmatise_hymns.py: run it, then this again
@@ -34,10 +35,12 @@ subscript; a heading in capitals). A micro sign (µ) is written μ, and ῤῥ �
 library's other texts write it. --check lists the words that still look wrong.
 """
 import argparse
+import html
 import re
 import sqlite3
 import subprocess
 import unicodedata
+import urllib.request
 from collections import Counter
 from pathlib import Path
 
@@ -176,6 +179,107 @@ def heading(lib, resource):
     return next((t for t in found if not t.isupper()), found[0] if found else None)
 
 
+# --- whose each hymn is, on a day of several commemorations (the Menaion's): a part of the
+# day's heading, as the book words it ("τῆς Ἁγίας Μεγαλομάρτυρος … Αἰκατερίνης")
+GOARCH_SAINTS = ROOT / "data" / "raw" / "goarch_saints"  # (the GOA's chapel: a saint's hymns, Greek)
+LECTIONARY_CACHE = ROOT / "data" / "raw" / "lectionary"  # (serve.py's: the saints of each day)
+FEASTS = re.compile(r"Προεόρτι|Μεθεόρτι|Ἀπόδοσις")
+NOT_NAMES = ("της του των αγ αγιου αγιας αγιων οσιου οσιας οσιων μαρτυρος μαρτυρων μνημη και εν αποστολου "
+             "αποστολων προφητου ιεραρχου μεγαλομαρτυρος ιερομαρτυρος ιερομαρτυρων οσιομαρτυρος νεομαρτυρος "
+             "πατρος πατερων ημων αγιοις ομολογητου ομολογητων δικαιου επισκοπου αρχιεπισκοπου ευαγγελιστου "
+             "θεοφορου μεγαλου θαυματουργου χριστου κυριου θεου σωτηρος θεοτοκου υπεραγιας παρθενου")
+
+
+def plain(s):
+    """Letters only, unaccented, lower case (ς as σ): for comparing."""
+    return re.sub(r"[^α-ω]", "", "".join(c for c in unicodedata.normalize("NFD", s.lower())
+                                       if not unicodedata.combining(c)).replace("ς", "σ"))
+
+
+NOT_NAMES = {plain(w) for w in NOT_NAMES.split()}
+
+
+def commemorations(title):
+    """The commemorations a heading names: "Μνήμη τῆς Ἁγίας … Αἰκατερίνης· καὶ τοῦ Ἁγίου …
+    Μερκουρίου." → ["τῆς Ἁγίας … Αἰκατερίνης", "τοῦ Ἁγίου … Μερκουρίου"]; split at an upper
+    stop and at "καὶ" (or a comma) before another (τοῦ, τῆς, τῶν and a name: not "καὶ τῶν
+    σὺν αὐτῷ", "Ἰουλιανῆς, τῆς ἐν Νικομηδείᾳ")."""
+    pieces = re.split(r"(\s*·\s*|,?\s+καὶ\s+(?=(?:τοῦ|τῆς|τῶν|[Μμ]νήμη|Τὰ|[Ἡἡ]|Προεόρτια|Μεθεόρτια|Ἀπόδοσις)\s)"
+                      r"|,\s+(?=(?:τοῦ|τῆς|τῶν)\s))", title or "")
+    parts = []
+    for sep, p in zip([""] + pieces[1::2], pieces[::2]):
+        p = re.sub(r"^(?:καὶ\s+)?(?:[Μμ]νήμη\s+)?", "", p.strip(" .,"))
+        # (still the one before: an epithet after a comma, "Ἰουλιανῆς, τῆς ἐν Νικομηδείᾳ"; "καὶ τῶν σὺν αὐτῷ")
+        if parts and (sep.strip() == "," and re.match(r"(?:τοῦ|τῆς|τῶν)\s+[^\W\d_]", p) and p.split()[1][0].islower()
+                      or p.startswith("τῶν σὺν")):
+            parts[-1] += sep.rstrip() + " " + p
+        elif p:
+            parts.append(p)
+    return parts
+
+
+def names(part):
+    """A commemoration's names, each as its stem (plain, its case ending left off):
+    Αἰκατερίνης → αικατερι, Παρθενίου → παρθενι (not Παρθένε's)."""
+    return {plain(w)[:-2] for w in re.findall(r"[\u0370-\u03ff\u1f00-\u1fff]+", part)
+            if w[0].isupper() and plain(w) not in NOT_NAMES and len(plain(w)) >= 6}
+
+
+def mentions(stems, words):
+    """Whether any of the words (plain) begins with any of the stems."""
+    return any(w.startswith(s) for s in stems for w in words)
+
+
+def goarch_hymns():
+    """{a hymn's first 40 letters (plain): [(the saint's name, (month, day))]}, from the GOA's
+    chapel (a saint's hymns: data/raw/goarch_saints/, fetched once for the saints of the days
+    serve.py has cached the readings of)."""
+    ids = sorted({int(i) for f in LECTIONARY_CACHE.glob("*.xml") for i in re.findall(r"<id>(\d+)</id>", f.read_text())})
+    GOARCH_SAINTS.mkdir(parents=True, exist_ok=True)
+    for i in ids:
+        path = GOARCH_SAINTS / f"{i}.xml"
+        if not path.exists():
+            try:
+                req = urllib.request.Request(f"http://onlinechapel.goarch.org/saints.asp?contentid={i}&language=el",
+                                             headers={"User-Agent": "Mozilla/5.0 (acroaterium)"})
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    path.write_bytes(r.read())
+            except OSError:
+                pass
+    out = {}
+    for path in GOARCH_SAINTS.glob("*.xml"):
+        xml = html.unescape(path.read_text(encoding="utf-8", errors="replace"))
+        name, date = re.search(r"<title>(.*?)</title>", xml), re.search(r"<date>(\d+)/(\d+)</date>", xml)
+        for body in re.findall(r"<hymn>.*?<translation[^>]*lang=\"el\"[^>]*>\s*<body>(.*?)</body>", xml, re.S):
+            out.setdefault(plain(body)[:40], []).append((name and name[1].strip(), date and (int(date[1]), int(date[2]))))
+    return out
+
+
+def dedicate(day, parts, text, goarch, elsewhere):
+    """Which of a day's commemorations (parts) a hymn is for, or None: the one it names
+    (Αἰκατερῖναν), or those, a hymn of several; else the one whose name the GOA's chapel gives the hymn on that date;
+    else, a hymn sung on another day too (the feast's), the day's forefeast or afterfeast;
+    else, a hymn to the Theotokos, a commemoration of hers."""
+    words = {plain(w) for w in re.findall(r"[\u0370-\u03ff\u1f00-\u1fff]+", text)}
+    named = [p for p in parts if mentions(names(p), words)]
+    if named:  # (a hymn of two: both)
+        return " καὶ ".join(named)
+    m = re.fullmatch(r"me\.m(\d\d)\.d(\d\d)", day)
+    hits = goarch.get(plain(text)[:40], [])
+    hits = [h for h in hits if m and h[1] == (int(m[1]), int(m[2]))] or hits
+    goa = [p for p in parts if any(mentions(names(p), {plain(w) for w in (h[0] or "").split()})
+                                   or mentions(names(h[0] or ""), {plain(w) for w in p.split()}) for h in hits)]
+    if len(goa) == 1:
+        return goa[0]
+    feasts = [p for p in parts if FEASTS.search(p)]
+    if elsewhere and len(feasts) == 1:
+        return feasts[0]
+    ours = [p for p in parts if "Θεοτόκου" in p]  # (last: a feast of hers, a hymn to her)
+    if len(ours) == 1 and mentions({"θεοτοκ"}, words):
+        return ours[0]
+    return None
+
+
 def load_corrections():
     """{day: [(wrong, right)]}; a line: day (* for every day), wrong, right[, note]."""
     out = {}
@@ -268,9 +372,18 @@ def main():
             # (not a placeholder: "[Text of Apolytikion for …]")
             en = next((t for k in keys if (t := english.get(resource, k + ".text")) and not re.fullmatch(r"\[.*\]", t.strip())), None)
             rows.append((day, seq, kind, mode, poet, correct(text, fixes, day), en and tidy(en)))
+    # Whose each hymn is, where the day keeps several (the Menaion's)
+    goarch, days_of = goarch_hymns(), {}
+    for day, _, _, _, _, text, _ in rows:
+        days_of.setdefault(plain(text)[:40], set()).add(day)
+    heads = {day: title for day, _, title in titles}
+    dedications = []
+    for day, _, _, _, _, text, _ in rows:
+        parts = commemorations(heads[day]) if day.startswith("me.") else []
+        dedications.append(dedicate(day, parts, text, goarch, len(days_of[plain(text)[:40]]) > 1) if len(parts) > 1 else None)
     # A hymn the English leaves blank on its day, given on another (the Fathers' apolytikion): that English.
     known = {text: en for *_, text, en in rows if en}
-    rows = [(*r[:6], r[6] or known.get(r[5])) for r in rows]
+    rows = [(*r[:6], r[6] or known.get(r[5]), d) for r, d in zip(rows, dedications)]
     unused = [(d, w) for d, fixes in corrections.items() for w, _ in fixes if (d, w) not in fixes_used]
     if args.check:
         flagged = [(day, w, why) for day, text in [(r[0], r[5]) for r in rows] + [(t[0], t[2]) for t in titles if t[2]]
@@ -299,14 +412,16 @@ def main():
             poet  TEXT,                     --   Ποίημα Γερασίμου.
             text  TEXT NOT NULL,
             english TEXT,                   --   Fr. Seraphim Dedes's (none for a few: Gerasimos's)
+            dedication TEXT,                --   on a day of several commemorations, which it's for
+                                            --   (as the heading has it: "τῆς Ἁγίας … Αἰκατερίνης")
             PRIMARY KEY (day, seq)
         );""")
     con.executemany("INSERT INTO hymn_days VALUES (?, ?, ?)", titles)
-    con.executemany("INSERT INTO hymns VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
+    con.executemany("INSERT INTO hymns VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
     # The lemmatiser's parsing of their words (scripts/lemmatise_hymns.py), as library.py
     # takes a text's: a hymn's, where it still reads as it was lemmatised.
     numbers = {day: n for day, n, _ in titles}
-    words = library.auto_words("hymns", [(numbers[day], seq, None, text) for day, seq, _, _, _, text, _ in rows], set())
+    words = library.auto_words("hymns", [(numbers[day], seq, None, text) for day, seq, _, _, _, text, *_ in rows], set())
     con.execute("DROP TABLE IF EXISTS hymn_words")
     con.execute(con.execute("SELECT sql FROM sqlite_master WHERE name = 'auto_words'").fetchone()[0]
                 .replace("CREATE TABLE auto_words", "CREATE TABLE hymn_words", 1))
@@ -314,7 +429,10 @@ def main():
     con.commit()
     con.close()
     parsed = {(w[1], w[2]) for w in words}
-    print(f"{len(titles)} days, {len(rows)} hymns ({sum(1 for r in rows if r[6])} in English; {len(parsed)} with their words parsed: {len(words)} words)")
+    several = sum(1 for r in rows if r[0].startswith("me.") and len(commemorations(dict((t[0], t[2]) for t in titles)[r[0]])) > 1)
+    print(f"{len(titles)} days, {len(rows)} hymns ({sum(1 for r in rows if r[6])} in English; "
+          f"{sum(1 for r in rows if r[7])} of {several} on days of several commemorations said whose; "
+          f"{len(parsed)} with their words parsed: {len(words)} words)")
 
 
 if __name__ == "__main__":

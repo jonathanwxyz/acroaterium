@@ -97,7 +97,10 @@ and kontakia of the Menaion, Triodion, Pentecostarion and the Octoechos's Sunday
 AGES library (a sparse clone, ~45 MB, kept in `raw/ages_gr/`), mended where
 `hymn_corrections.tsv` says, with Fr. Seraphim Dedes's English where he has it (AGES's
 library of his translations, the same keys: `raw/ages_en_dedes/`; the reader's English
-toggle). Their words' parsing, for the word cards: run
+toggle). On a day of several commemorations, each hymn's (`hymns.dedication`, a part of the
+day's heading) is found by the names in it, else by the GOA chapel's name for the same hymn
+(its saints' pages, `raw/goarch_saints/`), else as the day's forefeast or a hymn to the
+Theotokos: about four in five; the rest are left without. Their words' parsing, for the word cards: run
 `scripts/lemmatise_hymns.py` with the lemmatiser's environment (as `lemmatise_library.py`:
 into `raw/lemmatised/hymns.json`, about an hour on a CPU the first time), then
 `import_hymns.py` again (→ `hymn_words`). `library.py` leaves them be; the server makes a

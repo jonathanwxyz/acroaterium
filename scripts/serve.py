@@ -585,17 +585,19 @@ def hymn_days(date):
 
 
 def hymns_of(con, date):
-    """[{"title", "hymns": [{"kind", "mode", "poet", "text", "n", "seq", "english"}]}]: the date's hymns,
+    """[{"title", "hymns": [{"kind", "mode", "poet", "text", "n", "seq", "english", "dedication"}]}]: the date's hymns,
     by day of the service books, as hymn_days orders them (n: the day's number, seq: the
     hymn's, where its words' parsing is: hymn_words); [] for a library without them."""
     out = []
     try:
         for day in hymn_days(date):
-            rows = con.execute("SELECT h.kind, h.mode, h.poet, h.text, d.n, h.seq, h.english, d.title FROM hymns h "
+            columns = {r[1] for r in con.execute("PRAGMA table_info(hymns)")}
+            rows = con.execute(f"SELECT h.kind, h.mode, h.poet, h.text, d.n, h.seq, h.english, "
+                               f"{'h.dedication' if 'dedication' in columns else 'NULL'}, d.title FROM hymns h "
                                "JOIN hymn_days d USING (day) WHERE day = ? ORDER BY h.seq", (day,)).fetchall()
             if rows:
-                out.append({"title": rows[0][7],
-                            "hymns": [dict(zip(("kind", "mode", "poet", "text", "n", "seq", "english"), r)) for r in rows]})
+                out.append({"title": rows[0][8], "hymns": [
+                    dict(zip(("kind", "mode", "poet", "text", "n", "seq", "english", "dedication"), r)) for r in rows]})
     except sqlite3.OperationalError:  # a library built before the hymns
         return []
     return out
@@ -608,8 +610,8 @@ HYMNS_TITLE = "Ἀπολυτίκια καὶ Κοντάκια"
 
 def hymns_text_json(n):
     """A date's hymns (n: YYYYMMDD) in the shape of text_json: prose, each day of the service
-    books a part named by its heading, each hymn a paragraph led by its kind, mode and
-    (a recent one's) poet, as a speech by its speaker; under it, where there is one, Fr.
+    books a part named by its heading, each hymn a paragraph led by its kind (and, on a day of
+    several commemorations, whose it is), mode and (a recent one's) poet, as a speech by its speaker; under it, where there is one, Fr.
     Seraphim Dedes's English (the reader's English toggle)."""
     try:
         date = datetime.datetime.strptime(str(n), "%Y%m%d").date()
@@ -627,7 +629,8 @@ def hymns_text_json(n):
     con.close()
     hymns = [(g, h) for g in groups for h in g["hymns"]]
     verses = [{"line": i + 1, "ref": g["title"] or HYMNS_TITLE, "text": h["text"], "para": True,
-               "speaker": " · ".join(x.rstrip(".") for x in (h["kind"], h["mode"], h["poet"]) if x)}
+               # (the mode kept on one line: "Ἦχος πλ. αʹ")
+               "speaker": " · ".join(x.rstrip(".") for x in (hymn_name(h), (h["mode"] or "").replace(" ", "\u00a0"), h["poet"]) if x)}
               for i, (g, h) in enumerate(hymns)]
     if not verses:
         return None
@@ -638,6 +641,15 @@ def hymns_text_json(n):
             "notesCredit": None, "books": [], "audio": None, "verses": verses, "translation": english,
             "credits": [{"text": "Text: AGES Initiatives (Digital Chant Stand)"}]
                        + ([{"text": "English: Fr. Seraphim Dedes, CC BY-NC-SA 4.0", "id": "translation-credit"}] if english else [])}
+
+
+def hymn_name(h):
+    """A hymn's kind, and whose it is where the day keeps several commemorations:
+    "Ἀπολυτίκιον τῆς Ἁγίας … Αἰκατερίνης"; a feast's apart, "Ἀπολυτίκιον · Προεόρτια τῶν Φώτων"."""
+    d = h.get("dedication")
+    if not d:
+        return h["kind"]
+    return f"{h['kind']} {d}" if re.match(r"(?:τοῦ|τῆς|τῶν)\s", d) else f"{h['kind']} · {d}"
 
 
 def hymn_lines(con, n):
