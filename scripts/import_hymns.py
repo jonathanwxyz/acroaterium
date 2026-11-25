@@ -5,8 +5,11 @@ https://github.com/AGES-Initiatives/ages-alwb-library-gr-gr-cog (no licence stat
 hymns themselves are old, a few recent: Gerasimos Mikragiannanites's).
 
 Tables in data/library.sqlite (the server picks a day's: serve.py hymn_days):
-  hymn_days (day, title)                            a day of a service book and its heading
-  hymns     (day, seq, kind, mode, poet, text)      its apolytikia (troparia), then its kontakia
+  hymn_days  (day, n, title)                        a day of a service book, its number, its heading
+  hymns      (day, seq, kind, mode, poet, text)     its apolytikia (troparia), then its kontakia
+  hymn_words (text, div, seq, word_index, …)        their words' parsing, as auto_words (text
+                                                    "hymns", div: the day's n), from
+                                                    scripts/lemmatise_hymns.py: run it, then this again
 
 A day is the book's own name for it:
   me.m11.d25   the Menaion's 25th of November; me.m12.dFF and the like, its Sundays in a
@@ -35,6 +38,8 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
+import library  # (its auto_words: the lemmatiser's parsing as rows)
+
 REPO = "https://github.com/AGES-Initiatives/ages-alwb-library-gr-gr-cog.git"
 ROOT = Path(__file__).resolve().parent.parent
 CLONE = ROOT / "data" / "raw" / "ages_gr"
@@ -51,6 +56,22 @@ HEADINGS = ["DA.commemoration.full", "DA.commemoration.short"]
 # (Pascha's and Holy Week's troparia: a Troparion alone, its halves 1a, 1b left out)
 HYMN_KEY = re.compile(r"(?:(alt\d+)\.)?(?:me|tr|pe|oc)(VE|MA|LI)\.(?:(Apolytikion|Kontakion)(\d*)[a-z]*|(Troparion))$")
 KINDS = {"Apolytikion": "Ἀπολυτίκιον", "Troparion": "Τροπάριον", "Kontakion": "Κοντάκιον"}
+
+
+# The Menaion's Sundays in a stretch of days, numbered after its days in their month
+SUNDAYS = ["AC", "BC", "FF", "HF"]
+
+
+def day_number(day):
+    """A day's number, for the parsing of its words (div, as a library text's: data/raw/
+    lemmatised/hymns.json): the Menaion's MMDD (its Sundays MM40-MM43), the Triodion's
+    2001-2070, the Pentecostarion's 3071-3127, the Octoechos's 4001-4008."""
+    if m := re.fullmatch(r"me\.m(\d\d)\.d(\d\d)", day):
+        return int(m[1]) * 100 + int(m[2])
+    if m := re.fullmatch(r"me\.m(\d\d)\.d(\w\w)", day):
+        return int(m[1]) * 100 + 40 + SUNDAYS.index(m[2])
+    book, k = re.fullmatch(r"(tr|pe|oc)\.[dm](\d+)", day).groups()
+    return {"tr": 2000, "pe": 3000, "oc": 4000}[book] + int(k)
 
 
 def fetch():
@@ -232,12 +253,12 @@ def main():
         day = resource.removesuffix(".d1") if resource.startswith("oc.") else resource
         fixes = corrections.get(day, []) + corrections.get("*", [])
         title = f"Ἀναστάσιμα, {hymns[0][1]}" if day.startswith("oc.") else heading(lib, resource)
-        titles.append((day, title and correct(title, fixes, day)))
+        titles.append((day, day_number(day), title and correct(title, fixes, day)))
         for seq, (kind, mode, poet, text) in enumerate(hymns):
             rows.append((day, seq, kind, mode, poet, correct(text, fixes, day)))
     unused = [(d, w) for d, fixes in corrections.items() for w, _ in fixes if (d, w) not in fixes_used]
     if args.check:
-        flagged = [(day, w, why) for day, text in [(r[0], r[5]) for r in rows] + [t for t in titles if t[1]]
+        flagged = [(day, w, why) for day, text in [(r[0], r[5]) for r in rows] + [(t[0], t[2]) for t in titles if t[2]]
                    for w, why in suspicious(text)]
         for day, w, why in flagged:
             print(f"{day}\t{w}\t{why}")
@@ -252,6 +273,7 @@ def main():
         DROP TABLE IF EXISTS hymns;
         CREATE TABLE hymn_days (            -- a day of a service book (scripts/import_hymns.py)
             day   TEXT PRIMARY KEY,         --   me.m11.d25, tr.d014, pe.d110, oc.m5
+            n     INTEGER NOT NULL UNIQUE,  --   its number (day_number): 1125, 2014, 3110, 4005
             title TEXT                      --   its heading, "Μνήμη τῆς Ἁγίας …"
         );
         CREATE TABLE hymns (                -- its apolytikia, then its kontakia
@@ -263,11 +285,20 @@ def main():
             text  TEXT NOT NULL,
             PRIMARY KEY (day, seq)
         );""")
-    con.executemany("INSERT INTO hymn_days VALUES (?, ?)", titles)
+    con.executemany("INSERT INTO hymn_days VALUES (?, ?, ?)", titles)
     con.executemany("INSERT INTO hymns VALUES (?, ?, ?, ?, ?, ?)", rows)
+    # The lemmatiser's parsing of their words (scripts/lemmatise_hymns.py), as library.py
+    # takes a text's: a hymn's, where it still reads as it was lemmatised.
+    numbers = {day: n for day, n, _ in titles}
+    words = library.auto_words("hymns", [(numbers[day], seq, None, text) for day, seq, _, _, _, text in rows], set())
+    con.execute("DROP TABLE IF EXISTS hymn_words")
+    con.execute(con.execute("SELECT sql FROM sqlite_master WHERE name = 'auto_words'").fetchone()[0]
+                .replace("CREATE TABLE auto_words", "CREATE TABLE hymn_words", 1))
+    con.executemany(f"INSERT INTO hymn_words VALUES ({', '.join('?' * 13)})", words)
     con.commit()
     con.close()
-    print(f"{len(titles)} days, {len(rows)} hymns")
+    parsed = {(w[1], w[2]) for w in words}
+    print(f"{len(titles)} days, {len(rows)} hymns ({len(parsed)} with their words parsed: {len(words)} words)")
 
 
 if __name__ == "__main__":

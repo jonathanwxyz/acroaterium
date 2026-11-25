@@ -47,7 +47,9 @@ Routes:
                        America's online chapel gives them), each a link to the passage in
                        the library; where the catalogue asks for it ("lectionary"); last, a
                        link to its apolytikia and kontakia (/api/text/hymns/<YYYYMMDD>: a
-                       text made of the day's hymns, scripts/import_hymns.py)
+                       text made of the day's hymns, scripts/import_hymns.py; its words'
+                       cards /api/lexword/hymns/<YYYYMMDD>/<line>/<i>, /api/words and
+                       /api/images likewise)
   /api/plans/preview?target=…&days=…  JSON: a reading plan's days: a text (or a Testament) in
                        so many days, a reading a day (target: a slug, "<slug>:<from book>-<to
                        book>", "collection:<name>" or "category:<name>"). The plans, and the
@@ -273,7 +275,8 @@ def words_json(slug, n):
     if not LIBRARY.exists():
         return None
     con = sqlite3.connect(LIBRARY)
-    segs = con.execute("SELECT seq, content FROM segments WHERE text = ? AND div = ? AND seq > 0", (slug, n)).fetchall()
+    segs = [(line, text) for line, (_, _, text) in hymn_lines(con, n).items()] if slug == HYMNS else \
+        con.execute("SELECT seq, content FROM segments WHERE text = ? AND div = ? AND seq > 0", (slug, n)).fetchall()
     con.close()
     for seq, content in segs:
         for i in range(len(content.split())):
@@ -300,9 +303,9 @@ def images_json(slug, n):
     try:
         shown = {lemma for (lemma,) in con.execute(
             "SELECT DISTINCT lemma FROM lemma_images JOIN image_sources USING (source) WHERE NOT hidden AND lemma IS NOT NULL")}
-        rows = [r for r in con.execute("""
+        rows = [r for r in (hymn_lemmas(con, n) if slug == HYMNS else con.execute("""
             SELECT w.seq, w.word_index, l.lemma FROM lemma_words w JOIN lemmas l ON l.id = w.lemma
-            WHERE w.text = ? AND w.div = ? ORDER BY w.seq, w.word_index, w.part""", (slug, n)) if r[2] in shown]
+            WHERE w.text = ? AND w.div = ? ORDER BY w.seq, w.word_index, w.part""", (slug, n))) if r[2] in shown]
         own = {(seq, index) for seq, index, _ in rows}
         # The paraphrase's words, for the words without pictures of their own.
         para = [r for r in con.execute(
@@ -359,6 +362,17 @@ def images_json(slug, n):
 
 
 PARA_PUNCT = ".,;·:—–“”‘’'\"()[]⟨⟩«»"  # (round a paraphrase's word)
+
+
+def hymn_lemmas(con, n):
+    """[(line, word index, lemma)] of a date's hymns page (n: YYYYMMDD): the lemmatiser's
+    lemma (hymn_words) as the lemma index has it (lemma_forms), for images_json."""
+    out = []
+    for line, (day, seq, _) in hymn_lines(con, n).items():
+        out += con.execute("SELECT ?, w.word_index, l.lemma FROM hymn_words w JOIN lemma_forms f ON f.form = w.lemma "
+                           "JOIN lemmas l ON l.id = f.lemma WHERE w.div = ? AND w.seq = ? ORDER BY w.word_index",
+                           (line, day, seq)).fetchall()
+    return out
 
 
 def offline_json(slug, n):
@@ -571,16 +585,17 @@ def hymn_days(date):
 
 
 def hymns_of(con, date):
-    """[{"title", "hymns": [{"kind", "mode", "poet", "text"}]}]: the date's hymns, by day of
-    the service books, as hymn_days orders them ([] for a library without them)."""
+    """[{"title", "hymns": [{"kind", "mode", "poet", "text", "n", "seq"}]}]: the date's hymns,
+    by day of the service books, as hymn_days orders them (n: the day's number, seq: the
+    hymn's, where its words' parsing is: hymn_words); [] for a library without them."""
     out = []
     try:
         for day in hymn_days(date):
-            title = con.execute("SELECT title FROM hymn_days WHERE day = ?", (day,)).fetchone()
-            rows = con.execute("SELECT kind, mode, poet, text FROM hymns WHERE day = ? ORDER BY seq", (day,)).fetchall()
+            rows = con.execute("SELECT h.kind, h.mode, h.poet, h.text, d.n, h.seq, d.title FROM hymns h "
+                               "JOIN hymn_days d USING (day) WHERE day = ? ORDER BY h.seq", (day,)).fetchall()
             if rows:
-                out.append({"title": title and title[0],
-                            "hymns": [dict(zip(("kind", "mode", "poet", "text"), r)) for r in rows]})
+                out.append({"title": rows[0][6],
+                            "hymns": [dict(zip(("kind", "mode", "poet", "text", "n", "seq"), r)) for r in rows]})
     except sqlite3.OperationalError:  # a library built before the hymns
         return []
     return out
@@ -603,6 +618,11 @@ def hymns_text_json(n):
         return None
     con = sqlite3.connect(LIBRARY)
     groups = hymns_of(con, date)
+    try:
+        parsed = any(con.execute("SELECT 1 FROM hymn_words WHERE div = ? AND seq = ? LIMIT 1", (h["n"], h["seq"])).fetchone()
+                     for g in groups for h in g["hymns"])
+    except sqlite3.OperationalError:  # (hymns imported before their words were parsed)
+        parsed = False
     con.close()
     verses = [{"line": i + 1, "ref": g["title"] or HYMNS_TITLE, "text": h["text"], "para": True,
                "speaker": " · ".join(x.rstrip(".") for x in (h["kind"], h["mode"], h["poet"]) if x)}
@@ -610,9 +630,35 @@ def hymns_text_json(n):
     if not verses:
         return None
     return {"book": n, "text": HYMNS, "title": HYMNS_TITLE, "author": None, "form": "prose", "cite": "label",
-            "eyebrow": HYMNS_TITLE, "features": [], "notesCredit": None, "books": [], "audio": None,
+            "eyebrow": HYMNS_TITLE, "features": ["words"] if parsed else [], "notesCredit": None, "books": [], "audio": None,
             "verses": verses, "translation": [],
             "credits": [{"text": "Text: AGES Initiatives (Digital Chant Stand)"}]}
+
+
+def hymn_lines(con, n):
+    """{line: (the day's number, the hymn's seq, its text)} of a date's hymns page (n: YYYYMMDD)."""
+    try:
+        date = datetime.datetime.strptime(str(n), "%Y%m%d").date()
+    except ValueError:
+        return {}
+    hymns = [h for g in hymns_of(con, date) for h in g["hymns"]]
+    return {i + 1: (h["n"], h["seq"], h["text"]) for i, h in enumerate(hymns)}
+
+
+def hymn_parsing(n, line, index):
+    """A word of a date's hymns page (n: YYYYMMDD, line: its hymn), as parsing_json gives a
+    library text's: the lemmatiser's parsing (hymn_words)."""
+    if not LIBRARY.exists():
+        return None
+    con = sqlite3.connect(LIBRARY)
+    place = hymn_lines(con, n).get(line)
+    con.close()
+    if not place or not 0 <= index < len(place[2].split()):
+        return None
+    auto = automatic_parsing(HYMNS, place[0], place[1], index, table="hymn_words")
+    word = place[2].split()[index]
+    return {"word": word, "tokens": [auto]} if auto else \
+        {"word": word, "tokens": [], "note": "Not parsed (the parsing doesn't have this word here)."}
 
 
 def lectionary_settings(con):
@@ -1146,13 +1192,14 @@ def morpheus_morph(pos, readings):
     return out
 
 
-def automatic_parsing(slug, n, seq, index):
-    """The lemmatiser's parsing of a word without gold parsing (auto_words), as a card's token."""
+def automatic_parsing(slug, n, seq, index, table="auto_words"):
+    """The lemmatiser's parsing of a word without gold parsing (auto_words; the hymns':
+    hymn_words), as a card's token."""
     con = sqlite3.connect(LIBRARY)
     try:
-        columns = {r[1] for r in con.execute("PRAGMA table_info(auto_words)")}
+        columns = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
         row = con.execute(f"SELECT lemma, headword, definition, pos, morph, confidence, alternative, "
-                          f"{'also' if 'also' in columns else 'NULL'}, {'checked' if 'checked' in columns else 'NULL'} FROM auto_words "
+                          f"{'also' if 'also' in columns else 'NULL'}, {'checked' if 'checked' in columns else 'NULL'} FROM {table} "
                           "WHERE text = ? AND div = ? AND seq = ? AND word_index = ?", (slug, n, seq, index)).fetchone()
     except sqlite3.OperationalError:  # a library built before automatic parsing
         return None
@@ -1195,15 +1242,15 @@ def paraphrase_word(con, slug, n, seq, index):
 
 
 def lexword_json(slug, n, seq, index):
-    """A library text's word: its parsing (the Iliad's and others': a hand-made treebank's;
+    """A library text's word (or the hymns page's: n its date, seq its line): its parsing (the Iliad's and others': a hand-made treebank's;
     the New Testament: Robinson's, with Dodson's lexicon; the Septuagint: CATSS's, with its
     own lemmas and glosses) for the reader's card; each token's lemma with its references
     in every text ("references": {lemma, n}, for /api/references), where it has some."""
-    card = parsing_json(slug, n, seq, index)
+    card = hymn_parsing(n, seq, index) if slug == HYMNS else parsing_json(slug, n, seq, index)
     if card and card.get("tokens"):
         con = sqlite3.connect(LIBRARY)
         try:
-            period = text_period(con, slug)
+            period = "church" if slug == HYMNS else text_period(con, slug)
             for token in card["tokens"]:
                 row = con.execute("SELECT l.lemma, l.n, l.id, l.definition FROM lemma_forms f JOIN lemmas l ON l.id = f.lemma "
                                   "WHERE f.form = ?", (token.pop("_lemma", None) or "",)).fetchone()

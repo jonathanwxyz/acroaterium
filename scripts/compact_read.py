@@ -79,7 +79,7 @@ DERIVED = {"lemma_words", "lemma_inflections"}
 # and the definitions as library.py made them, before lemma_definitions.py: the server serves
 # the pictures, the device never keeps them; and the days' hymns (import_hymns.py), which
 # come with the day's readings (/api/lectionary), never offline.
-SERVED = {"image_sources", "lemma_images", "lemma_base_definitions", "hymn_days", "hymns"}
+SERVED = {"image_sources", "lemma_images", "lemma_base_definitions", "hymn_days", "hymns", "hymn_words"}
 
 
 def unpack(blob):

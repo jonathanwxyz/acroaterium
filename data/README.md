@@ -95,8 +95,12 @@ The days' hymns: `scripts/import_hymns.py` (`--check` lists the words that look 
 accented, and changes nothing) → `hymn_days`, `hymns` in `library.sqlite`: the apolytikia
 and kontakia of the Menaion, Triodion, Pentecostarion and the Octoechos's Sundays, from the
 AGES library (a sparse clone, ~45 MB, kept in `raw/ages_gr/`), mended where
-`hymn_corrections.tsv` says. `library.py` leaves them be; the server gives a date's
-(`serve.py` `hymn_days`) with its readings, and the compact library leaves them out.
+`hymn_corrections.tsv` says. Their words' parsing, for the word cards: run
+`scripts/lemmatise_hymns.py` with the lemmatiser's environment (as `lemmatise_library.py`:
+into `raw/lemmatised/hymns.json`, about an hour on a CPU the first time), then
+`import_hymns.py` again (→ `hymn_words`). `library.py` leaves them be; the server makes a
+date's a page of the reader (`/api/text/hymns/<YYYYMMDD>`, linked last among its readings),
+and the compact library leaves them out.
 
 `scripts/compare_alignments.py REF CANDIDATE [-v]` scores one alignment file against
 another (link precision/recall, per-word agreement).
