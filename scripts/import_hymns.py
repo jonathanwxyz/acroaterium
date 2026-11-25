@@ -6,7 +6,8 @@ hymns themselves are old, a few recent: Gerasimos Mikragiannanites's).
 
 Tables in data/library.sqlite (the server picks a day's: serve.py hymn_days):
   hymn_days  (day, n, title)                        a day of a service book, its number, its heading
-  hymns      (day, seq, kind, mode, poet, text)     its apolytikia (troparia), then its kontakia
+  hymns      (day, seq, kind, mode, poet, text, english)  its apolytikia (troparia), then its
+                                                    kontakia, with Fr. Seraphim Dedes's English
   hymn_words (text, div, seq, word_index, …)        their words' parsing, as auto_words (text
                                                     "hymns", div: the day's n), from
                                                     scripts/lemmatise_hymns.py: run it, then this again
@@ -24,7 +25,9 @@ Each is the book's apolytikia (Vespers; Pascha's and Holy Week's troparia, Matin
 its kontakia (Matins, the Liturgy), the alternatives the book gives (alt1., …) after its
 own; a hymn given twice is kept once.
 
-The files are fetched once (a shallow, sparse git clone, ~45 MB) into data/raw/ages_gr/.
+The files are fetched once (shallow, sparse git clones, ~45 MB each) into data/raw/ages_gr/,
+and the English, the same keys' in AGES's library of Fr. Seraphim Dedes's translations
+(ages-alwb-library-en-us-dedes, CC BY-NC-SA 4.0), into data/raw/ages_en_dedes/.
 AGES's text is carefully accented; data/hymn_corrections.tsv mends its few slips, in the
 hymns and the days' headings (a breathing typed for an accent, σὐ; a missing iota
 subscript; a heading in capitals). A micro sign (µ) is written μ, and ῤῥ ρρ, as the
@@ -40,15 +43,17 @@ from pathlib import Path
 
 import library  # (its auto_words: the lemmatiser's parsing as rows)
 
-REPO = "https://github.com/AGES-Initiatives/ages-alwb-library-gr-gr-cog.git"
 ROOT = Path(__file__).resolve().parent.parent
-CLONE = ROOT / "data" / "raw" / "ages_gr"
-LIB = CLONE / "net.ages.liturgical.workbench.library_gr_GR_cog"
+# (repository, clone, its library's folder, its files' suffix): the Greek, and Fr. Seraphim
+# Dedes's English of it (the same keys: CC BY-NC-SA 4.0)
+GREEK = ("https://github.com/AGES-Initiatives/ages-alwb-library-gr-gr-cog.git", ROOT / "data" / "raw" / "ages_gr",
+         "net.ages.liturgical.workbench.library_gr_GR_cog", "_gr_GR_cog")
+ENGLISH = ("https://github.com/AGES-Initiatives/ages-alwb-library-en-us-dedes.git", ROOT / "data" / "raw" / "ages_en_dedes",
+           "net.ages.liturgical.workbench.library_en_US_dedes", "_en_US_dedes")
 PARTS = ["Books-Collections/Menaion", "Books-Collections/Triodion", "Books-Collections/Pentecostarion",
          "Books-Collections/Octoechos", "Books-Collections/Heirmologion", "Constants"]
 CORRECTIONS = ROOT / "data" / "hymn_corrections.tsv"
 DB = ROOT / "data" / "library.sqlite"
-SUFFIX = "_gr_GR_cog"
 
 # The day's heading, by book (the first found)
 HEADINGS = ["DA.commemoration.full", "DA.commemoration.short"]
@@ -74,16 +79,16 @@ def day_number(day):
     return {"tr": 2000, "pe": 3000, "oc": 4000}[book] + int(k)
 
 
-def fetch():
-    if LIB.exists():
+def fetch(source):
+    repo, clone, lib, _ = source
+    if (clone / lib).exists():
         return
-    CLONE.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "clone", "--quiet", "--depth", "1", "--filter=blob:none", "--sparse", REPO, str(CLONE)], check=True)
-    subprocess.run(["git", "-C", str(CLONE), "sparse-checkout", "set",
-                    *(f"{LIB.name}/{p}" for p in PARTS)], check=True)
+    clone.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "clone", "--quiet", "--depth", "1", "--filter=blob:none", "--sparse", repo, str(clone)], check=True)
+    subprocess.run(["git", "-C", str(clone), "sparse-checkout", "set", *(f"{lib}/{p}" for p in PARTS)], check=True)
 
 
-def parse(path):
+def parse(path, suffix):
     """A .ares file as {key: ("text", value) | ("ref", resource, key)}: lines key = "text"
     or key = resource.key, // and /* */ comments."""
     src = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
@@ -94,8 +99,8 @@ def parse(path):
             continue
         if m[2] is not None:
             out[m[1]] = ("text", m[2])
-        elif m[3] and SUFFIX in m[3]:
-            resource, _, key = m[3].partition(SUFFIX + ".")
+        elif m[3] and suffix in m[3]:
+            resource, _, key = m[3].partition(suffix + ".")
             out[m[1]] = ("ref", resource, key)
     return out
 
@@ -103,13 +108,14 @@ def parse(path):
 class Library:
     """The AGES files, read as needed, references followed."""
 
-    def __init__(self):
-        self.paths = {p.name.removesuffix(SUFFIX + ".ares"): p for part in PARTS for p in (LIB / part).rglob("*.ares")}
+    def __init__(self, source=GREEK):
+        _, clone, lib, self.suffix = source
+        self.paths = {p.name.removesuffix(self.suffix + ".ares"): p for part in PARTS for p in (clone / lib / part).rglob("*.ares")}
         self.files = {}
 
     def file(self, resource):
         if resource not in self.files:
-            self.files[resource] = parse(self.paths[resource]) if resource in self.paths else {}
+            self.files[resource] = parse(self.paths[resource], self.suffix) if resource in self.paths else {}
         return self.files[resource]
 
     def get(self, resource, key, depth=0):
@@ -134,8 +140,8 @@ def tidy(text):
 
 
 def day_hymns(lib, resource):
-    """[(kind, mode, poet, text)] of a day: apolytikia, then kontakia; its own, then the
-    alternatives; each text once."""
+    """[(kind, mode, poet, text, keys)] of a day: apolytikia, then kontakia; its own, then the
+    alternatives; each text once (keys: every key it's under)."""
     keys = [k[:-len(".text")] for k in lib.file(resource) if k.endswith(".text")]
     found = []
     for k in keys:
@@ -145,17 +151,20 @@ def day_hymns(lib, resource):
         alt, section, kind, n, troparion = m.groups()
         kind = kind or troparion
         found.append((kind == "Kontakion", bool(alt), "VE MA LI".split().index(section), int(n or 0), kind, k))
-    out, seen = [], set()
+    out, seen = [], {}
     for *_, kind, k in sorted(found):
         text = lib.get(resource, k + ".text")
-        if not text or not re.search(r"[\u0370-\u03ff\u1f00-\u1fff]", text) or tidy(text) in seen:
+        if not text or not re.search(r"[\u0370-\u03ff\u1f00-\u1fff]", text):
             continue
-        seen.add(tidy(text))
+        if tidy(text) in seen:  # (given again: its key kept too, where its English may be)
+            out[seen[tidy(text)]][4].append(k)
+            continue
+        seen[tidy(text)] = len(out)
         mode = lib.get(resource, k + ".mode")
         ref = lib.file(resource).get(k + ".mode")
         if ref and ref[0] == "ref":  # the mode without its full stop: "Ἦχος πλ. αʹ"
             mode = lib.get(ref[1], ref[2] + ".naked") or mode
-        out.append((KINDS[kind], mode and mode.rstrip(". "), lib.get(resource, k + ".poet"), tidy(text)))
+        out.append((KINDS[kind], mode and mode.rstrip(". "), lib.get(resource, k + ".poet"), tidy(text), [k]))
     return out
 
 
@@ -240,8 +249,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--check", action="store_true", help="list the words that look wrong, and change nothing")
     args = ap.parse_args()
-    fetch()
-    lib = Library()
+    fetch(GREEK)
+    fetch(ENGLISH)
+    lib, english = Library(GREEK), Library(ENGLISH)
     days = sorted(r for r in lib.paths if re.fullmatch(r"(me\.m\d\d\.d\w\w|tr\.d\d{3}|pe\.d\d{3})", r))
     days += [f"oc.m{m}.d1" for m in range(1, 9)]
     corrections = load_corrections()
@@ -254,8 +264,13 @@ def main():
         fixes = corrections.get(day, []) + corrections.get("*", [])
         title = f"Ἀναστάσιμα, {hymns[0][1]}" if day.startswith("oc.") else heading(lib, resource)
         titles.append((day, day_number(day), title and correct(title, fixes, day)))
-        for seq, (kind, mode, poet, text) in enumerate(hymns):
-            rows.append((day, seq, kind, mode, poet, correct(text, fixes, day)))
+        for seq, (kind, mode, poet, text, keys) in enumerate(hymns):
+            # (not a placeholder: "[Text of Apolytikion for …]")
+            en = next((t for k in keys if (t := english.get(resource, k + ".text")) and not re.fullmatch(r"\[.*\]", t.strip())), None)
+            rows.append((day, seq, kind, mode, poet, correct(text, fixes, day), en and tidy(en)))
+    # A hymn the English leaves blank on its day, given on another (the Fathers' apolytikion): that English.
+    known = {text: en for *_, text, en in rows if en}
+    rows = [(*r[:6], r[6] or known.get(r[5])) for r in rows]
     unused = [(d, w) for d, fixes in corrections.items() for w, _ in fixes if (d, w) not in fixes_used]
     if args.check:
         flagged = [(day, w, why) for day, text in [(r[0], r[5]) for r in rows] + [(t[0], t[2]) for t in titles if t[2]]
@@ -283,14 +298,15 @@ def main():
             mode  TEXT,                     --   Ἦχος πλ. αʹ
             poet  TEXT,                     --   Ποίημα Γερασίμου.
             text  TEXT NOT NULL,
+            english TEXT,                   --   Fr. Seraphim Dedes's (none for a few: Gerasimos's)
             PRIMARY KEY (day, seq)
         );""")
     con.executemany("INSERT INTO hymn_days VALUES (?, ?, ?)", titles)
-    con.executemany("INSERT INTO hymns VALUES (?, ?, ?, ?, ?, ?)", rows)
+    con.executemany("INSERT INTO hymns VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
     # The lemmatiser's parsing of their words (scripts/lemmatise_hymns.py), as library.py
     # takes a text's: a hymn's, where it still reads as it was lemmatised.
     numbers = {day: n for day, n, _ in titles}
-    words = library.auto_words("hymns", [(numbers[day], seq, None, text) for day, seq, _, _, _, text in rows], set())
+    words = library.auto_words("hymns", [(numbers[day], seq, None, text) for day, seq, _, _, _, text, _ in rows], set())
     con.execute("DROP TABLE IF EXISTS hymn_words")
     con.execute(con.execute("SELECT sql FROM sqlite_master WHERE name = 'auto_words'").fetchone()[0]
                 .replace("CREATE TABLE auto_words", "CREATE TABLE hymn_words", 1))
@@ -298,7 +314,7 @@ def main():
     con.commit()
     con.close()
     parsed = {(w[1], w[2]) for w in words}
-    print(f"{len(titles)} days, {len(rows)} hymns ({len(parsed)} with their words parsed: {len(words)} words)")
+    print(f"{len(titles)} days, {len(rows)} hymns ({sum(1 for r in rows if r[6])} in English; {len(parsed)} with their words parsed: {len(words)} words)")
 
 
 if __name__ == "__main__":

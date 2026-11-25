@@ -95,7 +95,9 @@ The days' hymns: `scripts/import_hymns.py` (`--check` lists the words that look 
 accented, and changes nothing) → `hymn_days`, `hymns` in `library.sqlite`: the apolytikia
 and kontakia of the Menaion, Triodion, Pentecostarion and the Octoechos's Sundays, from the
 AGES library (a sparse clone, ~45 MB, kept in `raw/ages_gr/`), mended where
-`hymn_corrections.tsv` says. Their words' parsing, for the word cards: run
+`hymn_corrections.tsv` says, with Fr. Seraphim Dedes's English where he has it (AGES's
+library of his translations, the same keys: `raw/ages_en_dedes/`; the reader's English
+toggle). Their words' parsing, for the word cards: run
 `scripts/lemmatise_hymns.py` with the lemmatiser's environment (as `lemmatise_library.py`:
 into `raw/lemmatised/hymns.json`, about an hour on a CPU the first time), then
 `import_hymns.py` again (→ `hymn_words`). `library.py` leaves them be; the server makes a
@@ -271,7 +273,9 @@ licence. Share-alike reaches the data, not the code that displays it.
 fetches them. The hymns (`hymn_days`, `hymns`) are the AGES Initiatives' Greek text of the
 service books ([ages-alwb-library-gr-gr-cog](https://github.com/AGES-Initiatives/ages-alwb-library-gr-gr-cog),
 now the Greek Orthodox Archdiocese of America's): no licence stated; the hymns are old, but
-for a few recent ones (Gerasimos Mikragiannanites's). One is non-commercial: the Septuagint's (`rahlfs`) transcription and parsing,
+for a few recent ones (Gerasimos Mikragiannanites's). Their English (`hymns.english`) is Fr.
+Seraphim Dedes's, [ages-alwb-library-en-us-dedes](https://github.com/AGES-Initiatives/ages-alwb-library-en-us-dedes):
+CC BY-NC-SA 4.0, credited on the page; keep uses non-commercial. One is non-commercial: the Septuagint's (`rahlfs`) transcription and parsing,
 CATSS's via Eliran Wong's LXX-Rahlfs-1935 (CC BY-NC-SA 4.0). Rahlfs's 1935 text itself is
 public domain in the UK and EU, though not in the US until 2031. The Old Testament's
 wording, where the recordings read it so, comes from Greek Wikisource's Septuagint

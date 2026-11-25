@@ -585,17 +585,17 @@ def hymn_days(date):
 
 
 def hymns_of(con, date):
-    """[{"title", "hymns": [{"kind", "mode", "poet", "text", "n", "seq"}]}]: the date's hymns,
+    """[{"title", "hymns": [{"kind", "mode", "poet", "text", "n", "seq", "english"}]}]: the date's hymns,
     by day of the service books, as hymn_days orders them (n: the day's number, seq: the
     hymn's, where its words' parsing is: hymn_words); [] for a library without them."""
     out = []
     try:
         for day in hymn_days(date):
-            rows = con.execute("SELECT h.kind, h.mode, h.poet, h.text, d.n, h.seq, d.title FROM hymns h "
+            rows = con.execute("SELECT h.kind, h.mode, h.poet, h.text, d.n, h.seq, h.english, d.title FROM hymns h "
                                "JOIN hymn_days d USING (day) WHERE day = ? ORDER BY h.seq", (day,)).fetchall()
             if rows:
-                out.append({"title": rows[0][6],
-                            "hymns": [dict(zip(("kind", "mode", "poet", "text", "n", "seq"), r)) for r in rows]})
+                out.append({"title": rows[0][7],
+                            "hymns": [dict(zip(("kind", "mode", "poet", "text", "n", "seq", "english"), r)) for r in rows]})
     except sqlite3.OperationalError:  # a library built before the hymns
         return []
     return out
@@ -609,7 +609,8 @@ HYMNS_TITLE = "Ἀπολυτίκια καὶ Κοντάκια"
 def hymns_text_json(n):
     """A date's hymns (n: YYYYMMDD) in the shape of text_json: prose, each day of the service
     books a part named by its heading, each hymn a paragraph led by its kind, mode and
-    (a recent one's) poet, as a speech by its speaker."""
+    (a recent one's) poet, as a speech by its speaker; under it, where there is one, Fr.
+    Seraphim Dedes's English (the reader's English toggle)."""
     try:
         date = datetime.datetime.strptime(str(n), "%Y%m%d").date()
     except ValueError:
@@ -624,15 +625,19 @@ def hymns_text_json(n):
     except sqlite3.OperationalError:  # (hymns imported before their words were parsed)
         parsed = False
     con.close()
+    hymns = [(g, h) for g in groups for h in g["hymns"]]
     verses = [{"line": i + 1, "ref": g["title"] or HYMNS_TITLE, "text": h["text"], "para": True,
                "speaker": " · ".join(x.rstrip(".") for x in (h["kind"], h["mode"], h["poet"]) if x)}
-              for i, (g, h) in enumerate((g, h) for g in groups for h in g["hymns"])]
+              for i, (g, h) in enumerate(hymns)]
     if not verses:
         return None
+    # Fr. Seraphim Dedes's English, under each hymn it has (a passage of one segment)
+    english = [{"from": i + 1, "to": i + 1, "text": h["english"]} for i, (_, h) in enumerate(hymns) if h.get("english")]
     return {"book": n, "text": HYMNS, "title": HYMNS_TITLE, "author": None, "form": "prose", "cite": "label",
-            "eyebrow": HYMNS_TITLE, "features": ["words"] if parsed else [], "notesCredit": None, "books": [], "audio": None,
-            "verses": verses, "translation": [],
-            "credits": [{"text": "Text: AGES Initiatives (Digital Chant Stand)"}]}
+            "eyebrow": HYMNS_TITLE, "features": (["words"] if parsed else []) + (["translation"] if english else []),
+            "notesCredit": None, "books": [], "audio": None, "verses": verses, "translation": english,
+            "credits": [{"text": "Text: AGES Initiatives (Digital Chant Stand)"}]
+                       + ([{"text": "English: Fr. Seraphim Dedes, CC BY-NC-SA 4.0", "id": "translation-credit"}] if english else [])}
 
 
 def hymn_lines(con, n):
