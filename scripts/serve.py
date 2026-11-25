@@ -390,6 +390,145 @@ ORDINALS = {"first": "1", "second": "2", "third": "3", "fourth": "4", "1": "1", 
 SEPTUAGINT_NAMES = {"1samuel": "1kingdoms", "2samuel": "2kingdoms", "1kings": "3kingdoms", "2kings": "4kingdoms"}
 
 
+# The day's place in the year of readings, "Wednesday of the 10th Week of Luke" (Τῇ Τετάρτῃ
+# τῆς Ιʹ Ἑβδομάδος τοῦ Λουκᾶ): from the chapel's code for it (on a saint's link,
+# "PCode=10LW": the week, its cycle, the day), or, a day without one, its title ("Tuesday of
+# the 10th Week", "16th Thursday after Pentecost"). In Greek as the service books head the
+# day: a weekday in the dative, "Τῇ Τρίτῃ τῆς Διακαινησίμου", "Τῇ Τετάρτῃ τοῦ Παραλύτου" (the
+# weeks after Pascha by their Sunday), "Τῇ Τετάρτῃ τῆς ΙΑʹ Ἑβδομάδος" (the weeks after
+# Pentecost: Matthew's, not named); a Sunday as the Kanonion has it, "Κυριακὴ Θʹ Λουκᾶ".
+DAYS = {"M": "Monday", "T": "Tuesday", "W": "Wednesday", "Th": "Thursday", "F": "Friday", "SA": "Saturday", "S": "Sunday"}
+DAY_CODES = {v: k for k, v in DAYS.items()}
+ORDINAL_WORDS = {"First": 1, "Second": 2, "Third": 3, "Fourth": 4, "Fifth": 5, "Sixth": 6}
+CYCLE_DAYS = {  # days with names of their own: (English, Greek)
+    "PASCHA": ("Pascha", "Τὸ Ἅγιον Πάσχα"),
+    "1PEM": ("Monday of the Holy Spirit", "Τῇ Δευτέρᾳ τοῦ Ἁγίου Πνεύματος"),
+    "1PES": ("Sunday of All Saints", "Κυριακὴ τῶν Ἁγίων Πάντων"),
+    "4PW": ("Mid-Pentecost", "Τῇ Τετάρτῃ τῆς Μεσοπεντηκοστῆς"),
+    "6PW": ("Leavetaking of Pascha", "Ἀπόδοσις τοῦ Πάσχα"),
+    "6PTh": ("Ascension", "Ἡ Ἀνάληψις τοῦ Κυρίου"),
+    "1LENTM": ("Clean Monday", "Καθαρὰ Δευτέρα"),
+    "6LENTSA": ("Lazarus Saturday", "Τὸ Σάββατον τοῦ Λαζάρου"),
+    "HWSA": ("Holy Saturday", "Τῷ Ἁγίῳ καὶ Μεγάλῳ Σαββάτῳ"),
+    "MEATSA": ("Saturday of Souls", "Ψυχοσάββατον"),
+    "PUBLICANS": ("Sunday of the Publican and the Pharisee", "Κυριακὴ τοῦ Τελώνου καὶ τοῦ Φαρισαίου"),
+    "PRODIGALS": ("Sunday of the Prodigal Son", "Κυριακὴ τοῦ Ἀσώτου"),
+    "MEATS": ("Meatfare Sunday", "Κυριακὴ τῆς Ἀπόκρεω"),
+    "CHEESES": ("Forgiveness Sunday", "Κυριακὴ τῆς Τυροφάγου"),
+    "4ECS": ("Sunday of the Fathers of the 4th Ecumenical Council", "Κυριακὴ τῶν Ἁγίων Πατέρων τῆς Δʹ Οἰκουμενικῆς Συνόδου"),
+    "SBE": ("Sunday before Epiphany", "Κυριακὴ πρὸ τῶν Φώτων"),
+    "SAE": ("Sunday after Epiphany", "Κυριακὴ μετὰ τὰ Φῶτα"),
+    "SBN": ("Sunday before Nativity", "Κυριακὴ πρὸ τῆς Χριστοῦ Γεννήσεως"),
+    "SAN": ("Sunday after Nativity", "Κυριακὴ μετὰ τὴν Χριστοῦ Γέννησιν"),
+    "SBHC": ("Sunday before Holy Cross", "Κυριακὴ πρὸ τῆς Ὑψώσεως"),
+    "SAHC": ("Sunday after Holy Cross", "Κυριακὴ μετὰ τὴν Ὕψωσιν"),
+    "SABE": ("Saturday before Epiphany", "Τῷ Σαββάτῳ πρὸ τῶν Φώτων"),
+    "SAAE": ("Saturday after Epiphany", "Τῷ Σαββάτῳ μετὰ τὰ Φῶτα"),
+    "SABN": ("Saturday before Nativity", "Τῷ Σαββάτῳ πρὸ τῆς Χριστοῦ Γεννήσεως"),
+    "SAAN": ("Saturday after Nativity", "Τῷ Σαββάτῳ μετὰ τὴν Χριστοῦ Γέννησιν"),
+    "SABHC": ("Saturday before Holy Cross", "Τῷ Σαββάτῳ πρὸ τῆς Ὑψώσεως"),
+    "SAAHC": ("Saturday after Holy Cross", "Τῷ Σαββάτῳ μετὰ τὴν Ὕψωσιν")}
+PASCHA_SUNDAYS = [("Thomas Sunday", "Κυριακὴ τοῦ Θωμᾶ"), ("Sunday of the Myrrh-Bearing Women", "Κυριακὴ τῶν Μυροφόρων"),
+                  ("Sunday of the Paralytic", "Κυριακὴ τοῦ Παραλύτου"), ("Sunday of the Samaritan Woman", "Κυριακὴ τῆς Σαμαρείτιδος"),
+                  ("Sunday of the Blind Man", "Κυριακὴ τοῦ Τυφλοῦ"),
+                  ("Sunday of the Fathers of the 1st Ecumenical Council", "Κυριακὴ τῶν Ἁγίων Πατέρων τῆς Αʹ Οἰκουμενικῆς Συνόδου"),
+                  ("Pentecost", "Ἡ Πεντηκοστή")]
+# (the weeks after Pascha, by the Sunday they follow: Thomas's is the 2nd)
+PASCHA_WEEKS = ["τῆς Διακαινησίμου", "τοῦ Θωμᾶ", "τῶν Μυροφόρων", "τοῦ Παραλύτου", "τῆς Σαμαρείτιδος", "τοῦ Τυφλοῦ",
+                "τῶν Ἁγίων Πατέρων"]
+LENT_SUNDAYS = [("Sunday of Orthodoxy", "Κυριακὴ τῆς Ὀρθοδοξίας"), ("Sunday of St. Gregory Palamas", "Κυριακὴ Βʹ τῶν Νηστειῶν"),
+                ("Sunday of the Holy Cross", "Κυριακὴ τῆς Σταυροπροσκυνήσεως"), ("Sunday of St. John Climacus", "Κυριακὴ Δʹ τῶν Νηστειῶν"),
+                ("Sunday of St. Mary of Egypt", "Κυριακὴ Εʹ τῶν Νηστειῶν"), ("Palm Sunday", "Κυριακὴ τῶν Βαΐων")]
+# A weekday in the dative, as a day's heading has it: Τῇ Τετάρτῃ, Τῷ Σαββάτῳ.
+DATIVE = {"M": "Τῇ Δευτέρᾳ", "T": "Τῇ Τρίτῃ", "W": "Τῇ Τετάρτῃ", "Th": "Τῇ Πέμπτῃ", "F": "Τῇ Παρασκευῇ", "SA": "Τῷ Σαββάτῳ"}
+HOLY_WEEK = {"M": "Τῇ Ἁγίᾳ καὶ Μεγάλῃ Δευτέρᾳ", "T": "Τῇ Ἁγίᾳ καὶ Μεγάλῃ Τρίτῃ", "W": "Τῇ Ἁγίᾳ καὶ Μεγάλῃ Τετάρτῃ",
+             "Th": "Τῇ Ἁγίᾳ καὶ Μεγάλῃ Πέμπτῃ", "F": "Τῇ Ἁγίᾳ καὶ Μεγάλῃ Παρασκευῇ"}
+
+
+# A great feast, which takes the day's place: its Greek, by the chapel's title's start.
+FEASTS = {"The Theophany": "Τὰ Ἅγια Θεοφάνεια", "The Nativity of Our Lord": "Ἡ κατὰ σάρκα Γέννησις τοῦ Χριστοῦ",
+          "The Elevation of the Venerable": "Ἡ Ὕψωσις τοῦ Τιμίου Σταυροῦ",
+          "Circumcision of Our Lord": "Ἡ κατὰ σάρκα Περιτομὴ τοῦ Χριστοῦ",
+          "The Presentation of Our Lord": "Ἡ Ὑπαπαντὴ τοῦ Χριστοῦ", "Annunciation of the Theotokos": "Ὁ Εὐαγγελισμὸς τῆς Θεοτόκου",
+          "Holy Transfiguration": "Ἡ Μεταμόρφωσις τοῦ Χριστοῦ", "The Transfiguration": "Ἡ Μεταμόρφωσις τοῦ Χριστοῦ",
+          "Dormition of": "Ἡ Κοίμησις τῆς Θεοτόκου", "The Dormition": "Ἡ Κοίμησις τῆς Θεοτόκου",
+          "Nativity of the Theotokos": "Τὸ Γενέσιον τῆς Θεοτόκου", "The Nativity of the Theotokos": "Τὸ Γενέσιον τῆς Θεοτόκου",
+          "The Entry of the Theotokos": "Τὰ Εἰσόδια τῆς Θεοτόκου", "Entry of the Theotokos": "Τὰ Εἰσόδια τῆς Θεοτόκου"}
+
+
+def nth(n):
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def greek_numeral(n):
+    """17 → ΙΖʹ (6 as ΣΤ, as the service books write it)."""
+    tens, ones = divmod(n, 10)
+    return "ΙΚΛΜΝ"[tens - 1:tens] * (tens > 0) + ["", "Α", "Β", "Γ", "Δ", "Ε", "ΣΤ", "Ζ", "Η", "Θ"][ones] + "ʹ"
+
+
+def cycle_code(title):
+    """The chapel's code for a day it gives only a title: "Tuesday of the 10th Week" → 10LT."""
+    day = r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)"
+    num = r"(\d+)(?:st|nd|rd|th)|(First|Second|Third|Fourth|Fifth|Sixth)"
+    if m := re.fullmatch(r"(Saturday|Sunday) (before|after) (Epiphany|Nativity|Holy Cross)", title):
+        return f"{DAY_CODES[m[1]]}{m[2][0].upper()}{''.join(w[0] for w in m[3].split())}"
+    for pattern, cycle in ((rf"{day} of the (?:{num}) Week", "L"), (rf"(?:{num}) {day} after Pentecost", "PE"),
+                           (rf"(?:{num}) {day} after Pascha", "P"), (rf"(?:{num}) {day} of Lent", "LENT"),
+                           (rf"{day} of Publican and Pharisee", "PUBLICAN"), (rf"{day} of Prodigal Son", "PRODIGAL"),
+                           (rf"Meatfare {day}", "MEAT"), (rf"Cheesefare {day}", "CHEESE")):
+        if m := re.match(pattern, title):
+            d = next(g for g in m.groups() if g in DAY_CODES)
+            n = next((g for g in m.groups() if g and g.isdigit()), None) or ORDINAL_WORDS.get(next((g for g in m.groups() if g in ORDINAL_WORDS), None), "")
+            return f"{n}{cycle}{DAY_CODES[d]}"
+    return None
+
+
+def cycle_name(code):
+    """10LW → ("Wednesday of the 10th Week of Luke", "Τῇ Τετάρτῃ τῆς Ιʹ Ἑβδομάδος τοῦ Λουκᾶ"); a
+    Sunday, or a day with a name, by its name. None for a code not known."""
+    if code in CYCLE_DAYS:
+        return CYCLE_DAYS[code]
+    m = re.fullmatch(r"(\d*)(L|PE|P|LENT|HW|PUBLICAN|PRODIGAL|MEAT|CHEESE)(M|T|W|Th|F|SA|S)", code or "")
+    if not m:
+        return None
+    n, cycle, day = int(m[1] or 0), m[2], m[3]
+    if cycle in ("L", "PE", "P", "LENT") and not n:
+        return None
+    if day == "S":
+        if cycle == "L":
+            return f"{nth(n)} Sunday of Luke", f"Κυριακὴ {greek_numeral(n)} Λουκᾶ"
+        if cycle == "PE":
+            return f"{nth(n)} Sunday of Matthew", f"Κυριακὴ {greek_numeral(n)} Ματθαίου"
+        if cycle == "P" and n <= len(PASCHA_SUNDAYS):
+            return PASCHA_SUNDAYS[n - 1]
+        if cycle == "LENT" and n <= len(LENT_SUNDAYS):
+            return LENT_SUNDAYS[n - 1]
+        return None
+    en, gr = DAYS[day], DATIVE[day]
+    if cycle == "HW":
+        return f"Holy {en}", HOLY_WEEK.get(day, gr)
+    week = f"τῆς {greek_numeral(n)} Ἑβδομάδος"
+    # (the Triodion's weeks: the chapel's by the Sunday they end in, the Greek books' by the one they follow)
+    return {"L": (f"{en} of the {nth(n)} Week of Luke", f"{gr} {week} τοῦ Λουκᾶ"),
+            "PE": (f"{en} of the {nth(n)} Week after Pentecost", f"{gr} {week}"),
+            "P": (f"Renewal {en}" if n == 1 else f"{en} of the {nth(n)} Week after Pascha",
+                  f"{gr} {PASCHA_WEEKS[n - 1]}" if n <= len(PASCHA_WEEKS) else f"{gr} {week} ἀπὸ τοῦ Πάσχα"),
+            "LENT": (f"{en} of the {nth(n)} Week of Lent", f"{gr} {week} τῶν Νηστειῶν"),
+            "PUBLICAN": (f"{en} of the Publican and the Pharisee", f"{gr} πρὸ τοῦ Τελώνου καὶ Φαρισαίου"),
+            "PRODIGAL": (f"{en} of the Prodigal Son", f"{gr} τῆς Ἑβδομάδος τοῦ Τελώνου καὶ Φαρισαίου"),
+            "MEAT": (f"Meatfare {en}", f"{gr} τῆς Ἀπόκρεω"),
+            "CHEESE": (f"Cheesefare {en}", f"{gr} τῆς Τυροφάγου")}[cycle]
+
+
+def day_name(root):
+    """The day's place in the year of readings, (English, Greek), as the chapel's XML gives
+    it; a great feast, which takes the day's place, by its title (and its Greek, if known)."""
+    title = re.sub(r"\s+", " ", root.findtext("lectionarytitle") or "").strip() or None
+    code = next((m[1] for u in root.iter("url") if (m := re.search(r"[?&]PCode=([^&]+)", u.text or ""))), None)
+    return (cycle_name(code) or cycle_name(cycle_code(title or ""))
+            or (title, next((gr for start, gr in FEASTS.items() if (title or "").startswith(start)), None)))
+
+
 def lectionary_settings(con):
     try:
         row = con.execute("SELECT value FROM settings WHERE key = 'lectionary'").fetchone()
@@ -486,8 +625,10 @@ def selection(con, slug, book, refs):
 
 
 def lectionary_json(day):
-    """{"date", "readings": [{"kind", "label", "href"}]}: the day's readings, in the order
-    read (Matins, the Liturgy, then the Old Testament's), linking where the library has them."""
+    """{"date", "title", "day", "day_gr", "readings": [{"kind", "label", "href"}]}: the day's place
+    in the year of readings ("Wednesday of the 10th Week of Luke", "Τῇ Τετάρτῃ τῆς Ιʹ Ἑβδομάδος
+    τοῦ Λουκᾶ") and its readings, in the order read
+    (Matins, the Liturgy, then the Old Testament's), linking where the library has them."""
     try:
         date = datetime.date.fromisoformat(day)
     except ValueError:
@@ -536,7 +677,8 @@ def lectionary_json(day):
                 "href": f"read.html?{urllib.parse.urlencode({'text': slug, 'book': sel[0], 'v': sel[1]})}" if sel else None})
     con.close()
     readings.sort(key=lambda x: x.pop("order"))
-    return {"date": date.isoformat(), "readings": readings}
+    return {"date": date.isoformat(), "title": settings.get("title"),
+            **dict(zip(("day", "day_gr"), day_name(root))), "readings": readings}
 
 
 def notes_json(slug, n, a, b):

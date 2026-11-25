@@ -395,7 +395,8 @@ function collectionEntry(c) {
 
 // The day's readings (the Orthodox lectionary), where the catalogue asks for them: a fold
 // at the top of their category, each reading a link to its passage, with what it is read
-// as (Ἀπόστολος, Εὐαγγέλιον, …). The day is the reader's own.
+// as (Ἀπόστολος, Εὐαγγέλιον, …), under the day's name in the year of readings and its date
+// ("Wednesday of the 10th Week of Luke · 25th of November"). The day is the reader's own.
 const today = () => isoDate();
 function lectionaryEntry(l) {
   const work = el("div", "work collection lectionary");
@@ -408,9 +409,13 @@ function lectionaryEntry(l) {
     .then((data) => {
       if (!data.readings.length) return note(data.error ?? tr("No readings today."));
       list.replaceChildren();
+      // (the day first: its name in the year of readings, then its date)
+      const day = el("li", "member reading-day");
+      day.append(...(lectionaryDay(data) ? [el("span", "reading-cycle", lectionaryDay(data))] : []), el("span", "reading-date", longDate(data.date)));
+      list.append(day);
       for (const r of data.readings) {
         const row = el(r.href ? "a" : "span", "member-row reading");
-        if (r.href) row.href = r.href;
+        if (r.href) row.href = `${r.href}&lect=${data.date}`;
         row.append(el("span", null, r.label), el("span", "reading-kind", r.kind));
         const li = el("li", "member");
         li.append(row);

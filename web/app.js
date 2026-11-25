@@ -2492,6 +2492,29 @@ function showPlanEnd() {
   }
   list.after(box);
 }
+// A reading of the day (&lect=YYYY-MM-DD, from the library's day's readings): its day said
+// above the verses, "Ἀνάγνωσμα τῆς Ἡμέρας: Wednesday of the 10th Week of Luke · 25th of
+// November", and what it is read as (Ἀπόστολος).
+const LECT = /^\d{4}-\d\d-\d\d$/.test(PARAMS.get("lect") ?? "") ? PARAMS.get("lect") : null;
+async function showLectionaryDay() {
+  if (!LECT || PLAN) return;
+  let data;
+  try {
+    const r = await fetch(`/api/lectionary/${LECT}`);
+    data = r.ok ? await r.json() : null;
+  } catch {}
+  const top = el("p", "plan-note-top lect-note-top");
+  const home = el("a", "plan-readings", data?.title ?? tr("Readings of the day"));
+  home.href = "./";
+  top.append(home, ": ", ...(data && lectionaryDay(data) ? [`${lectionaryDay(data)} · `] : []), longDate(LECT));
+  // (which of the day's readings this is: the one linking to this text and selection)
+  const here = data?.readings.find((r) => {
+    const q = r.href && new URLSearchParams(r.href.split("?")[1]);
+    return q && q.get("text") === TEXT && q.get("v") === PARAMS.get("v");
+  });
+  if (here) top.append(" · ", el("span", "plan-readings", here.kind));
+  (document.querySelector(".range-note") ?? list).before(top);
+}
 // Where reading got to in the plan's day (planPlace): saved as the book's place is, and
 // a part opened again (from the library) goes back there.
 let planRestored = false;
@@ -2583,7 +2606,7 @@ async function planNextPart() {
 (window.bookRequest ?? fetch(API))
   .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
   .then((data) => (SELECTION && data.cite === "verse" ? select(data) : data))
-  .then((data) => { render(data); setTimelineRange(); update(); restorePlace(); setupMediaSession(); loadMarks(); showPlan(); })
+  .then((data) => { render(data); setTimelineRange(); update(); restorePlace(); setupMediaSession(); loadMarks(); showPlan(); showLectionaryDay(); })
   .catch((err) => {
     list.classList.remove("loading");
     list.textContent = navigator.onLine === false || err instanceof TypeError

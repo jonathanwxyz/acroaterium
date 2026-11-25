@@ -211,6 +211,18 @@ function planDate(plan, day) {
   const [y, m, d] = plan.start.split("-").map(Number);
   return new Date(y, m - 1, d + day - 1).toLocaleDateString(UI_LOCALE, { day: "numeric", month: "short" });
 }
+// A day of the readings (YYYY-MM-DD), as a date said after its name (which gives the
+// weekday): "25th of November" ("25 Νοεμβρίου").
+function longDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  if (UI_LOCALE) return date.toLocaleDateString(UI_LOCALE, { day: "numeric", month: "long" });
+  const th = d % 10 === 1 && d !== 11 ? "st" : d % 10 === 2 && d !== 12 ? "nd" : d % 10 === 3 && d !== 13 ? "rd" : "th";
+  return `${d}${th} of ${date.toLocaleDateString("en", { month: "long" })}`;
+}
+// Its name in the year of readings ("Wednesday of the 10th Week of Luke"), in Greek in a
+// Greek interface (as the service books head the day: "Τῇ Τετάρτῃ τῆς Ιʹ Ἑβδομάδος τοῦ Λουκᾶ").
+const lectionaryDay = (data) => (UI_LANG !== "en" && data.day_gr) || data.day;
 // The first day not yet read (null: all read).
 function planNext(plan) {
   const done = new Set(plan.done);

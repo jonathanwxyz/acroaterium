@@ -1876,6 +1876,10 @@ body.library { padding-top: env(safe-area-inset-top); }
 /* The day's readings: each passage, with what it is read as at the end. */
 .reading-kind { margin-left: auto; color: var(--muted); font-size: 0.8em; white-space: nowrap; }
 .reading-note { padding: 0.35rem 0.9rem; color: var(--muted); }
+/* (above them, the day: its name in the year of readings, then its date) */
+.reading-day { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.6rem; padding: 0.35rem 0.9rem 0.2rem; }
+.reading-cycle { font-weight: 600; }
+.reading-date { color: var(--muted); font-size: 0.9em; }
 .library .chapters {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(2.3rem, 1fr));
@@ -2474,6 +2478,7 @@ body.hide-paraphrase .skel .sk-sub { display: none; }
 .mark-plan { display: block; color: var(--current-bar); font: 11px system-ui, sans-serif; letter-spacing: 0.02em; margin-top: 0.1rem; }
 .plan-note-top .plan-readings { font-family: var(--greek); font-size: 1.15em; margin-left: 0.35em; }
 .plan-note-top a .plan-readings { margin-left: 0.15em; }
+.lect-note-top > a.plan-readings { margin-left: 0; }
 .range-note .greek-name { font-family: var(--greek); font-size: 1.12em; }
 /* No plans yet: just a button to make one, at the right. */
 #plans.no-plans { text-align: right; margin: -1rem 0 -0.9rem; }  /* (closer to the heading, and the list) */
